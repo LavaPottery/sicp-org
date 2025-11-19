@@ -1,0 +1,830 @@
+** 1.2 Procedimientos y los Procesos que Generan
+:properties:
+:custom_id: section-1.2
+:end:
+
+Ahora hemos considerado los elementos de la programación: Hemos utilizado operaciones aritméticas primitivas, hemos combinado estas operaciones, y hemos abstraído estas operaciones compuestas definiéndolas como procedimientos compuestos. Pero eso no es suficiente para permitirnos decir que sabemos cómo programar. Nuestra situación es análoga a la de alguien que ha aprendido las reglas de cómo se mueven las piezas en ajedrez pero no sabe nada de aperturas típicas, tácticas, o estrategia. Como el jugador de ajedrez novato, todavía no conocemos los patrones comunes de uso en el dominio. Nos falta el conocimiento de qué movimientos vale la pena hacer (qué procedimientos vale la pena definir). Nos falta la experiencia para predecir las consecuencias de hacer un movimiento (ejecutar un procedimiento).
+
+La capacidad de visualizar las consecuencias de las acciones bajo consideración es crucial para convertirse en un programador experto, tal como lo es en cualquier actividad sintética y creativa. Al convertirse en un fotógrafo experto, por ejemplo, uno debe aprender cómo mirar una escena y saber qué tan oscura aparecerá cada región en una impresión para cada posible elección de condiciones de exposición y revelado. Sólo entonces se puede razonar hacia atrás, planificando el encuadre, la iluminación, la exposición y el revelado para obtener los efectos deseados. Así es con la programación, donde estamos planificando el curso de acción a ser tomado por un proceso y donde controlamos el proceso por medio de un programa. Para convertirnos en expertos, debemos aprender a visualizar los procesos generados por varios tipos de procedimientos. Sólo después de que hayamos desarrollado tal habilidad podemos aprender a construir de manera confiable programas que exhiban el comportamiento deseado.
+
+
+Un procedimiento es un patrón para la <<i216>> evolución local de un proceso computacional. Especifica cómo cada etapa del proceso se construye sobre la etapa anterior. Nos gustaría poder hacer afirmaciones sobre el comportamiento general, o <<i165>> global, de un proceso cuya evolución local ha sido especificada por un procedimiento. Esto es muy difícil de hacer en general, pero al menos podemos intentar describir algunos patrones típicos de evolución de procesos.
+
+En esta sección examinaremos algunas "formas" comunes para procesos generados por procedimientos simples. También investigaremos las tasas a las que estos procesos consumen los importantes recursos computacionales de tiempo y espacio. Los procedimientos que consideraremos son muy simples. Su papel es como el desempeñado por los patrones de prueba en fotografía: como patrones prototípicos sobresimplificados, en lugar de ejemplos prácticos por derecho propio.
+
+*** 1.2.1 Recursión Lineal e Iteración
+:properties:
+:custom_id: section-1.2.1
+:end:
+
+
+<<figure-1.3>> Un proceso recursivo lineal para calcular 6!.
+
+#+begin_example
+ (factorial 6)        ------------------------.
+ (* 6 (factorial 5))                          |
+ (* 6 (* 5 (factorial 4)))                    |
+ (* 6 (* 5 (* 4 (factorial 3))))              |
+ (* 6 (* 5 (* 4 (* 3 (factorial 2)))))        |
+ (* 6 (* 5 (* 4 (* 3 (* 2 (factorial 1))))))  |
+ (* 6 (* 5 (* 4 (* 3 (* 2 1)))))              |
+ (* 6 (* 5 (* 4 (* 3 2))))                    |
+ (* 6 (* 5 (* 4 6)))                          |
+ (* 6 (* 5 24))                               |
+ (* 6 120)                                    |
+ 720          <-------------------------------'
+#+end_example
+
+Comenzamos considerando la función factorial, definida por
+
+
+#+begin_example
+ n! = n * (n - 1) * (n - 2) ... 3 * 2 * 1
+#+end_example
+
+Hay muchas maneras de calcular factoriales. Una forma es hacer uso de la observación de que n! es igual a n multiplicado por (n - 1)! para cualquier entero positivo n:
+
+#+begin_example
+ n! = n * [(n - 1) * (n - 2) ... 3 * 2 * 1]
+    = n * (n - 1)!
+#+end_example
+
+
+Por lo tanto, podemos calcular n! calculando (n - 1)! y multiplicando el resultado por n. Si agregamos la estipulación de que 1! es igual a 1, esta observación se traduce directamente en un procedimiento:
+
+#+begin_src scheme
+(define (factorial n)
+  (if (= n 1)
+      1
+      (* n (factorial (- n 1)))))
+#+end_src
+
+Podemos usar el modelo de sustitución de la sección [[#section-1.1.5][1.1.5]] para observar este procedimiento en acción calculando 6!, como se muestra en [[figure-1.3][Figure 1.3]].
+
+
+Ahora adoptemos una perspectiva diferente para calcular factoriales. Podríamos describir una regla para calcular n! especificando que primero multiplicamos 1 por 2, luego multiplicamos el resultado por 3, después por 4, y así sucesivamente hasta alcanzar n. De manera más formal, mantenemos un producto acumulado, junto con un contador que cuenta desde 1 hasta n. Podemos describir el cálculo diciendo que el contador y el producto cambian simultáneamente de un paso al siguiente según la regla
+
+#+begin_example
+ product <- counter ... product
+ counter <- counter + 1
+#+end_example
+
+y estipulando que n! es el valor del producto cuando el contador excede n.
+
+
+<<figure-1.4>> Un proceso iterativo lineal para calcular 6!.
+
+#+begin_example
+ (factorial 6)   -----.
+ (fact-iter   1 1 6)  |
+ (fact-iter   1 2 6)  |
+ (fact-iter   2 3 6)  |
+ (fact-iter   6 4 6)  |
+ (fact-iter  24 5 6)  |
+ (fact-iter 120 6 6)  |
+ (fact-iter 720 7 6)  V
+ 720
+#+end_example
+
+Una vez más, podemos reformular nuestra descripción como un procedimiento para calcular factoriales:[fn:29]
+
+
+#+begin_src scheme
+(define (factorial n)
+  (fact-iter 1 1 n))
+
+(define (fact-iter product counter max-count)
+  (if (> counter max-count)
+      product
+      (fact-iter (* counter product)
+                 (+ counter 1)
+                 max-count)))
+#+end_src
+
+Como antes, podemos usar el modelo de sustitución para visualizar el proceso de calcular 6!, como se muestra en [[figure-1.4][Figure 1.4]].
+
+Comparemos los dos procesos. Desde un punto de vista, parecen apenas diferentes. Ambos calculan la misma función matemática sobre el mismo dominio, y cada uno requiere un número de pasos proporcional a n para calcular n!. De hecho, ambos procesos incluso realizan la misma secuencia de multiplicaciones, obteniendo la misma secuencia de productos parciales. Por otro lado, cuando consideramos las "formas" de los dos procesos, encontramos que evolucionan de manera bastante diferente.
+
+
+Consideremos el primer proceso. El modelo de sustitución revela una forma de expansión seguida de contracción, indicada por la flecha en [[figure-1.3][Figure 1.3]]. La expansión ocurre cuando el proceso construye una cadena de <<i103>> operaciones diferidas (en este caso, una cadena de multiplicaciones). La contracción ocurre cuando las operaciones se realizan efectivamente. Este tipo de proceso, caracterizado por una cadena de operaciones diferidas, se llama un <<i327>> proceso recursivo. Llevar a cabo este proceso requiere que el intérprete mantenga un registro de las operaciones que se realizarán más adelante. En el cálculo de n!, la longitud de la cadena de multiplicaciones diferidas, y por lo tanto la cantidad de información necesaria para mantener su registro, crece linealmente con n (es proporcional a n), al igual que el número de pasos. Tal proceso se llama un <<i208>> proceso recursivo lineal.
+
+Por el contrario, el segundo proceso no crece ni se contrae. En cada paso, todo lo que necesitamos registrar, para cualquier n, son los valores actuales de las variables ~product~, ~counter~ y ~max-count~. Llamamos a esto un <<i199>> proceso iterativo. En general, un proceso iterativo es aquel cuyo estado puede resumirse mediante un número fijo de <<i363>> variables de estado, junto con una regla fija que describe cómo las variables de estado deben actualizarse a medida que el proceso pasa de estado a estado y una prueba de fin (opcional) que especifica las condiciones bajo las cuales el proceso debe terminar. Al calcular n!, el número de pasos requeridos crece linealmente con n. Tal proceso se llama un <<i207>> proceso iterativo lineal.
+
+El contraste entre los dos procesos puede verse de otra manera. En el caso iterativo, las variables del programa proporcionan una descripción completa del estado del proceso en cualquier punto. Si detuviéramos el cálculo entre pasos, todo lo que necesitaríamos hacer para reanudar el cálculo sería proporcionar al intérprete los valores de las tres variables del programa. No ocurre lo mismo con el proceso recursivo. En este caso hay información adicional "oculta", mantenida por el intérprete y no contenida en las variables del programa, que indica "dónde está el proceso" en la negociación de la cadena de operaciones diferidas. Cuanto más larga sea la cadena, más información debe mantenerse.[fn:30]
+
+
+Al contrastar iteración y recursión, debemos tener cuidado de no confundir la noción de un <<i304>> proceso recursivo con la noción de un <<i301>> procedimiento recursivo. Cuando describimos un procedimiento como recursivo, nos referimos al hecho sintáctico de que la definición del procedimiento se refiere (ya sea directa o indirectamente) al procedimiento mismo. Pero cuando describimos un proceso como siguiendo un patrón que es, digamos, linealmente recursivo, estamos hablando de cómo evoluciona el proceso, no sobre la sintaxis de cómo está escrito un procedimiento. Puede parecer perturbador que nos refiramos a un procedimiento recursivo como ~fact-iter~ como generador de un proceso iterativo. Sin embargo, el proceso realmente es iterativo: Su estado está capturado completamente por sus tres variables de estado, y un intérprete solo necesita mantener el registro de tres variables para ejecutar el proceso.
+
+Una razón por la que la distinción entre proceso y procedimiento puede ser confusa es que la mayoría de las implementaciones de lenguajes comunes (incluyendo Ada, Pascal y C) están diseñadas de tal manera que la interpretación de cualquier procedimiento recursivo consume una cantidad de memoria que crece con el número de llamadas al procedimiento, incluso cuando el proceso descrito es, en principio, iterativo. Como consecuencia, estos lenguajes pueden describir procesos iterativos solo recurriendo a "construcciones de bucle" de propósito especial como ~do~, ~repeat~, ~until~, ~for~ y ~while~. La implementación de Scheme que consideraremos en [[#section-5][Chapter 5]] no comparte este defecto. Ejecutará un proceso iterativo en espacio constante, incluso si el proceso iterativo está descrito por un procedimiento recursivo. Una implementación con esta propiedad se llama <<i390>> tail-recursive. Con una implementación tail-recursive, la iteración puede expresarse usando el mecanismo ordinario de llamada a procedimientos, de modo que las construcciones especiales de iteración son útiles solo como azúcar sintáctico.[fn:31]
+
+**** Exercise 1.9
+:properties:
+:custom_id: exercise-1.9
+:end:
+
+
+Cada uno de los siguientes dos procedimientos define un método para sumar dos enteros positivos en términos de los procedimientos ~inc~, que incrementa su argumento en 1, y ~dec~, que decrementa su argumento en 1.
+
+#+begin_src scheme
+(define (+ a b)
+  (if (= a 0)
+      b
+      (inc (+ (dec a) b))))
+
+(define (+ a b)
+  (if (= a 0)
+      b
+      (+ (dec a) (inc b))))
+#+end_src
+
+Utilizando el modelo de sustitución, ilustre el proceso generado por cada procedimiento al evaluar ~(+ 4 5)~. ¿Son estos procesos iterativos o recursivos?
+
+
+**** Exercise 1.10
+:properties:
+:custom_id: exercise-1.10
+:end:
+
+El siguiente procedimiento calcula una función matemática llamada la función de Ackermann.
+
+#+begin_src scheme
+(define (A x y)
+  (cond ((= y 0) 0)
+        ((= x 0) (* 2 y))
+        ((= y 1) 2)
+        (else (A (- x 1)
+                 (A x (- y 1))))))
+#+end_src
+
+
+¿Cuáles son los valores de las siguientes expresiones?
+
+#+begin_src scheme
+(A 1 10)
+
+(A 2 4)
+
+(A 3 3)
+#+end_src
+
+Considere los siguientes procedimientos, donde ~A~ es el procedimiento definido arriba:
+
+
+#+begin_src scheme
+(define (f n) (A 0 n))
+
+(define (g n) (A 1 n))
+
+(define (h n) (A 2 n))
+
+(define (k n) (* 5 n n))
+#+end_src
+
+Proporcione definiciones matemáticas concisas para las funciones calculadas por los procedimientos ~f~, ~g~ y ~h~ para valores enteros positivos de n. Por ejemplo, ~(k n)~ calcula 5n^2.
+
+*** 1.2.2 Tree Recursion
+:properties:
+:custom_id: section-1.2.2
+:end:
+
+
+Otro patrón común de cálculo se llama <<i400>> recursión de árbol. Como ejemplo, considere el cálculo de la secuencia de números de Fibonacci, en la cual cada número es la suma de los dos anteriores:
+
+0, 1, 1, 2, 3, 4, 8, 13, 21, ...
+
+En general, los números de Fibonacci pueden definirse mediante la regla
+
+
+#+begin_example
+          /
+          |  0                        if n = 0
+ Fib(n) = <  1                        if n = 1
+          |  Fib(n - 1) + Fib(n - 2)  otherwise
+          \
+#+end_example
+
+Podemos traducir inmediatamente esta definición en un procedimiento recursivo para calcular números de Fibonacci:
+
+#+begin_src scheme
+(define (fib n)
+  (cond ((= n 0) 0)
+        ((= n 1) 1)
+        (else (+ (fib (- n 1))
+                 (fib (- n 2))))))
+#+end_src
+
+
+<<figure-1.5>> El proceso recursivo de árbol generado al calcular ~(fib 5)~.
+
+#+begin_example
+                    ..<............ fib5   <..........
+                 ...     ___________/  \___________   .
+              ...       /       . .....            \    .
+            ..       fib4     .        . . . .     fib3  .
+          ..     ____/. \____  ..             .  __/  \__  .
+        ..      /  . .  ..   \    .        ..   /  . .   \   .
+      ..     fib3 .       .  fib2 .        . fib2 .   .  fib1 .
+    ..      / . \  .     .   /  \  .      .  /  \ ...  .  |  .
+  ..       / . . \   .  .   /  . \   .  .   / .  \   .  . 1 .
+ .      fib2 . . fib1.  .fib1 .  fib0 . .fib1. . fib0 .  .  .
+ .      /  \  . . |  .  . |  .  . |   . . |   . . |   .   .>
+ V     /  . \   . 1  .  . 1  .  . 0  .  . 1  .  . 0  ..
+ .  fib1 .. fib0..  .   .   .   .   .   V   .   ..  .
+ .   |  .  . |  . .>     .>.     . .    ..>.      .>
+ .   1 .   . 0  .
+  .   .     .  .
+   .>.       ..
+#+end_example
+
+Considere el patrón de este cálculo. Para calcular ~(fib 5)~, calculamos ~(fib 4)~ y ~(fib 3)~. Para calcular ~(fib 4)~, calculamos ~(fib 3)~ y ~(fib 2)~. En general, el proceso evolucionado parece un árbol, como se muestra en [[figure-1.5][Figure 1.5]]. Observe que las ramas se dividen en dos en cada nivel (excepto en la parte inferior); esto refleja el hecho de que el procedimiento ~fib~ se llama a sí mismo dos veces cada vez que se invoca.
+
+
+Este procedimiento es instructivo como un prototipo de recursión de árbol, pero es una manera terrible de calcular números de Fibonacci porque realiza demasiado cálculo redundante. Observe en [[figure-1.5][Figure 1.5]] que todo el cálculo de ~(fib 3)~--casi la mitad del trabajo--está duplicado. De hecho, no es difícil demostrar que el número de veces que el procedimiento calculará ~(fib 1)~ o ~(fib 0)~ (el número de hojas en el árbol anterior, en general) es precisamente Fib(n + 1). Para tener una idea de lo malo que es esto, se puede demostrar que el valor de Fib(n) crece exponencialmente con n. Más precisamente (ver [[#exercise-1.13][Exercise 1.13]]), Fib(n) es el entero más cercano a \phi^n /[sqrt](5), donde
+
+#+begin_example
+ \phi = (1 + [sqrt]5)/2 ~= 1.6180
+#+end_example
+
+es la <<i168>> proporción áurea, que satisface la ecuación
+
+
+#+begin_example
+ \phi^2 = \phi + 1
+#+end_example
+
+Así, el proceso utiliza un número de pasos que crece exponencialmente con la entrada. Por otro lado, el espacio requerido crece solo linealmente con la entrada, porque solo necesitamos mantener un registro de qué nodos están por encima de nosotros en el árbol en cualquier punto del cálculo. En general, el número de pasos requeridos por un proceso recursivo de árbol será proporcional al número de nodos en el árbol, mientras que el espacio requerido será proporcional a la profundidad máxima del árbol.
+
+También podemos formular un proceso iterativo para calcular los números de Fibonacci. La idea es usar un par de enteros a y b, inicializados a Fib(1) = 1 y Fib(0) = 0, y aplicar repetidamente las transformaciones simultáneas
+
+
+#+begin_example
+ a <- a + b
+ b <- a
+#+end_example
+
+No es difícil demostrar que, después de aplicar esta transformación n veces, a y b serán iguales, respectivamente, a Fib(n + 1) y Fib(n). Así, podemos calcular números de Fibonacci iterativamente usando el procedimiento
+
+#+begin_src scheme
+(define (fib n)
+  (fib-iter 1 0 n))
+
+(define (fib-iter a b count)
+  (if (= count 0)
+      b
+      (fib-iter (+ a b) a (- count 1))))
+#+end_src
+
+
+Este segundo método para calcular Fib(n) es una iteración lineal. La diferencia en el número de pasos requeridos por los dos métodos--uno lineal en n, uno creciendo tan rápido como Fib(n) mismo--es enorme, incluso para entradas pequeñas.
+
+No se debe concluir de esto que los procesos recursivos de árbol son inútiles. Cuando consideremos procesos que operan sobre datos estructurados jerárquicamente en lugar de números, encontraremos que la recursión de árbol es una herramienta natural y poderosa.[fn:32] Pero incluso en operaciones numéricas, los procesos recursivos de árbol pueden ser útiles para ayudarnos a entender y diseñar programas. Por ejemplo, aunque el primer procedimiento ~fib~ es mucho menos eficiente que el segundo, es más directo, siendo poco más que una traducción a Lisp de la definición de la secuencia de Fibonacci. Para formular el algoritmo iterativo se requirió notar que el cálculo podría reformularse como una iteración con tres variables de estado.
+
+*Example: Counting change*
+
+
+Solo se necesita un poco de ingenio para encontrar el algoritmo iterativo de Fibonacci. En contraste, considere el siguiente problema: ¿De cuántas maneras diferentes podemos dar cambio de $ 1.00, dados medios dólares, cuartos de dólar, dimes, nickels y pennies? Más generalmente, ¿podemos escribir un procedimiento para calcular el número de formas de cambiar cualquier cantidad dada de dinero?
+
+Este problema tiene una solución simple como un procedimiento recursivo. Supongamos que pensamos en los tipos de monedas disponibles como dispuestos en algún orden. Entonces se cumple la siguiente relación:
+
+El número de formas de cambiar la cantidad a usando n tipos de monedas es igual a
+
+
+- el número de formas de cambiar la cantidad a usando todos menos el primer tipo de moneda, más
+
+- el número de formas de cambiar la cantidad a - d usando todos los n tipos de monedas, donde d es la denominación del primer tipo de moneda.
+
+Para ver por qué esto es cierto, observe que las formas de dar cambio pueden dividirse en dos grupos: aquellas que no usan ninguna moneda del primer tipo, y aquellas que sí lo hacen. Por lo tanto, el número total de formas de dar cambio para alguna cantidad es igual al número de formas de dar cambio para la cantidad sin usar ninguna moneda del primer tipo, más el número de formas de dar cambio asumiendo que sí usamos el primer tipo de moneda. Pero este último número es igual al número de formas de dar cambio para la cantidad que queda después de usar una moneda del primer tipo.
+
+
+Así, podemos reducir recursivamente el problema de cambiar una cantidad dada al problema de cambiar cantidades más pequeñas usando menos tipos de monedas. Considere esta regla de reducción cuidadosamente, y convénzase de que podemos usarla para describir un algoritmo si especificamos los siguientes casos degenerados:[fn:33]
+
+- Si a es exactamente 0, debemos contar eso como 1 forma de dar cambio.
+- Si a es menor que 0, debemos contar eso como 0 formas de dar cambio.
+- Si n es 0, debemos contar eso como 0 formas de dar cambio.
+
+Podemos traducir fácilmente esta descripción en un procedimiento recursivo:
+
+
+#+begin_src scheme
+(define (count-change amount)
+  (cc amount 5))
+
+(define (cc amount kinds-of-coins)
+  (cond ((= amount 0) 1)
+        ((or (< amount 0) (= kinds-of-coins 0)) 0)
+        (else (+ (cc amount
+                     (- kinds-of-coins 1))
+                 (cc (- amount
+                        (first-denomination kinds-of-coins))
+                     kinds-of-coins)))))
+
+(define (first-denomination kinds-of-coins)
+  (cond ((= kinds-of-coins 1) 1)
+        ((= kinds-of-coins 2) 5)
+        ((= kinds-of-coins 3) 10)
+        ((= kinds-of-coins 4) 25)
+        ((= kinds-of-coins 5) 50)))
+#+end_src
+
+(El procedimiento ~first-denomination~ toma como entrada el número de tipos de monedas disponibles y devuelve la denominación del primer tipo. Aquí estamos pensando en las monedas como dispuestas en orden de mayor a menor, pero cualquier orden funcionaría igual de bien.) Ahora podemos responder nuestra pregunta original sobre cambiar un dólar:
+
+#+begin_src scheme
+(count-change 100)
+292
+#+end_src
+
+
+~count-change~ genera un proceso recursivo de árbol con redundancias similares a las de nuestra primera implementación de ~fib~. (Tomará bastante tiempo para que se calcule ese 292.) Por otro lado, no es obvio cómo diseñar un mejor algoritmo para calcular el resultado, y dejamos este problema como un desafío. La observación de que un proceso recursivo de árbol puede ser altamente ineficiente pero a menudo fácil de especificar y entender ha llevado a la gente a proponer que uno podría obtener lo mejor de ambos mundos diseñando un "compilador inteligente" que pudiera transformar procedimientos recursivos de árbol en procedimientos más eficientes que calculen el mismo resultado.[fn:34]
+
+**** Exercise 1.11
+:properties:
+:custom_id: exercise-1.11
+:end:
+
+Una función f se define mediante la regla de que f(n) = n si n<3 y f(n) = f(n - 1) + 2f(n - 2) + 3f(n - 3) si n>= 3. Escriba un procedimiento que calcule f mediante un proceso recursivo. Escriba un procedimiento que calcule f mediante un proceso iterativo.
+
+
+**** Exercise 1.12
+:properties:
+:custom_id: exercise-1.12
+:end:
+
+El siguiente patrón de números se llama <<i281>> triángulo de Pascal.
+
+#+begin_example
+         1
+       1   1
+     1   2   1
+   1   3   3   1
+ 1   4   6   4   1
+#+end_example
+
+
+Los números en el borde del triángulo son todos 1, y cada número dentro del triángulo es la suma de los dos números encima de él.[fn:35] Escriba un procedimiento que calcule elementos del triángulo de Pascal mediante un proceso recursivo.
+
+**** Exercise 1.13
+:properties:
+:custom_id: exercise-1.13
+:end:
+
+Demuestre que Fib(n) es el entero más cercano a \phi^n/[sqrt](5), donde \phi = (1 + [sqrt](5))/2. Sugerencia: Sea [illegiblesymbol] = (1 - [sqrt](5))/2. Use inducción y la definición de los números de Fibonacci (ver sección [[#section-1.2.2][1.2.2]]) para demostrar que Fib(n) = (\phi^n - [illegiblesymbol]^n)/[sqrt](5).
+
+
+*** 1.2.3 Orders of Growth
+:properties:
+:custom_id: section-1.2.3
+:end:
+
+Los ejemplos anteriores ilustran que los procesos pueden diferir considerablemente en las tasas a las que consumen recursos computacionales. Una manera conveniente de describir esta diferencia es usar la noción de <<i273>> orden de crecimiento para obtener una medida aproximada de los recursos requeridos por un proceso a medida que las entradas se vuelven más grandes.
+
+Sea n un parámetro que mide el tamaño del problema, y sea R(n) la cantidad de recursos que el proceso requiere para un problema de tamaño n. En nuestros ejemplos anteriores tomamos n como el número para el cual se debe calcular una función dada, pero hay otras posibilidades. Por ejemplo, si nuestro objetivo es calcular una aproximación a la raíz cuadrada de un número, podríamos tomar n como el número de dígitos de precisión requeridos. Para la multiplicación de matrices podríamos tomar n como el número de filas en las matrices. En general hay varias propiedades del problema con respecto a las cuales será deseable analizar un proceso dado. De manera similar, R(n) podría medir el número de registros de almacenamiento interno utilizados, el número de operaciones elementales de máquina realizadas, etc. En computadoras que realizan solo un número fijo de operaciones a la vez, el tiempo requerido será proporcional al número de operaciones elementales de máquina realizadas.
+
+
+Decimos que R(n) tiene orden de crecimiento \theta(f(n)), escrito R(n) = \theta(f(n)) (pronunciado "theta de f(n)"), si hay constantes positivas k_1 y k_2 independientes de n tales que
+
+#+begin_example
+ k_1 f(n) <= R(n) <= k_2 f(n)
+#+end_example
+
+para cualquier valor suficientemente grande de n. (En otras palabras, para n grande, el valor R(n) está intercalado entre k_1f(n) y k_2f(n).)
+
+
+Por ejemplo, con el proceso recursivo lineal para calcular factoriales descrito en la sección [[#section-1.2.1][1.2.1]] el número de pasos crece proporcionalmente a la entrada n. Así, los pasos requeridos para este proceso crecen como \theta(n). También vimos que el espacio requerido crece como \theta(n). Para el factorial iterativo, el número de pasos es todavía \theta(n) pero el espacio es \theta(1)--es decir, constante.[fn:36] El cálculo recursivo de árbol de Fibonacci requiere \theta(\phi^n) pasos y espacio \theta(n), donde \phi es la proporción áurea descrita en la sección [[#section-1.2.2][1.2.2]].
+
+Los órdenes de crecimiento proporcionan solo una descripción aproximada del comportamiento de un proceso. Por ejemplo, un proceso que requiere n^2 pasos y un proceso que requiere 1000n^2 pasos y un proceso que requiere 3n^2 + 10n + 17 pasos todos tienen orden de crecimiento \theta(n^2). Por otro lado, el orden de crecimiento proporciona una indicación útil de cómo podemos esperar que cambie el comportamiento del proceso a medida que cambiamos el tamaño del problema. Para un proceso \theta(n) (lineal), duplicar el tamaño aproximadamente duplicará la cantidad de recursos utilizados. Para un proceso exponencial, cada incremento en el tamaño del problema multiplicará la utilización de recursos por un factor constante. En el resto de la sección [[#section-1.2][1.2]] examinaremos dos algoritmos cuyo orden de crecimiento es logarítmico, de modo que duplicar el tamaño del problema aumenta el requisito de recursos en una cantidad constante.
+
+**** Exercise 1.14
+:properties:
+:custom_id: exercise-1.14
+:end:
+
+
+Dibuje el árbol que ilustra el proceso generado por el procedimiento ~count-change~ de la sección [[#section-1.2.2][1.2.2]] al dar cambio de 11 centavos. ¿Cuáles son los órdenes de crecimiento del espacio y el número de pasos utilizados por este proceso a medida que aumenta la cantidad a cambiar?
+
+**** Exercise 1.15
+:properties:
+:custom_id: exercise-1.15
+:end:
+
+El seno de un ángulo (especificado en radianes) puede calcularse haciendo uso de la aproximación ~sin~ xaprox x si x es suficientemente pequeño, y la identidad trigonométrica
+
+
+#+begin_example
+                x             x
+ sin x = 3 sin --- - 4 sin^3 ---
+                3             3
+#+end_example
+
+para reducir el tamaño del argumento de ~sin~. (Para los propósitos de este ejercicio, un ángulo se considera "suficientemente pequeño" si su magnitud no es mayor que 0.1 radianes.) Estas ideas están incorporadas en los siguientes procedimientos:
+
+#+begin_src scheme
+(define (cube x) (* x x x))
+
+(define (p x) (- (* 3 x) (* 4 (cube x))))
+
+(define (sine angle)
+  (if (not (> (abs angle) 0.1))
+      angle
+      (p (sine (/ angle 3.0)))))
+#+end_src
+
+
+a. ¿Cuántas veces se aplica el procedimiento ~p~ cuando se evalúa ~(sine 12.15)~?
+
+b. ¿Cuál es el orden de crecimiento en espacio y número de pasos (como función de a) utilizado por el proceso generado por el procedimiento ~sine~ cuando se evalúa ~(sine a)~?
+
+*** 1.2.4 Exponentiation
+:properties:
+:custom_id: section-1.2.4
+:end:
+
+
+Considere el problema de calcular la exponenciación de un número dado. Nos gustaría un procedimiento que tome como argumentos una base b y un exponente entero positivo n y calcule b^n. Una manera de hacer esto es a través de la definición recursiva
+
+#+begin_example
+ b^n = b * b^(n - 1)
+ b^0 = 1
+#+end_example
+
+que se traduce fácilmente en el procedimiento
+
+
+#+begin_src scheme
+(define (expt b n)
+  (if (= n 0)
+      1
+      (* b (expt b (- n 1)))))
+#+end_src
+
+Este es un proceso recursivo lineal, que requiere \theta(n) pasos y \theta(n) espacio. Al igual que con factorial, podemos formular fácilmente una iteración lineal equivalente:
+
+#+begin_src scheme
+(define (expt b n)
+  (expt-iter b n 1))
+
+(define (expt-iter b counter product)
+  (if (= counter 0)
+      product
+      (expt-iter b
+                 (- counter 1)
+                 (* b product))))
+#+end_src
+
+
+Esta versión requiere \theta(n) pasos y \theta(1) espacio.
+
+Podemos calcular exponenciales en menos pasos usando la elevación al cuadrado sucesiva. Por ejemplo, en lugar de calcular b^8 como
+
+#+begin_example
+ b * (b * (b * (b * (b * (b * (b * b))))))
+#+end_example
+
+
+podemos calcularlo usando tres multiplicaciones:
+
+#+begin_example
+ b^2 = b * b
+ b^4 = b^2 * b^2
+ b^8 = b^4 * b^4
+#+end_example
+
+Este método funciona bien para exponentes que son potencias de 2. También podemos aprovechar la elevación al cuadrado sucesiva al calcular exponenciales en general si usamos la regla
+
+
+#+begin_example
+ b^n = (b^(b/2))^2    if n is even
+ b^n = b * b^(n - 1)  if n is odd
+#+end_example
+
+Podemos expresar este método como un procedimiento:
+
+#+begin_src scheme
+(define (fast-expt b n)
+  (cond ((= n 0) 1)
+        ((even? n) (square (fast-expt b (/ n 2))))
+        (else (* b (fast-expt b (- n 1))))))
+#+end_src
+
+
+donde el predicado para probar si un entero es par se define en términos del procedimiento primitivo ~remainder~ mediante
+
+#+begin_src scheme
+(define (even? n)
+  (= (remainder n 2) 0))
+#+end_src
+
+El proceso evolucionado por ~fast-expt~ crece logarítmicamente con n tanto en espacio como en número de pasos. Para ver esto, observe que calcular b^(2n) usando ~fast-expt~ requiere solo una multiplicación más que calcular b^n. El tamaño del exponente que podemos calcular por lo tanto se duplica (aproximadamente) con cada nueva multiplicación que se nos permite. Así, el número de multiplicaciones requeridas para un exponente de n crece aproximadamente tan rápido como el logaritmo de n en base 2. El proceso tiene crecimiento \theta(log n).[fn:37]
+
+
+La diferencia entre el crecimiento \theta(log n) y el crecimiento \theta(n) se vuelve sorprendente a medida que n se vuelve grande. Por ejemplo, ~fast-expt~ para n = 1000 requiere solo 14 multiplicaciones.[fn:38] También es posible usar la idea de la elevación al cuadrado sucesiva para diseñar un algoritmo iterativo que calcule exponenciales con un número logarítmico de pasos (ver [[#exercise-1.16][Exercise 1.16]]), aunque, como suele ser el caso con los algoritmos iterativos, esto no se escribe de manera tan directa como el algoritmo recursivo.[fn:39]
+
+**** Exercise 1.16
+:properties:
+:custom_id: exercise-1.16
+:end:
+
+Diseñe un procedimiento que evolucione un proceso de exponenciación iterativo que use la elevación al cuadrado sucesiva y use un número logarítmico de pasos, como lo hace ~fast-expt~. (Sugerencia: Usando la observación de que (b^(n/2))^2 = (b^2)^(n/2), mantenga, junto con el exponente n y la base b, una variable de estado adicional a, y defina la transformación de estado de tal manera que el producto a b^n permanezca sin cambios de estado a estado. Al comienzo del proceso a se toma como 1, y la respuesta está dada por el valor de a al final del proceso. En general, la técnica de definir una <<i196>> cantidad invariante que permanece sin cambios de estado a estado es una manera poderosa de pensar sobre el diseño de algoritmos iterativos.)
+
+
+**** Exercise 1.17
+:properties:
+:custom_id: exercise-1.17
+:end:
+
+Los algoritmos de exponenciación en esta sección se basan en realizar la exponenciación mediante multiplicación repetida. De manera similar, se puede realizar la multiplicación de enteros mediante suma repetida. El siguiente procedimiento de multiplicación (en el cual se asume que nuestro lenguaje solo puede sumar, no multiplicar) es análogo al procedimiento ~expt~:
+
+#+begin_src scheme
+(define (* a b)
+  (if (= b 0)
+      0
+      (+ a (* a (- b 1)))))
+#+end_src
+
+
+Este algoritmo toma un número de pasos que es lineal en ~b~. Ahora suponga que incluimos, junto con la suma, operaciones ~double~, que duplica un entero, y ~halve~, que divide un entero (par) por 2. Usando estas, diseñe un procedimiento de multiplicación análogo a ~fast-expt~ que use un número logarítmico de pasos.
+
+**** Exercise 1.18
+:properties:
+:custom_id: exercise-1.18
+:end:
+
+Usando los resultados de [[#exercise-1.16][Exercise 1.16]] y [[#exercise-1.17][Exercise 1.17]], idee un procedimiento que genere un proceso iterativo para multiplicar dos enteros en términos de sumar, duplicar y dividir a la mitad y use un número logarítmico de pasos.[fn:40]
+
+
+**** Exercise 1.19
+:properties:
+:custom_id: exercise-1.19
+:end:
+
+Hay un algoritmo ingenioso para calcular los números de Fibonacci en un número logarítmico de pasos. Recuerde la transformación de las variables de estado a y b en el proceso ~fib-iter~ de la sección [[#section-1.2.2][1.2.2]]: a <- a + b y b <- a. Llame a esta transformación T, y observe que aplicar T una y otra vez n veces, comenzando con 1 y 0, produce el par Fib(n + 1) y Fib(n). En otras palabras, los números de Fibonacci se producen aplicando T^n, la n-ésima potencia de la transformación T, comenzando con el par (1,0). Ahora considere T como el caso especial de p = 0 y q = 1 en una familia de transformaciones T_(pq), donde T_(pq) transforma el par (a,b) según a <- bq + aq + ap y b <- bp + aq. Demuestre que si aplicamos tal transformación T_(pq) dos veces, el efecto es el mismo que usar una sola transformación T_(p'q') de la misma forma, y calcule p' y q' en términos de p y q. Esto nos da una manera explícita de elevar al cuadrado estas transformaciones, y así podemos calcular T^n usando la elevación al cuadrado sucesiva, como en el procedimiento ~fast-expt~. Reúna todo esto para completar el siguiente procedimiento, que se ejecuta en un número logarítmico de pasos:[fn:41]
+
+#+begin_src scheme
+(define (fib n)
+  (fib-iter 1 0 0 1 n))
+
+(define (fib-iter a b p q count)
+  (cond ((= count 0) b)
+        ((even? count)
+         (fib-iter a
+                   b
+                   <??>                 ; compute p'
+                   <??>                 ; compute q'
+                   (/ count 2)))
+        (else (fib-iter (+ (* b q) (* a q) (* a p))
+                        (+ (* b p) (* a q))
+                        p
+                        q
+                        (- count 1)))))
+#+end_src
+
+
+*** 1.2.5 Greatest Common Divisors
+:properties:
+:custom_id: section-1.2.5
+:end:
+
+El máximo común divisor (GCD) de dos enteros a y b se define como el entero más grande que divide tanto a a como a b sin dejar resto. Por ejemplo, el GCD de 16 y 28 es 4. En [[#section-2][Chapter 2]], cuando investiguemos cómo implementar aritmética de números racionales, necesitaremos poder calcular GCDs para reducir números racionales a sus términos más bajos. (Para reducir un número racional a sus términos más bajos, debemos dividir tanto el numerador como el denominador por su GCD. Por ejemplo, 16/28 se reduce a 4/7.) Una manera de encontrar el GCD de dos enteros es factorizarlos y buscar factores comunes, pero hay un algoritmo famoso que es mucho más eficiente.
+
+La idea del algoritmo se basa en la observación de que, si r es el resto cuando a se divide por b, entonces los divisores comunes de a y b son precisamente los mismos que los divisores comunes de b y r. Así, podemos usar la ecuación
+
+
+#+begin_example
+ GCD(a,b) = GCD(b,r)
+#+end_example
+
+para reducir sucesivamente el problema de calcular un GCD al problema de calcular el GCD de pares de enteros cada vez más pequeños. Por ejemplo,
+
+#+begin_example
+ GCD(206,40) = GCD(40,6)
+             = GCD(6,4)
+             = GCD(4,2)
+             = GCD(2,0)
+             = 2
+#+end_example
+
+
+reduce GCD(206,40) a GCD(2,0), que es 2. Es posible demostrar que comenzando con cualquier par de enteros positivos y realizando reducciones repetidas siempre eventualmente se producirá un par donde el segundo número es 0. Entonces el GCD es el otro número en el par. Este método para calcular el GCD se conoce como <<i126>> Algoritmo de Euclides.[fn:42]
+
+Es fácil expresar el Algoritmo de Euclides como un procedimiento:
+
+#+begin_src scheme
+(define (gcd a b)
+  (if (= b 0)
+      a
+      (gcd b (remainder a b))))
+#+end_src
+
+
+Esto genera un proceso iterativo, cuyo número de pasos crece como el logaritmo de los números involucrados.
+
+El hecho de que el número de pasos requeridos por el Algoritmo de Euclides tenga crecimiento logarítmico tiene una relación interesante con los números de Fibonacci:
+
+*Lame's Theorem:* Si el Algoritmo de Euclides requiere k pasos para calcular el GCD de algún par, entonces el número más pequeño en el par debe ser mayor o igual que el k-ésimo número de Fibonacci.[fn:43]
+
+
+Podemos usar este teorema para obtener una estimación del orden de crecimiento para el Algoritmo de Euclides. Sea n el menor de las dos entradas al procedimiento. Si el proceso toma k pasos, entonces debemos tener n>= Fib(k) approx \phi^k/[sqrt](5). Por lo tanto, el número de pasos k crece como el logaritmo (en base \phi) de n. Por lo tanto, el orden de crecimiento es \theta(log n).
+
+**** Exercise 1.20
+:properties:
+:custom_id: exercise-1.20
+:end:
+
+El proceso que un procedimiento genera depende, por supuesto, de las reglas utilizadas por el intérprete. Como ejemplo, considere el procedimiento iterativo ~gcd~ dado arriba. Suponga que tuviéramos que interpretar este procedimiento usando evaluación de orden normal, como se discutió en la sección [[#section-1.1.5][1.1.5]]. (La regla de evaluación de orden normal para ~if~ se describe en [[#exercise-1.5][Exercise 1.5]].) Usando el método de sustitución (para orden normal), ilustre el proceso generado al evaluar ~(gcd 206 40)~ e indique las operaciones ~remainder~ que se realizan realmente. ¿Cuántas operaciones ~remainder~ se realizan realmente en la evaluación de orden normal de ~(gcd 206 40)~? ¿En la evaluación de orden aplicativo?
+
+
+*** 1.2.6 Example: Testing for Primality
+:properties:
+:custom_id: section-1.2.6
+:end:
+
+Esta sección describe dos métodos para verificar la primalidad de un entero n, uno con orden de crecimiento \theta([sqrt](n)), y un algoritmo "probabilístico" con orden de crecimiento \theta(log n). Los ejercicios al final de esta sección sugieren proyectos de programación basados en estos algoritmos.
+
+*Searching for divisors*
+
+
+Desde la antigüedad, los matemáticos han estado fascinados por problemas relacionados con números primos, y muchas personas han trabajado en el problema de determinar formas de probar si los números son primos. Una manera de probar si un número es primo es encontrar los divisores del número. El siguiente programa encuentra el divisor integral más pequeño (mayor que 1) de un número dado n. Lo hace de manera directa, probando n para divisibilidad por enteros sucesivos comenzando con 2.
+
+#+begin_src scheme
+(define (smallest-divisor n)
+  (find-divisor n 2))
+
+(define (find-divisor n test-divisor)
+  (cond ((> (square test-divisor) n) n)
+        ((divides? test-divisor n) test-divisor)
+        (else (find-divisor n (+ test-divisor 1)))))
+
+(define (divides? a b)
+  (= (remainder b a) 0))
+#+end_src
+
+Podemos probar si un número es primo de la siguiente manera: n es primo si y solo si n es su propio divisor más pequeño.
+
+
+#+begin_src scheme
+(define (prime? n)
+  (= n (smallest-divisor n)))
+#+end_src
+
+La prueba final para ~find-divisor~ se basa en el hecho de que si n no es primo debe tener un divisor menor o igual que [sqrt](n).[fn:44] Esto significa que el algoritmo solo necesita probar divisores entre 1 y [sqrt](n). En consecuencia, el número de pasos requeridos para identificar n como primo tendrá orden de crecimiento \theta([sqrt](n)).
+
+*The Fermat test*
+
+
+La prueba de primalidad \theta(log n) se basa en un resultado de la teoría de números conocido como el Pequeño Teorema de Fermat.[fn:45]
+
+*Fermat's Little Theorem:* Si n es un número primo y a es cualquier entero positivo menor que n, entonces a elevado a la n-ésima potencia es congruente con a módulo n.
+
+(Se dice que dos números son <<i79>> congruentes módulo n si ambos tienen el mismo resto cuando se dividen por n. El resto de un número a cuando se divide por n también se denomina el <<i334>> resto de a <<i240>> módulo n, o simplemente como a <<i241>> módulo n.)
+
+
+Si n no es primo, entonces, en general, la mayoría de los números a< n no satisfarán la relación anterior. Esto conduce al siguiente algoritmo para probar la primalidad: Dado un número n, escoja un número aleatorio a < n y calcule el resto de a^n módulo n. Si el resultado no es igual a a, entonces n ciertamente no es primo. Si es a, entonces hay buenas probabilidades de que n sea primo. Ahora escoja otro número aleatorio a y pruébelo con el mismo método. Si también satisface la ecuación, entonces podemos estar aún más confiados de que n es primo. Al probar más y más valores de a, podemos aumentar nuestra confianza en el resultado. Este algoritmo se conoce como la prueba de Fermat.
+
+Para implementar la prueba de Fermat, necesitamos un procedimiento que calcule la exponencial de un número módulo otro número:
+
+#+begin_src scheme
+(define (expmod base exp m)
+  (cond ((= exp 0) 1)
+        ((even? exp)
+         (remainder (square (expmod base (/ exp 2) m))
+                    m))
+        (else
+         (remainder (* base (expmod base (- exp 1) m))
+                    m))))
+#+end_src
+
+
+Esto es muy similar al procedimiento ~fast-expt~ de la sección [[#section-1.2.4][1.2.4]]. Usa la elevación al cuadrado sucesiva, de modo que el número de pasos crece logarítmicamente con el exponente.[fn:46]
+
+La prueba de Fermat se realiza eligiendo al azar un número a entre 1 y n - 1 inclusive y verificando si el resto módulo n de la n-ésima potencia de a es igual a a. El número aleatorio a se elige usando el procedimiento ~random~, que asumimos está incluido como una primitiva en Scheme. ~random~ devuelve un entero no negativo menor que su entrada entera. Por lo tanto, para obtener un número aleatorio entre 1 y n - 1, llamamos a ~random~ con una entrada de n - 1 y sumamos 1 al resultado:
+
+#+begin_src scheme
+(define (fermat-test n)
+  (define (try-it a)
+    (= (expmod a n n) a))
+  (try-it (+ 1 (random (- n 1)))))
+#+end_src
+
+
+El siguiente procedimiento ejecuta la prueba un número dado de veces, según lo especificado por un parámetro. Su valor es verdadero si la prueba tiene éxito cada vez, y falso de lo contrario.
+
+#+begin_src scheme
+(define (fast-prime? n times)
+  (cond ((= times 0) true)
+        ((fermat-test n) (fast-prime? n (- times 1)))
+        (else false)))
+#+end_src
+
+*Probabilistic methods*
+
+
+La prueba de Fermat difiere en carácter de la mayoría de los algoritmos familiares, en los cuales uno calcula una respuesta que está garantizada como correcta. Aquí, la respuesta obtenida es solo probablemente correcta. Más precisamente, si n alguna vez falla la prueba de Fermat, podemos estar seguros de que n no es primo. Pero el hecho de que n pase la prueba, aunque es una indicación extremadamente fuerte, todavía no es una garantía de que n sea primo. Lo que nos gustaría decir es que para cualquier número n, si realizamos la prueba suficientes veces y encontramos que n siempre pasa la prueba, entonces la probabilidad de error en nuestra prueba de primalidad puede hacerse tan pequeña como queramos.
+
+Desafortunadamente, esta afirmación no es del todo correcta. Sí existen números que engañan a la prueba de Fermat: números n que no son primos y sin embargo tienen la propiedad de que a^n es congruente con a módulo n para todos los enteros a < n. Tales números son extremadamente raros, por lo que la prueba de Fermat es bastante confiable en la práctica.[fn:47]
+
+Hay variaciones de la prueba de Fermat que no pueden ser engañadas. En estas pruebas, como con el método de Fermat, uno prueba la primalidad de un entero n eligiendo un entero aleatorio a<n y verificando alguna condición que depende de n y a. (Ver [[#exercise-1.28][Exercise 1.28]] para un ejemplo de tal prueba.) Por otro lado, en contraste con la prueba de Fermat, se puede demostrar que, para cualquier n, la condición no se cumple para la mayoría de los enteros a<n a menos que n sea primo. Así, si n pasa la prueba para alguna elección aleatoria de a, las probabilidades son mejores que par de que n sea primo. Si n pasa la prueba para dos elecciones aleatorias de a, las probabilidades son mejores que 3 de 4 de que n sea primo. Al ejecutar la prueba con más y más valores elegidos aleatoriamente de a podemos hacer la probabilidad de error tan pequeña como queramos.
+
+
+La existencia de pruebas para las cuales uno puede demostrar que la probabilidad de error se vuelve arbitrariamente pequeña ha despertado interés en algoritmos de este tipo, que han llegado a conocerse como <<i298>> algoritmos probabilísticos. Hay una gran cantidad de actividad de investigación en esta área, y los algoritmos probabilísticos se han aplicado fructíferamente a muchos campos.[fn:48]
+
+**** Exercise 1.21
+:properties:
+:custom_id: exercise-1.21
+:end:
+
+Use el procedimiento ~smallest-divisor~ para encontrar el divisor más pequeño de cada uno de los siguientes números: 199, 1999, 19999.
+
+
+**** Exercise 1.22
+:properties:
+:custom_id: exercise-1.22
+:end:
+
+La mayoría de las implementaciones de Lisp incluyen una primitiva llamada ~runtime~ que devuelve un entero que especifica la cantidad de tiempo que el sistema ha estado ejecutándose (medido, por ejemplo, en microsegundos). El siguiente procedimiento ~timed-prime-test~, cuando se llama con un entero n, imprime n y verifica si n es primo. Si n es primo, el procedimiento imprime tres asteriscos seguidos de la cantidad de tiempo utilizada en realizar la prueba.
+
+#+begin_src scheme
+(define (timed-prime-test n)
+  (newline)
+  (display n)
+  (start-prime-test n (runtime)))
+
+(define (start-prime-test n start-time)
+  (if (prime? n)
+      (report-prime (- (runtime) start-time))))
+
+(define (report-prime elapsed-time)
+  (display " *** ")
+  (display elapsed-time))
+#+end_src
+
+
+Usando este procedimiento, escriba un procedimiento ~search-for-primes~ que verifique la primalidad de enteros impares consecutivos en un rango especificado. Use su procedimiento para encontrar los tres primos más pequeños mayores que 1000; mayores que 10,000; mayores que 100,000; mayores que 1,000,000. Note el tiempo necesario para probar cada primo. Dado que el algoritmo de prueba tiene orden de crecimiento de \theta([sqrt](n)), debería esperar que probar primos alrededor de 10,000 debería tomar aproximadamente [sqrt](10) veces más que probar primos alrededor de 1000. ¿Sus datos de tiempo confirman esto? ¿Qué tan bien respaldan los datos para 100,000 y 1,000,000 la predicción de [sqrt](n)? ¿Es su resultado compatible con la noción de que los programas en su máquina se ejecutan en tiempo proporcional al número de pasos requeridos para el cálculo?
+
+**** Exercise 1.23
+:properties:
+:custom_id: exercise-1.23
+:end:
+
+El procedimiento ~smallest-divisor~ mostrado al comienzo de esta sección hace muchas pruebas innecesarias: Después de verificar si el número es divisible por 2, no tiene sentido verificar si es divisible por números pares más grandes. Esto sugiere que los valores utilizados para ~test-divisor~ no deberían ser 2, 3, 4, 5, 6, ..., sino más bien 2, 3, 5, 7, 9, .... Para implementar este cambio, defina un procedimiento ~next~ que devuelva 3 si su entrada es igual a 2 y de lo contrario devuelva su entrada más 2. Modifique el procedimiento ~smallest-divisor~ para usar ~(next test-divisor)~ en lugar de ~(+ test-divisor 1)~. Con ~timed-prime-test~ incorporando esta versión modificada de ~smallest-divisor~, ejecute la prueba para cada uno de los 12 primos encontrados en [[#exercise-1.22][Exercise 1.22]]. Dado que esta modificación reduce a la mitad el número de pasos de prueba, debería esperar que se ejecute aproximadamente el doble de rápido. ¿Se confirma esta expectativa? Si no, ¿cuál es la razón observada de las velocidades de los dos algoritmos, y cómo explica el hecho de que es diferente de 2?
+
+
+**** Exercise 1.24
+:properties:
+:custom_id: exercise-1.24
+:end:
+
+Modifique el procedimiento ~timed-prime-test~ de [[#exercise-1.22][Exercise 1.22]] para usar ~fast-prime?~ (el método de Fermat), y pruebe cada uno de los 12 primos que encontró en ese ejercicio. Dado que la prueba de Fermat tiene crecimiento \theta(log n), ¿cómo esperaría que el tiempo para probar primos cerca de 1,000,000 se compare con el tiempo necesario para probar primos cerca de 1000? ¿Sus datos confirman esto? ¿Puede explicar cualquier discrepancia que encuentre?
+
+**** Exercise 1.25
+:properties:
+:custom_id: exercise-1.25
+:end:
+
+
+Alyssa P. Hacker se queja de que hicimos mucho trabajo extra al escribir ~expmod~. Después de todo, dice ella, dado que ya sabemos cómo calcular exponenciales, podríamos haber escrito simplemente
+
+#+begin_src scheme
+(define (expmod base exp m)
+  (remainder (fast-expt base exp) m))
+#+end_src
+
+¿Es ella correcta? ¿Serviría este procedimiento igual de bien para nuestro probador rápido de primos? Explique.
+
+
+**** Exercise 1.26
+:properties:
+:custom_id: exercise-1.26
+:end:
+
+Louis Reasoner está teniendo gran dificultad haciendo [[#exercise-1.24][Exercise 1.24]]. Su prueba ~fast-prime?~ parece ejecutarse más lentamente que su prueba ~prime?~. Louis llama a su amiga Eva Lu Ator para que lo ayude. Cuando examinan el código de Louis, descubren que ha reescrito el procedimiento ~expmod~ para usar una multiplicación explícita, en lugar de llamar a ~square~:
+
+#+begin_src scheme
+(define (expmod base exp m)
+  (cond ((= exp 0) 1)
+        ((even? exp)
+         (remainder (* (expmod base (/ exp 2) m)
+                       (expmod base (/ exp 2) m))
+                    m))
+        (else
+         (remainder (* base (expmod base (- exp 1) m))
+                    m))))
+#+end_src
+
+
+"No veo qué diferencia podría hacer eso," dice Louis. "Yo sí." dice Eva. "Al escribir el procedimiento de esa manera, has transformado el proceso \theta(log n) en un proceso \theta(n)." Explique.
+
+**** Exercise 1.27
+:properties:
+:custom_id: exercise-1.27
+:end:
+
+Demuestre que los números de Carmichael listados en [fn:47] realmente engañan a la prueba de Fermat. Es decir, escriba un procedimiento que tome un entero n y pruebe si a^n es congruente con a módulo n para cada a<n, y pruebe su procedimiento con los números de Carmichael dados.
+
+
+**** Exercise 1.28
+:properties:
+:custom_id: exercise-1.28
+:end:
+
+Una variante de la prueba de Fermat que no puede ser engañada se llama la prueba de <<i238>> Miller-Rabin (Miller 1976; Rabin 1980). Esta parte de una forma alternativa del Pequeño Teorema de Fermat, que establece que si n es un número primo y a es cualquier entero positivo menor que n, entonces a elevado a la (n - 1)-ésima potencia es congruente con 1 módulo n. Para probar la primalidad de un número n mediante la prueba de Miller-Rabin, escogemos un número aleatorio a<n y elevamos a a la (n - 1)-ésima potencia módulo n usando el procedimiento ~expmod~. Sin embargo, cada vez que realizamos el paso de elevación al cuadrado en ~expmod~, verificamos si hemos descubierto una "raíz cuadrada no trivial de 1 módulo n," es decir, un número no igual a 1 o n - 1 cuyo cuadrado es igual a 1 módulo n. Es posible demostrar que si tal raíz cuadrada no trivial de 1 existe, entonces n no es primo. También es posible demostrar que si n es un número impar que no es primo, entonces, para al menos la mitad de los números a<n, calcular a^(n-1) de esta manera revelará una raíz cuadrada no trivial de 1 módulo n. (Esta es la razón por la cual la prueba de Miller-Rabin no puede ser engañada.) Modifique el procedimiento ~expmod~ para señalar si descubre una raíz cuadrada no trivial de 1, y use esto para implementar la prueba de Miller-Rabin con un procedimiento análogo a ~fermat-test~. Verifique su procedimiento probando varios primos y no primos conocidos. Sugerencia: Una manera conveniente de hacer que ~expmod~ señale es hacer que devuelva 0.
+
+
