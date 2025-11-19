@@ -1,0 +1,1827 @@
+** 3.3 Modelado con Datos Mutables
+:properties:
+:custom_id: section-3.3
+:end:
+
+El Capítulo 2 trató los datos compuestos como un medio para construir objetos computacionales que tienen varias partes, con el fin de modelar objetos del mundo real que tienen varios aspectos. En ese capítulo introdujimos la disciplina de la abstracción de datos, según la cual las estructuras de datos se especifican en términos de constructores, que crean objetos de datos, y selectores, que acceden a las partes de los objetos de datos compuestos. Pero ahora sabemos que hay otro aspecto de los datos que el [[#section-2][Capítulo 2]] no abordó. El deseo de modelar sistemas compuestos por objetos que tienen un estado cambiante nos lleva a la necesidad de modificar objetos de datos compuestos, además de construirlos y seleccionar de ellos. Para modelar objetos compuestos con estado cambiante, diseñaremos abstracciones de datos que incluyan, además de selectores y constructores, operaciones llamadas <<i247>> mutadores, que modifican objetos de datos. Por ejemplo, modelar un sistema bancario requiere que cambiemos los saldos de las cuentas. Por lo tanto, una estructura de datos para representar cuentas bancarias podría admitir una operación
+
+#+begin_src scheme
+(set-balance! <ACCOUNT> <NEW-VALUE>)
+#+end_src
+
+que cambia el saldo de la cuenta designada al nuevo valor designado. Los objetos de datos para los cuales se definen mutadores se conocen como <<i246>> objetos de datos mutables.
+
+El [[#section-2][Capítulo 2]] introdujo los pares como un "pegamento" de propósito general para sintetizar datos compuestos. Comenzamos esta sección definiendo mutadores básicos para pares, de modo que los pares puedan servir como bloques de construcción para construir objetos de datos mutables. Estos mutadores mejoran enormemente el poder representacional de los pares, permitiéndonos construir estructuras de datos distintas de las secuencias y árboles con los que trabajamos en la sección [[#section-2.2][2.2]]. También presentamos algunos ejemplos de simulaciones en las que los sistemas complejos se modelan como colecciones de objetos con estado local.
+
+*** 3.3.1 Estructura de Lista Mutable
+:properties:
+:custom_id: section-3.3.1
+:end:
+
+Las operaciones básicas sobre pares--~cons~, ~car~ y ~cdr~--pueden usarse para construir estructuras de listas y para seleccionar partes de estructuras de listas, pero son incapaces de modificar estructuras de listas. Lo mismo es cierto para las operaciones de listas que hemos usado hasta ahora, como ~append~ y ~list~, ya que estas pueden definirse en términos de ~cons~, ~car~ y ~cdr~. Para modificar estructuras de listas necesitamos nuevas operaciones.
+
+<<figure-3.12>> Listas ~x~: ~((a b) c d)~ e ~y~: ~(e f)~.
+
+#+begin_example
+      +---+---+     +---+---+     +---+---+
+ x -->| * | *-+---->| * | *-+---->| * | / |
+      +-|-+---+     +-|-+---+     +-|-+---+
+        |             V             V
+        |           +---+         +---+
+        |           | c |         | d |
+        |           +---+         +---+
+        |           +---+---+     +---+---+
+        +---------->| * | *-+---->| * | / |
+                    +-|-+---+     +-|-+---+
+                      V             V
+                    +---+         +---+
+                    | a |         | b |
+                    +---+         +---+
+                    +---+---+     +---+---+
+               y -->| * | *-+---->| * | / |
+                    +-|-+---+     +-|-+---+
+                      V             V
+                    +---+         +---+
+                    | e |         | f |
+                    +---+         +---+
+#+end_example
+
+<<figure-3.13>> Efecto de ~(set-car!  x y)~ en las listas de la [[figure-3.12][Figura 3.12]].
+
+#+begin_example
+      +---+---+     +---+---+     +---+---+
+ x -->| * | *-+---->| * | *-+---->| * | / |
+      +-|-+---+     +-|-+---+     +-|-+---+
+        |             V             V
+        |           +---+         +---+
+        |           | c |         | d |
+        |           +---+         +---+
+        |           +---+---+     +---+---+
+        |           | * | *-+---->| * | / |
+        |           +-|-+---+     +-|-+---+
+        |             V             V
+        |           +---+         +---+
+        |           | a |         | b |
+        |           +---+         +---+
+        +---------->+---+---+     +---+---+
+                    | * | *-+---->| * | / |
+               y -->+-|-+---+     +-|-+---+
+                      V             V
+                    +---+         +---+
+                    | e |         | f |
+                    +---+         +---+
+#+end_example
+
+<<figure-3.14>> Efecto de ~(define z (cons y (cdr x)))~ en las listas de la [[figure-3.12][Figura 3.12]].
+
+#+begin_example
+      +---+---+     +---+---+     +---+---+
+ x -->| * | *-+---->| * | *-+---->| * | / |
+      +-|-+---+ +-->+-|-+---+     +-|-+---+
+        |       |     V             V
+        |       |   +---+         +---+
+        |       |   | c |         | d |
+        |       |   +---+         +---+
+        |       |   +---+---+     +---+---+
+        +-------+-->| * | *-+---->| * | / |
+                |   +-|-+---+     +-|-+---+
+      +---+---+ |     V             V
+ z -->| * | *-+-+   +---+         +---+
+      +-|-+---+     | a |         | b |
+        |           +---+         +---+
+        +---------->+---+---+     +---+---+
+                    | * | *-+---->| * | / |
+               y -->+-|-+---+     +-|-+---+
+                      V             V
+                    +---+         +---+
+                    | e |         | f |
+                    +---+         +---+
+#+end_example
+
+<<figure-3.15>> Efecto de ~(set-cdr!  x y)~ en las listas de la [[figure-3.12][Figura 3.12]].
+
+#+begin_example
+      +---+---+     +---+---+     +---+---+
+ x -->| * | * |     | * | *-+---->| * | / |
+      +-|-+-|-+     +-|-+---+     +-|-+---+
+        |   |         V             V
+        |   |       +---+         +---+
+        |   |       | c |         | d |
+        |   |       +---+         +---+
+        |   |       +---+---+     +---+---+
+        +---+------>| * | *-+---->| * | / |
+            |       +-|-+---+     +-|-+---+
+            |         V             V
+            |       +---+         +---+
+            |       | a |         | b |
+            |       +---+         +---+
+            +------>+---+---+     +---+---+
+                    | * | *-+---->| * | / |
+               y -->+-|-+---+     +-|-+---+
+                      V             V
+                    +---+         +---+
+                    | e |         | f |
+                    +---+         +---+
+#+end_example
+
+Los mutadores primitivos para pares son ~set-car!~ y ~set-cdr!~. ~set-car!~ toma dos argumentos, el primero de los cuales debe ser un par. Modifica este par, reemplazando el puntero ~car~ por un puntero al segundo argumento de ~set-car!~.[fn:144]
+
+Como ejemplo, supongamos que ~x~ está vinculado a la lista ~((a b) c d)~ e ~y~ a la lista ~(e f)~ como se ilustra en la [[figure-3.12][Figura 3.12]]. Evaluar la expresión ~ (set-car!  x y)~ modifica el par al que ~x~ está vinculado, reemplazando su ~car~ por el valor de ~y~. El resultado de la operación se muestra en la [[figure-3.13][Figura 3.13]]. La estructura ~x~ ha sido modificada y ahora se imprimiría como ~((e f) c d)~. Los pares que representan la lista ~(a b)~, identificados por el puntero que fue reemplazado, ahora están separados de la estructura original.[fn:145]
+
+Compara la [[figure-3.13][Figura 3.13]] con la [[figure-3.14][Figura 3.14]], que ilustra el resultado de ejecutar ~(define z (cons y (cdr x)))~ con ~x~ e ~y~ vinculados a las listas originales de la [[figure-3.12][Figura 3.12]]. La variable ~z~ ahora está vinculada a un nuevo par creado por la operación ~cons~; la lista a la que ~x~ está vinculado permanece sin cambios.
+
+La operación ~set-cdr!~ es similar a ~set-car!~. La única diferencia es que se reemplaza el puntero ~cdr~ del par, en lugar del puntero ~car~. El efecto de ejecutar ~(set-cdr!  x y)~ en las listas de la [[figure-3.12][Figura 3.12]] se muestra en la [[figure-3.15][Figura 3.15]]. Aquí el puntero ~cdr~ de ~x~ ha sido reemplazado por el puntero a ~(e f)~. Además, la lista ~(c d)~, que solía ser el ~cdr~ de ~x~, ahora está separada de la estructura.
+
+~cons~ construye nueva estructura de lista creando nuevos pares, mientras que ~set-car!~ y ~set-cdr!~ modifican pares existentes. De hecho, podríamos implementar ~cons~ en términos de los dos mutadores, junto con un procedimiento ~get-new-pair~, que devuelve un nuevo par que no forma parte de ninguna estructura de lista existente. Obtenemos el nuevo par, establecemos sus punteros ~car~ y ~cdr~ a los objetos designados, y devolvemos el nuevo par como resultado del ~cons~.[fn:146]
+
+#+begin_src scheme
+(define (cons x y)
+  (let ((new (get-new-pair)))
+    (set-car! new x)
+    (set-cdr! new y)
+    new))
+#+end_src
+
+**** Ejercicio 3.12
+:properties:
+:custom_id: exercise-3.12
+:end:
+
+El siguiente procedimiento para añadir listas se introdujo en la sección [[#section-2.2.1][2.2.1]]:
+
+#+begin_src scheme
+(define (append x y)
+  (if (null? x)
+      y
+      (cons (car x) (append (cdr x) y))))
+#+end_src
+
+~append~ forma una nueva lista aplicando sucesivamente 'cons' a los elementos de ~x~ sobre ~y~. El procedimiento ~append!~ es similar a ~append~, pero es un mutador en lugar de un constructor. Añade las listas empalándolas juntas, modificando el par final de ~x~ de modo que su ~cdr~ ahora sea ~y~. (Es un error llamar a ~append!~ con una ~x~ vacía.)
+
+#+begin_src scheme
+(define (append! x y)
+  (set-cdr! (last-pair x) y)
+  x)
+#+end_src
+
+Aquí ~last-pair~ es un procedimiento que devuelve el último par en su argumento:
+
+#+begin_src scheme
+(define (last-pair x)
+  (if (null? (cdr x))
+      x
+      (last-pair (cdr x))))
+#+end_src
+
+Considera la interacción
+
+#+begin_src scheme
+(define x (list 'a 'b))
+
+(define y (list 'c 'd))
+
+(define z (append x y))
+
+z
+(a b c d)
+
+(cdr x)
+<RESPONSE>
+
+(define w (append! x y))
+
+w
+(a b c d)
+
+(cdr x)
+<RESPONSE>
+#+end_src
+
+¿Cuáles son los <RESPONSE> que faltan? Dibuja diagramas de cajas y punteros para explicar tu respuesta.
+
+**** Ejercicio 3.13
+:properties:
+:custom_id: exercise-3.13
+:end:
+
+Considera el siguiente procedimiento ~make-cycle~, que usa el procedimiento ~last-pair~ definido en el [[#exercise-3.12][Ejercicio 3.12]]:
+
+#+begin_src scheme
+(define (make-cycle x)
+  (set-cdr! (last-pair x) x)
+  x)
+#+end_src
+
+Dibuja un diagrama de cajas y punteros que muestre la estructura ~z~ creada por
+
+#+begin_src scheme
+(define z (make-cycle (list 'a 'b 'c)))
+#+end_src
+
+¿Qué sucede si intentamos calcular ~(last-pair z)~?
+
+**** Ejercicio 3.14
+:properties:
+:custom_id: exercise-3.14
+:end:
+
+El siguiente procedimiento es bastante útil, aunque oscuro:
+
+#+begin_src scheme
+(define (mystery x)
+  (define (loop x y)
+    (if (null? x)
+        y
+        (let ((temp (cdr x)))
+          (set-cdr! x y)
+          (loop temp x))))
+  (loop x '()))
+#+end_src
+
+~loop~ usa la variable "temporal" ~temp~ para mantener el valor antiguo del ~cdr~ de ~x~, ya que el ~set-cdr!~ en la siguiente línea destruye el ~cdr~. Explica qué hace ~mystery~ en general. Supón que ~v~ se define por ~(define v (list 'a 'b 'c 'd))~. Dibuja el diagrama de cajas y punteros que representa la lista a la que ~v~ está vinculado. Supón que ahora evaluamos ~(define w (mystery v))~. Dibuja diagramas de cajas y punteros que muestren las estructuras ~v~ y ~w~ después de evaluar esta expresión. ¿Qué se imprimiría como los valores de ~v~ y ~w~?
+
+*Compartición e identidad*
+
+Mencionamos en la sección [[#section-3.1.3][3.1.3]] los problemas teóricos de "igualdad" y "cambio" planteados por la introducción de la asignación. Estos problemas surgen en la práctica cuando pares individuales se <<i353>> comparten entre diferentes objetos de datos. Por ejemplo, considera la estructura formada por
+
+#+begin_src scheme
+(define x (list 'a 'b))
+(define z1 (cons x x))
+#+end_src
+
+Como se muestra en la [[figure-3.16][Figura 3.16]], ~z1~ es un par cuyo ~car~ y ~cdr~ apuntan ambos al mismo par ~x~. Esta compartición de ~x~ por el ~car~ y el ~cdr~ de ~z1~ es una consecuencia de la forma directa en que se implementa ~cons~. En general, usar ~cons~ para construir listas resultará en una estructura interconectada de pares en la que muchos pares individuales son compartidos por muchas estructuras diferentes.
+
+<<figure-3.16>> La lista ~z1~ formada por ~(cons x x)~.
+
+#+begin_example
+       +---+---+
+ z1 -->| * | * |
+       +-|-+-|-+
+         V   V
+       +---+---+     +---+---+
+  x -->| * | *-+---->| * | / |
+       +-|-+---+     +-|-+---+
+         V             V
+       +---+         +---+
+       | a |         | b |
+       +---+         +---+
+#+end_example
+
+<<figure-3.17>> La lista ~z2~ formada por ~(cons (list 'a 'b) (list 'a 'b))~.
+
+#+begin_example
+       +---+---+     +---+---+     +---+---+
+ z2 -->| * | *-+---->| * | *-+---->| * | / |
+       +-|-+---+     +-|-+---+     +-|-+---+
+         |             V             V
+         |           +---+         +---+
+         |           | a |         | b |
+         |           +---+         +---+
+         |             ^             ^
+         |             |             |
+         |           +-|-+---+     +-|-+---+
+         +---------->| * | *-+---->| * | / |
+                     +---+---+     +---+---+
+#+end_example
+
+En contraste con la [[figure-3.16][Figura 3.16]], la [[figure-3.17][Figura 3.17]] muestra la estructura creada por
+
+#+begin_src scheme
+(define z2 (cons (list 'a 'b) (list 'a 'b)))
+#+end_src
+
+En esta estructura, los pares en las dos listas ~(a b)~ son distintos, aunque los símbolos reales se comparten.[fn:147]
+
+Cuando se piensan como una lista, ~z1~ y ~z2~ representan ambas "la misma" lista, ~((a b) a b)~. En general, la compartición es completamente indetectable si operamos en listas usando solo ~cons~, ~car~ y ~cdr~. Sin embargo, si permitimos mutadores en la estructura de listas, la compartición se vuelve significativa. Como ejemplo de la diferencia que la compartición puede hacer, considera el siguiente procedimiento, que modifica el ~car~ de la estructura a la que se aplica:
+
+#+begin_src scheme
+(define (set-to-wow! x)
+  (set-car! (car x) 'wow)
+  x)
+#+end_src
+
+Aunque ~z1~ y ~z2~ son "la misma" estructura, aplicar ~set-to-wow!~ a ellas produce resultados diferentes. Con ~z1~, alterar el ~car~ también cambia el ~cdr~, porque en ~z1~ el ~car~ y el ~cdr~ son el mismo par. Con ~z2~, el ~car~ y el ~cdr~ son distintos, por lo que ~set-to-wow!~ modifica solo el ~car~:
+
+#+begin_src scheme
+z1
+((a b) a b)
+
+(set-to-wow! z1)
+((wow b) wow b)
+
+z2
+((a b) a b)
+
+(set-to-wow! z2)
+((wow b) a b)
+#+end_src
+
+Una forma de detectar la compartición en estructuras de listas es usar el predicado ~eq?~, que introdujimos en la sección [[#section-2.3.1][2.3.1]] como una forma de probar si dos símbolos son iguales. Más generalmente, ~(eq?  x y)~ prueba si ~x~ e ~y~ son el mismo objeto (es decir, si ~x~ e ~y~ son iguales como punteros). Por lo tanto, con ~z1~ y ~z2~ como se definen en las figuras [[figure-3.16][Figura 3.16]] y [[figure-3.17][Figura 3.17]], ~(eq?  (car z1) (cdr z1))~ es verdadero y ~(eq?  (car z2) (cdr z2))~ es falso.
+
+Como se verá en las siguientes secciones, podemos explotar la compartición para extender enormemente el repertorio de estructuras de datos que pueden representarse mediante pares. Por otro lado, la compartición también puede ser peligrosa, ya que las modificaciones realizadas a las estructuras también afectarán a otras estructuras que compartan las partes modificadas. Las operaciones de mutación ~set-car!~ y ~set-cdr!~ deben usarse con cuidado; a menos que tengamos una buena comprensión de cómo se comparten nuestros objetos de datos, la mutación puede tener resultados inesperados.[fn:148]
+
+**** Ejercicio 3.15
+:properties:
+:custom_id: exercise-3.15
+:end:
+
+Dibuja diagramas de cajas y punteros para explicar el efecto de ~set-to-wow!~ en las estructuras ~z1~ y ~z2~ anteriores.
+
+**** Ejercicio 3.16
+:properties:
+:custom_id: exercise-3.16
+:end:
+
+Ben Bitdiddle decide escribir un procedimiento para contar el número de pares en cualquier estructura de lista. "Es fácil", razona. "El número de pares en cualquier estructura es el número en el ~car~ más el número en el ~cdr~ más uno más para contar el par actual". Así que Ben escribe el siguiente procedimiento:
+
+#+begin_src scheme
+(define (count-pairs x)
+  (if (not (pair? x))
+      0
+      (+ (count-pairs (car x))
+         (count-pairs (cdr x))
+         1)))
+#+end_src
+
+Muestra que este procedimiento no es correcto. En particular, dibuja diagramas de cajas y punteros que representen estructuras de listas compuestas por exactamente tres pares para los cuales el procedimiento de Ben devolvería 3; devolvería 4; devolvería 7; nunca devolvería nada en absoluto.
+
+**** Ejercicio 3.17
+:properties:
+:custom_id: exercise-3.17
+:end:
+
+Diseña una versión correcta del procedimiento ~count-pairs~ del [[#exercise-3.16][Ejercicio 3.16]] que devuelva el número de pares distintos en cualquier estructura. (Pista: Recorre la estructura, manteniendo una estructura de datos auxiliar que se use para llevar un registro de qué pares ya se han contado.)
+
+**** Ejercicio 3.18
+:properties:
+:custom_id: exercise-3.18
+:end:
+
+Escribe un procedimiento que examine una lista y determine si contiene un ciclo, es decir, si un programa que intentara encontrar el final de la lista tomando ~cdr~s sucesivos entraría en un bucle infinito. El [[#exercise-3.13][Ejercicio 3.13]] construyó tales listas.
+
+**** Ejercicio 3.19
+:properties:
+:custom_id: exercise-3.19
+:end:
+
+Rehaz el [[#exercise-3.18][Ejercicio 3.18]] usando un algoritmo que tome solo una cantidad constante de espacio. (Esto requiere una idea muy ingeniosa.)
+
+*La mutación es solo asignación*
+
+Cuando introdujimos datos compuestos, observamos en la sección [[#section-2.1.3][2.1.3]] que los pares pueden representarse puramente en términos de procedimientos:
+
+#+begin_src scheme
+(define (cons x y)
+  (define (dispatch m)
+    (cond ((eq? m 'car) x)
+          ((eq? m 'cdr) y)
+          (else (error "Undefined operation - CONS" m))))
+  dispatch)
+
+(define (car z) (z 'car))
+
+(define (cdr z) (z 'cdr))
+#+end_src
+
+La misma observación es cierta para los datos mutables. Podemos implementar objetos de datos mutables como procedimientos usando asignación y estado local. Por ejemplo, podemos extender la implementación de pares anterior para manejar ~set-car!~ y ~set-cdr!~ de una manera análoga a la forma en que implementamos cuentas bancarias usando ~make-account~ en la sección [[#section-3.1.1][3.1.1]]:
+
+#+begin_src scheme
+(define (cons x y)
+  (define (set-x! v) (set! x v))
+  (define (set-y! v) (set! y v))
+  (define (dispatch m)
+    (cond ((eq? m 'car) x)
+          ((eq? m 'cdr) y)
+          ((eq? m 'set-car!) set-x!)
+          ((eq? m 'set-cdr!) set-y!)
+          (else (error "Undefined operation - CONS" m))))
+  dispatch)
+
+(define (car z) (z 'car))
+
+(define (cdr z) (z 'cdr))
+
+(define (set-car! z new-value)
+  ((z 'set-car!) new-value)
+  z)
+
+(define (set-cdr! z new-value)
+  ((z 'set-cdr!) new-value)
+  z)
+#+end_src
+
+La asignación es todo lo que se necesita, teóricamente, para dar cuenta del comportamiento de los datos mutables. Tan pronto como admitimos ~set!~ en nuestro lenguaje, planteamos todos los problemas, no solo de la asignación, sino de los datos mutables en general.[fn:149]
+
+**** Ejercicio 3.20
+:properties:
+:custom_id: exercise-3.20
+:end:
+
+Dibuja diagramas de entorno para ilustrar la evaluación de la secuencia de expresiones
+
+#+begin_src scheme
+(define x (cons 1 2))
+(define z (cons x x))
+(set-car! (cdr z) 17)
+
+(car x)
+17
+#+end_src
+
+usando la implementación procedimental de pares dada anteriormente. (Compara con el [[#exercise-3.11][Ejercicio 3.11]].)
+
+*** 3.3.2 Representación de Colas
+:properties:
+:custom_id: section-3.3.2
+:end:
+
+Los mutadores ~set-car!~ y ~set-cdr!~ nos permiten usar pares para construir estructuras de datos que no pueden construirse solo con ~cons~, ~car~ y ~cdr~. Esta sección muestra cómo usar pares para representar una estructura de datos llamada cola. La sección [[#section-3.3.3][3.3.3]] mostrará cómo representar estructuras de datos llamadas tablas.
+
+Una <<i314>> cola es una secuencia en la que los elementos se insertan en un extremo (llamado la <<i322>> parte trasera de la cola) y se eliminan del otro extremo (el <<i151>> frente). La [[figure-3.18][Figura 3.18]] muestra una cola inicialmente vacía en la que se insertan los elementos ~a~ y ~b~. Luego se elimina ~a~, se insertan ~c~ y ~d~, y se elimina ~b~. Debido a que los elementos siempre se eliminan en el orden en que se insertan, una cola a veces se llama un <<i136>> búfer FIFO (primero en entrar, primero en salir).
+
+<<figure-3.18>> Operaciones de cola.
+
+#+begin_example
+ Operation                Resulting Queue
+ (define q (make-queue))
+ (insert-queue! q 'a)     a
+ (insert-queue! q 'b)     a b
+ (delete-queue! q)        b
+ (insert-queue! q 'c)     b c
+ (insert-queue! q 'd)     b c d
+ (delete-queue! q)        c d
+#+end_example
+
+En términos de abstracción de datos, podemos considerar una cola como definida por el siguiente conjunto de operaciones:
+
+a. un constructor: ~(make-queue)~ devuelve una cola vacía (una cola que no contiene elementos).
+
+b. dos selectores:
+
+#+begin_src scheme
+(empty-queue? <QUEUE>)
+#+end_src
+
+prueba si la cola está vacía.
+
+#+begin_src scheme
+(front-queue <QUEUE>)
+#+end_src
+
+devuelve el objeto al frente de la cola, señalando un error si la cola está vacía; no modifica la cola.
+
+c. dos mutadores:
+
+#+begin_src scheme
+(insert-queue! <QUEUE> <ITEM>)
+#+end_src
+
+inserta el elemento en la parte trasera de la cola y devuelve la cola modificada como su valor.
+
+#+begin_src scheme
+(delete-queue! <QUEUE>)
+#+end_src
+
+elimina el elemento al frente de la cola y devuelve la cola modificada como su valor, señalando un error si la cola está vacía antes de la eliminación.
+
+Dado que una cola es una secuencia de elementos, ciertamente podríamos representarla como una lista ordinaria; el frente de la cola sería el ~car~ de la lista, insertar un elemento en la cola equivaldría a añadir un nuevo elemento al final de la lista, y eliminar un elemento de la cola sería simplemente tomar el ~cdr~ de la lista. Sin embargo, esta representación es ineficiente, porque para insertar un elemento debemos recorrer la lista hasta llegar al final. Como el único método que tenemos para recorrer una lista es mediante operaciones ~cdr~ sucesivas, este recorrido requiere \theta(n) pasos para una lista de n elementos. Una simple modificación a la representación de lista supera esta desventaja permitiendo que las operaciones de cola se implementen de modo que requieran \theta(1) pasos; es decir, de modo que el número de pasos necesarios sea independiente de la longitud de la cola.
+
+La dificultad con la representación de lista surge de la necesidad de recorrer para encontrar el final de la lista. La razón por la que necesitamos recorrer es que, aunque la forma estándar de representar una lista como una cadena de pares nos proporciona fácilmente un puntero al principio de la lista, no nos da un puntero fácilmente accesible al final. La modificación que evita el inconveniente es representar la cola como una lista, junto con un puntero adicional que indica el par final en la lista. De esa manera, cuando vayamos a insertar un elemento, podemos consultar el puntero trasero y así evitar recorrer la lista.
+
+Una cola se representa, entonces, como un par de punteros, ~front-ptr~ y ~rear-ptr~, que indican, respectivamente, el primer y último par en una lista ordinaria. Como nos gustaría que la cola sea un objeto identificable, podemos usar ~cons~ para combinar los dos punteros. Por lo tanto, la cola en sí será el ~cons~ de los dos punteros. La [[figure-3.19][Figura 3.19]] ilustra esta representación.
+
+<<figure-3.19>> Implementación de una cola como una lista con punteros frontal y trasero.
+
+#+begin_example
+      +---+---+
+ q -->| * | *-+-------------------+
+      +-|-+---+                   |
+        |                         |
+        | front-ptr               | rear-ptr
+        V                         V
+    +---+---+    +---+---+    +---+---+
+    | * | *-+--->| * | *-+--->| * | / |
+    +-|-+---+    +-|-+---+    +-|-+---+
+      V            V            V
+    +---+        +---+        +---+
+    | a |        | b |        | c |
+    +---+        +---+        +---+
+#+end_example
+
+Para definir las operaciones de cola usamos los siguientes procedimientos, que nos permiten seleccionar y modificar los punteros frontal y trasero de una cola:
+
+#+begin_src scheme
+(define (front-ptr queue) (car queue))
+
+(define (rear-ptr queue) (cdr queue))
+
+(define (set-front-ptr! queue item) (set-car! queue item))
+
+(define (set-rear-ptr! queue item) (set-cdr! queue item))
+#+end_src
+
+Ahora podemos implementar las operaciones de cola reales. Consideraremos que una cola está vacía si su puntero frontal es la lista vacía:
+
+#+begin_src scheme
+(define (empty-queue? queue) (null? (front-ptr queue)))
+#+end_src
+
+El constructor ~make-queue~ devuelve, como una cola inicialmente vacía, un par cuyo ~car~ y ~cdr~ son ambos la lista vacía:
+
+#+begin_src scheme
+(define (make-queue) (cons '() '()))
+#+end_src
+
+Para seleccionar el elemento al frente de la cola, devolvemos el ~car~ del par indicado por el puntero frontal:
+
+#+begin_src scheme
+(define (front-queue queue)
+  (if (empty-queue? queue)
+      (error "FRONT called with an empty queue" queue)
+      (car (front-ptr queue))))
+#+end_src
+
+Para insertar un elemento en una cola, seguimos el método cuyo resultado se indica en la [[figure-3.20][Figura 3.20]]. Primero creamos un nuevo par cuyo ~car~ es el elemento a insertar y cuyo ~cdr~ es la lista vacía. Si la cola estaba inicialmente vacía, establecemos los punteros frontal y trasero de la cola a este nuevo par. De lo contrario, modificamos el par final en la cola para que apunte al nuevo par, y también establecemos el puntero trasero al nuevo par.
+
+<<figure-3.20>> Resultado de usar ~(insert-queue!  q 'd)~ en la cola de la [[figure-3.19][Figura 3.19]].
+
+#+begin_example
+      +---+---+
+ q -->| * | *-+--------------------------------+
+      +-|-+---+                                |
+        |                                      |
+        | front-ptr                            | rear-ptr
+        V                                      V
+    +---+---+    +---+---+    +---+---+    +---+---+
+    | * | *-+--->| * | *-+--->| * | *-+--->| * | / |
+    +-|-+---+    +-|-+---+    +-|-+---+    +-|-+---+
+      V            V            V            V
+    +---+        +---+        +---+        +---+
+    | a |        | b |        | c |        | d |
+    +---+        +---+        +---+        +---+
+#+end_example
+
+#+begin_src scheme
+(define (insert-queue! queue item)
+  (let ((new-pair (cons item '())))
+    (cond ((empty-queue? queue)
+           (set-front-ptr! queue new-pair)
+           (set-rear-ptr! queue new-pair)
+           queue)
+          (else
+           (set-cdr! (rear-ptr queue) new-pair)
+           (set-rear-ptr! queue new-pair)
+           queue))))
+#+end_src
+
+Para eliminar el elemento al frente de la cola, simplemente modificamos el puntero frontal para que ahora apunte al segundo elemento de la cola, que se puede encontrar siguiendo el puntero ~cdr~ del primer elemento (ver [[figure-3.21][Figura 3.21]]):[fn:150]
+
+<<figure-3.21>> Resultado de usar ~(delete-queue!  q)~ en la cola de la [[figure-3.20][Figura 3.20]].
+
+#+begin_example
+      +---+---+
+ q -->| * | *-+--------------------------------+
+      +-|-+---+                                |
+        +------------+                         |
+           front-ptr |                         | rear-ptr
+                     V                         V
+    +---+---+    +---+---+    +---+---+    +---+---+
+    | * | *-+--->| * | *-+--->| * | *-+--->| * | / |
+    +-|-+---+    +-|-+---+    +-|-+---+    +-|-+---+
+      V            V            V            V
+    +---+        +---+        +---+        +---+
+    | a |        | b |        | c |        | d |
+    +---+        +---+        +---+        +---+
+#+end_example
+
+#+begin_src scheme
+(define (delete-queue! queue)
+  (cond ((empty-queue? queue)
+         (error "DELETE! called with an empty queue" queue))
+        (else
+         (set-front-ptr! queue (cdr (front-ptr queue)))
+         queue)))
+#+end_src
+
+**** Ejercicio 3.21
+:properties:
+:custom_id: exercise-3.21
+:end:
+
+Ben Bitdiddle decide probar la implementación de cola descrita anteriormente. Escribe los procedimientos en el intérprete Lisp y procede a probarlos:
+
+#+begin_src scheme
+(define q1 (make-queue))
+
+(insert-queue! q1 'a)
+((a) a)
+
+(insert-queue! q1 'b)
+((a b) b)
+
+(delete-queue! q1)
+((b) b)
+
+(delete-queue! q1)
+(() b)
+#+end_src
+
+"¡Está todo mal!" se queja. "La respuesta del intérprete muestra que el último elemento se inserta en la cola dos veces. Y cuando elimino ambos elementos, la segunda ~b~ todavía está allí, así que la cola no está vacía, aunque se supone que lo está." Eva Lu Ator sugiere que Ben ha malentendido lo que está sucediendo. "No es que los elementos se estén insertando en la cola dos veces", explica. "Es solo que la impresora estándar de Lisp no sabe cómo dar sentido a la representación de la cola. Si quieres ver la cola impresa correctamente, tendrás que definir tu propio procedimiento de impresión para colas." Explica de qué está hablando Eva Lu. En particular, muestra por qué los ejemplos de Ben producen los resultados impresos que producen. Define un procedimiento ~print-queue~ que tome una cola como entrada e imprima la secuencia de elementos en la cola.
+
+**** Ejercicio 3.22
+:properties:
+:custom_id: exercise-3.22
+:end:
+
+En lugar de representar una cola como un par de punteros, podemos construir una cola como un procedimiento con estado local. El estado local consistirá en punteros al principio y al final de una lista ordinaria. Por lo tanto, el procedimiento ~make-queue~ tendrá la forma
+
+#+begin_src scheme
+(define (make-queue)
+  (let ((front-ptr ... )
+        (rear-ptr ... ))
+    <DEFINITIONS OF INTERNAL PROCEDURES>
+    (define (dispatch m) ...)
+    dispatch))
+#+end_src
+
+Completa la definición de ~make-queue~ y proporciona implementaciones de las operaciones de cola usando esta representación.
+
+**** Ejercicio 3.23
+:properties:
+:custom_id: exercise-3.23
+:end:
+
+Una <<i111>> deque ("cola de doble extremo") es una secuencia en la que los elementos pueden insertarse y eliminarse en el frente o en la parte trasera. Las operaciones sobre deques son el constructor ~make-deque~, el predicado ~empty-deque?~, los selectores ~front-deque~ y ~rear-deque~, y los mutadores ~front-insert-deque!~, ~rear-insert-deque!~, ~front-delete-deque!~ y ~rear-delete-deque!~. Muestra cómo representar deques usando pares, y proporciona implementaciones de las operaciones.[fn:151] Todas las operaciones deben realizarse en \theta(1) pasos.
+
+*** 3.3.3 Representación de Tablas
+:properties:
+:custom_id: section-3.3.3
+:end:
+
+Cuando estudiamos varias formas de representar conjuntos en el [[#section-2][Capítulo 2]], mencionamos en la sección [[#section-2.3.3][2.3.3]] la tarea de mantener una tabla de registros indexados por claves identificadoras. En la implementación de la programación dirigida por datos en la sección [[#section-2.4.3][2.4.3]], hicimos un uso extensivo de tablas bidimensionales, en las que la información se almacena y recupera usando dos claves. Aquí vemos cómo construir tablas como estructuras de listas mutables.
+
+Primero consideramos una tabla unidimensional, en la que cada valor se almacena bajo una sola clave. Implementamos la tabla como una lista de registros, cada uno de los cuales se implementa como un par que consiste en una clave y el valor asociado. Los registros se pegan juntos para formar una lista mediante pares cuyos 'car's apuntan a registros sucesivos. Estos pares de pegado se llaman la <<i29>> columna vertebral de la tabla. Para tener un lugar que podamos cambiar cuando agregamos un nuevo registro a la tabla, construimos la tabla como una <<i173>> lista encabezada. Una lista encabezada tiene un par de columna vertebral especial al principio, que contiene un "registro" ficticio--en este caso el símbolo arbitrariamente elegido ~*table*~. La [[figure-3.22][Figura 3.22]] muestra el diagrama de cajas y punteros para la tabla
+
+#+begin_src scheme
+a:  1
+b:  2
+c:  3
+#+end_src
+
+<<figure-3.22>> Una tabla representada como una lista encabezada.
+
+#+begin_example
+  +---+---+    +---+---+    +---+---+    +---+---+
+  | * | *-+--->| * | *-+--->| * | *-+--->| * | / |
+  +-|-+---+    +-|-+---+    +-|-+---+    +-|-+---+
+    |            |            |            |
+    V            V            V            V
+ +---------+   +---+---+   +---+---+   +---+---+
+ | *table* |   | * | * |   | * | * |   | * | * |
+ +---------+   +-|-+-|-+   +-|-+-|-+   +-|-+-|-+
+                 |   |       |   |       |   |
+                 V   V       V   V       V   V
+              +---+ +---+ +---+ +---+ +---+ +---+
+              | a | | 1 | | b | | 2 | | c | | 3 |
+              +---+ +---+ +---+ +---+ +---+ +---+
+#+end_example
+
+Para extraer información de una tabla usamos el procedimiento ~lookup~, que toma una clave como argumento y devuelve el valor asociado (o falso si no hay ningún valor almacenado bajo esa clave). ~lookup~ se define en términos de la operación ~assoc~, que espera una clave y una lista de registros como argumentos. Nota que ~assoc~ nunca ve el registro ficticio. ~assoc~ devuelve el registro que tiene la clave dada como su ~car~.[fn:152] ~Lookup~ luego verifica que el registro resultante devuelto por ~assoc~ no sea falso, y devuelve el valor (el ~cdr~) del registro.
+
+#+begin_src scheme
+(define (lookup key table)
+  (let ((record (assoc key (cdr table))))
+    (if record
+        (cdr record)
+        false)))
+
+(define (assoc key records)
+  (cond ((null? records) false)
+        ((equal? key (caar records)) (car records))
+        (else (assoc key (cdr records)))))
+#+end_src
+
+Para insertar un valor en una tabla bajo una clave especificada, primero usamos ~assoc~ para ver si ya hay un registro en la tabla con esta clave. Si no, formamos un nuevo registro aplicando 'cons' a la clave con el valor, e insertamos esto al principio de la lista de registros de la tabla, después del registro ficticio. Si ya hay un registro con esta clave, establecemos el ~cdr~ de este registro al nuevo valor designado. El encabezado de la tabla nos proporciona una ubicación fija para modificar con el fin de insertar el nuevo registro.[fn:153]
+
+#+begin_src scheme
+(define (insert! key value table)
+  (let ((record (assoc key (cdr table))))
+    (if record
+        (set-cdr! record value)
+        (set-cdr! table
+                  (cons (cons key value) (cdr table)))))
+  'ok)
+#+end_src
+
+Para construir una nueva tabla, simplemente creamos una lista que contiene el símbolo ~*table*~:
+
+#+begin_src scheme
+(define (make-table)
+  (list '*table*))
+#+end_src
+
+*Tablas bidimensionales*
+
+En una tabla bidimensional, cada valor se indexa mediante dos claves. Podemos construir tal tabla como una tabla unidimensional en la que cada clave identifica una subtabla. La [[figure-3.23][Figura 3.23]] muestra el diagrama de cajas y punteros para la tabla
+
+#+begin_example
+ math:
+     +:  43
+     -:  45
+     *:  42
+ letters:
+     a:  97
+     b:  98
+#+end_example
+
+que tiene dos subtablas. (Las subtablas no necesitan un símbolo de encabezado especial, ya que la clave que identifica la subtabla cumple este propósito.)
+
+<<figure-3.23>> Una tabla bidimensional.
+
+#+begin_example
+ table
+   |
+   V
+ +---+---+   +---+---+   +---+---+
+ | * | *-+-->| * | *-+-->| * | / |
+ +-|-+---+   +-|-+---+   +-|-+---+
+   V           |           V
+ +-------+     |         +---+---+   +---+---+   +---+---+
+ |*table*|     |         | * | *-+-->| * | *-+-->| * | / |
+ +-------+     |         +-|-+---+   +-|-+---+   +-|-+---+
+               |           V           V           V
+               |       +-------+     +---+---+   +---+---+
+               |       |letters|     | * | * |   | * | * |
+               |       +-------+     +-|-+-|-+   +-|-+-|-+
+               |                       V   V       V   V
+               |                    +---+ +---+ +---+ +---+
+               |                    | a | | 97| | b | | 98|
+               |                    +---+ +---+ +---+ +---+
+               V
+             +---+---+   +---+---+   +---+---+   +---+---+
+             | * | *-+-->| * | *-+-->| * | *-+-->| * | / |
+             +-|-+---+   +-|-+---+   +-|-+---+   +-|-+---+
+               V           V           V           V
+           +------+      +---+---+   +---+---+   +---+---+
+           | math |      | * | * |   | * | * |   | * | * |
+           +------+      +-|-+-|-+   +-|-+-|-+   +-|-+-|-+
+                           V   V       V   V       V   V
+                        +---+ +---+ +---+ +---+ +---+ +---+
+                        | + | | 43| | - | | 45| | * | | 42|
+                        +---+ +---+ +---+ +---+ +---+ +---+
+#+end_example
+
+Cuando buscamos un elemento, usamos la primera clave para identificar la subtabla correcta. Luego usamos la segunda clave para identificar el registro dentro de la subtabla.
+
+#+begin_src scheme
+(define (lookup key-1 key-2 table)
+  (let ((subtable (assoc key-1 (cdr table))))
+    (if subtable
+        (let ((record (assoc key-2 (cdr subtable))))
+          (if record
+              (cdr record)
+              false))
+        false)))
+#+end_src
+
+Para insertar un nuevo elemento bajo un par de claves, usamos ~assoc~ para ver si hay una subtabla almacenada bajo la primera clave. Si no, construimos una nueva subtabla que contiene el único registro (~key-2~, ~value~) y la insertamos en la tabla bajo la primera clave. Si ya existe una subtabla para la primera clave, insertamos el nuevo registro en esta subtabla, usando el método de inserción para tablas unidimensionales descrito anteriormente:
+
+#+begin_src scheme
+(define (insert! key-1 key-2 value table)
+  (let ((subtable (assoc key-1 (cdr table))))
+    (if subtable
+        (let ((record (assoc key-2 (cdr subtable))))
+          (if record
+              (set-cdr! record value)
+              (set-cdr! subtable
+                        (cons (cons key-2 value)
+                              (cdr subtable)))))
+        (set-cdr! table
+                  (cons (list key-1
+                              (cons key-2 value))
+                        (cdr table)))))
+  'ok)
+#+end_src
+
+*Creación de tablas locales*
+
+Las operaciones ~lookup~ e ~insert!~ definidas anteriormente toman la tabla como argumento. Esto nos permite usar programas que acceden a más de una tabla. Otra forma de tratar con múltiples tablas es tener procedimientos ~lookup~ e ~insert!~ separados para cada tabla. Podemos hacer esto representando una tabla procedimentalmente, como un objeto que mantiene una tabla interna como parte de su estado local. Cuando se le envía un mensaje apropiado, este "objeto tabla" proporciona el procedimiento con el cual operar en la tabla interna. Aquí hay un generador para tablas bidimensionales representadas de esta manera:
+
+#+begin_src scheme
+(define (make-table)
+  (let ((local-table (list '*table*)))
+    (define (lookup key-1 key-2)
+      (let ((subtable (assoc key-1 (cdr local-table))))
+        (if subtable
+            (let ((record (assoc key-2 (cdr subtable))))
+              (if record
+                  (cdr record)
+                  false))
+            false)))
+    (define (insert! key-1 key-2 value)
+      (let ((subtable (assoc key-1 (cdr local-table))))
+        (if subtable
+            (let ((record (assoc key-2 (cdr subtable))))
+              (if record
+                  (set-cdr! record value)
+                  (set-cdr! subtable
+                            (cons (cons key-2 value)
+                                  (cdr subtable)))))
+            (set-cdr! local-table
+                      (cons (list key-1
+                                  (cons key-2 value))
+                            (cdr local-table)))))
+      'ok)
+    (define (dispatch m)
+      (cond ((eq? m 'lookup-proc) lookup)
+            ((eq? m 'insert-proc!) insert!)
+            (else (error "Unknown operation - TABLE" m))))
+    dispatch))
+#+end_src
+
+Usando ~make-table~, podríamos implementar las operaciones ~get~ y ~put~ usadas en la sección [[#section-2.4.3][2.4.3]] para la programación dirigida por datos, de la siguiente manera:
+
+#+begin_src scheme
+(define operation-table (make-table))
+(define get (operation-table 'lookup-proc))
+(define put (operation-table 'insert-proc!))
+#+end_src
+
+~get~ toma como argumentos dos claves, y ~put~ toma como argumentos dos claves y un valor. Ambas operaciones acceden a la misma tabla local, que está encapsulada dentro del objeto creado por la llamada a ~make-table~.
+
+**** Ejercicio 3.24
+:properties:
+:custom_id: exercise-3.24
+:end:
+
+En las implementaciones de tabla anteriores, las claves se prueban para igualdad usando ~equal?~ (llamado por ~assoc~). Esta no siempre es la prueba apropiada. Por ejemplo, podríamos tener una tabla con claves numéricas en la que no necesitamos una coincidencia exacta con el número que estamos buscando, sino solo un número dentro de cierta tolerancia de él. Diseña un constructor de tabla ~make-table~ que tome como argumento un procedimiento ~same-key?~ que se usará para probar la "igualdad" de las claves. ~make-table~ debe devolver un procedimiento ~dispatch~ que se puede usar para acceder a los procedimientos ~lookup~ e ~insert!~ apropiados para una tabla local.
+
+**** Ejercicio 3.25
+:properties:
+:custom_id: exercise-3.25
+:end:
+
+Generalizando las tablas uni y bidimensionales, muestra cómo implementar una tabla en la que los valores se almacenan bajo un número arbitrario de claves y diferentes valores pueden almacenarse bajo diferentes números de claves. Los procedimientos ~lookup~ e ~insert!~ deben tomar como entrada una lista de claves usadas para acceder a la tabla.
+
+**** Ejercicio 3.26
+:properties:
+:custom_id: exercise-3.26
+:end:
+
+Para buscar una tabla como se implementó anteriormente, uno necesita recorrer la lista de registros. Esta es básicamente la representación de lista desordenada de la sección [[#section-2.3.3][2.3.3]]. Para tablas grandes, puede ser más eficiente estructurar la tabla de una manera diferente. Describe una implementación de tabla donde los registros (clave, valor) se organizan usando un árbol binario, asumiendo que las claves pueden ordenarse de alguna manera (por ejemplo, numéricamente o alfabéticamente). (Compara con el [[#exercise-2.66][Ejercicio 2.66]] del [[#section-2][Capítulo 2]].)
+
+**** Ejercicio 3.27
+:properties:
+:custom_id: exercise-3.27
+:end:
+
+<<i229>> La memoización (también llamada <<i387>> tabulación) es una técnica que permite a un procedimiento registrar, en una tabla local, valores que han sido calculados previamente. Esta técnica puede hacer una gran diferencia en el rendimiento de un programa. Un procedimiento memoizado mantiene una tabla en la que los valores de llamadas anteriores se almacenan usando como claves los argumentos que produjeron los valores. Cuando se le pide al procedimiento memoizado que calcule un valor, primero verifica la tabla para ver si el valor ya está allí y, si es así, simplemente devuelve ese valor. De lo contrario, calcula el nuevo valor de la manera ordinaria y lo almacena en la tabla. Como ejemplo de memoización, recuerda de la sección [[#section-1.2.2][1.2.2]] el proceso exponencial para calcular números de Fibonacci:
+
+#+begin_src scheme
+(define (fib n)
+  (cond ((= n 0) 0)
+        ((= n 1) 1)
+        (else (+ (fib (- n 1))
+                 (fib (- n 2))))))
+#+end_src
+
+La versión memoizada del mismo procedimiento es
+
+#+begin_src scheme
+(define memo-fib
+  (memoize (lambda (n)
+             (cond ((= n 0) 0)
+                   ((= n 1) 1)
+                   (else (+ (memo-fib (- n 1))
+                            (memo-fib (- n 2))))))))
+#+end_src
+
+donde el memoizador se define como
+
+#+begin_src scheme
+(define (memoize f)
+  (let ((table (make-table)))
+    (lambda (x)
+      (let ((previously-computed-result (lookup x table)))
+        (or previously-computed-result
+            (let ((result (f x)))
+              (insert! x result table)
+              result))))))
+#+end_src
+
+Dibuja un diagrama de entorno para analizar el cálculo de ~(memo-fib 3)~. Explica por qué ~memo-fib~ calcula el n-ésimo número de Fibonacci en un número de pasos proporcional a n. ¿Funcionaría todavía el esquema si simplemente hubiéramos definido ~memo-fib~ como ~(memoize fib)~?
+
+*** 3.3.4 Un Simulador para Circuitos Digitales
+:properties:
+:custom_id: section-3.3.4
+:end:
+
+Diseñar sistemas digitales complejos, como computadoras, es una actividad de ingeniería importante. Los sistemas digitales se construyen interconectando elementos simples. Aunque el comportamiento de estos elementos individuales es simple, las redes de ellos pueden tener un comportamiento muy complejo. La simulación por computadora de diseños de circuitos propuestos es una herramienta importante utilizada por los ingenieros de sistemas digitales. En esta sección diseñamos un sistema para realizar simulaciones de lógica digital. Este sistema tipifica un tipo de programa llamado <<i130>> simulación dirigida por eventos, en la que las acciones ("eventos") desencadenan eventos adicionales que ocurren en un momento posterior, que a su vez desencadenan más eventos, y así sucesivamente.
+
+Nuestro modelo computacional de un circuito estará compuesto de objetos que corresponden a los componentes elementales a partir de los cuales se construye el circuito. Hay <<i424>> cables, que transportan <<i113>> señales digitales. Una señal digital puede en cualquier momento tener solo uno de dos valores posibles, 0 y 1. También hay varios tipos de <<i153>> cajas de función digitales, que conectan cables que transportan señales de entrada a otros cables de salida. Tales cajas producen señales de salida calculadas a partir de sus señales de entrada. La señal de salida se retrasa por un tiempo que depende del tipo de la caja de función. Por ejemplo, un <<i197>> inversor es una caja de función primitiva que invierte su entrada. Si la señal de entrada a un inversor cambia a 0, entonces un retraso de inversor más tarde el inversor cambiará su señal de salida a 1. Si la señal de entrada a un inversor cambia a 1, entonces un retraso de inversor más tarde el inversor cambiará su señal de salida a 0. Dibujamos un inversor simbólicamente como en la [[figure-3.24][Figura 3.24]]. Una <<i17>> puerta and, también mostrada en la [[figure-3.24][Figura 3.24]], es una caja de función primitiva con dos entradas y una salida. Impulsa su señal de salida a un valor que es el <<i220>> and lógico de las entradas. Es decir, si ambas señales de entrada se vuelven 1, entonces un tiempo de retraso de puerta and más tarde la puerta and forzará su señal de salida a ser 1; de lo contrario, la salida será 0. Una <<i272>> puerta or es una caja de función primitiva similar de dos entradas que impulsa su señal de salida a un valor que es el <<i222>> or lógico de las entradas. Es decir, la salida se volverá 1 si al menos una de las señales de entrada es 1; de lo contrario, la salida se volverá 0.
+
+<<figure-3.24>> Funciones primitivas en el simulador de lógica digital.
+
+#+begin_example
+                __          ___
+   |\        --|  \       --\  \
+ --| >o--      |   )--       )  >--
+   |/        --|__/       --/__/
+
+ Inverter    And-gate     Or-gate
+#+end_example
+
+Podemos conectar funciones primitivas juntas para construir funciones más complejas. Para lograr esto, cableamos las salidas de algunas cajas de función a las entradas de otras cajas de función. Por ejemplo, el circuito <<i170>> semisumador mostrado en la [[figure-3.25][Figura 3.25]] consiste en una puerta or, dos puertas and y un inversor. Toma dos señales de entrada, A y B, y tiene dos señales de salida, S y C. S se volverá 1 siempre que precisamente una de A y B sea 1, y C se volverá 1 siempre que A y B sean ambas 1. Podemos ver de la figura que, debido a los retrasos involucrados, las salidas pueden generarse en diferentes momentos. Muchas de las dificultades en el diseño de circuitos digitales surgen de este hecho.
+
+<<figure-3.25>> Un circuito semisumador.
+
+#+begin_example
+     +--------------------------------------+
+     |         ____                         |
+ A --------*---\   \ D               ___    |
+     |     |    >   >---------------|   \   |
+     |  +--|---/___/                |    )----- S
+     |  |  |              |\  E  +--|___/   |
+     |  |  |           +--| >o---+          |
+     |  |  |    ___    |  |/                |
+     |  |  +---|   \   |                    |
+     |  |      |    )--*----------------------- C
+ B -----*------|___/                        |
+     |                                      |
+     +--------------------------------------+
+#+end_example
+
+Ahora construiremos un programa para modelar los circuitos de lógica digital que deseamos estudiar. El programa construirá objetos computacionales que modelan los cables, que "sostendrán" las señales. Las cajas de función serán modeladas por procedimientos que hacen cumplir las relaciones correctas entre las señales.
+
+Un elemento básico de nuestra simulación será un procedimiento ~make-wire~, que construye cables. Por ejemplo, podemos construir seis cables de la siguiente manera:
+
+#+begin_src scheme
+(define a (make-wire))
+(define b (make-wire))
+(define c (make-wire))
+
+(define d (make-wire))
+(define e (make-wire))
+(define s (make-wire))
+#+end_src
+
+Adjuntamos una caja de función a un conjunto de cables llamando a un procedimiento que construye ese tipo de caja. Los argumentos del procedimiento constructor son los cables que se adjuntarán a la caja. Por ejemplo, dado que podemos construir puertas and, puertas or e inversores, podemos cablear juntos el semisumador mostrado en la [[figure-3.25][Figura 3.25]]:
+
+#+begin_src scheme
+(or-gate a b d)
+ok
+
+(and-gate a b c)
+ok
+
+(inverter c e)
+ok
+
+(and-gate d e s)
+ok
+#+end_src
+
+Mejor aún, podemos nombrar explícitamente esta operación definiendo un procedimiento ~half-adder~ que construye este circuito, dados los cuatro cables externos que se adjuntarán al semisumador:
+
+#+begin_src scheme
+(define (half-adder a b s c)
+  (let ((d (make-wire)) (e (make-wire)))
+    (or-gate a b d)
+    (and-gate a b c)
+    (inverter c e)
+    (and-gate d e s)
+    'ok))
+#+end_src
+
+La ventaja de hacer esta definición es que podemos usar ~half-adder~ en sí mismo como un bloque de construcción para crear circuitos más complejos. La [[figure-3.26][Figura 3.26]], por ejemplo, muestra un <<i152>> sumador completo compuesto de dos semisumadores y una puerta or.[fn:154] Podemos construir un sumador completo de la siguiente manera:
+
+#+begin_src scheme
+(define (full-adder a b c-in sum c-out)
+  (let ((s (make-wire))
+        (c1 (make-wire))
+        (c2 (make-wire)))
+    (half-adder b c-in s c1)
+    (half-adder a s sum c2)
+    (or-gate c1 c2 c-out)
+    'ok))
+#+end_src
+
+Habiendo definido ~full-adder~ como un procedimiento, ahora podemos usarlo como un bloque de construcción para crear circuitos aún más complejos. (Por ejemplo, ver [[#exercise-3.30][Ejercicio 3.30]].)
+
+<<figure-3.26>> Un circuito sumador completo.
+
+#+begin_example
+     +----------------------------------+
+     |              +-------+           |
+ A -----------------+ half  +-------------- SUM
+     |  +-------+   | adder |   ____    |
+ B -----+ half  +---+       +---\   \   |
+     |  | adder |   +-------+    >or >----- Cout
+ C -----+       +---------------/___/   |
+     |  +-------+                       |
+     +----------------------------------+
+#+end_example
+
+En esencia, nuestro simulador nos proporciona las herramientas para construir un lenguaje de circuitos. Si adoptamos la perspectiva general sobre los lenguajes con la que abordamos el estudio de Lisp en la sección [[#section-1.1][1.1]], podemos decir que las cajas de función primitivas forman los elementos primitivos del lenguaje, que cablear cajas juntas proporciona un medio de combinación, y que especificar patrones de cableado como procedimientos sirve como un medio de abstracción.
+
+*Cajas de función primitivas*
+
+Las cajas de función primitivas implementan las "fuerzas" mediante las cuales un cambio en la señal en un cable influye en las señales en otros cables. Para construir cajas de función, usamos las siguientes operaciones en cables:
+
+a.
+
+#+begin_src scheme
+(get-signal <WIRE>)
+#+end_src
+
+devuelve el valor actual de la señal en el cable.
+
+b.
+
+#+begin_src scheme
+(set-signal! <WIRE> <NEW VALUE>)
+#+end_src
+
+cambia el valor de la señal en el cable al nuevo valor.
+
+c.
+
+#+begin_src scheme
+(add-action! <WIRE> <PROCEDURE OF NO ARGUMENTS>)
+#+end_src
+
+afirma que el procedimiento designado debe ejecutarse siempre que la señal en el cable cambie de valor. Tales procedimientos son los vehículos mediante los cuales los cambios en el valor de la señal en el cable se comunican a otros cables.
+
+Además, haremos uso de un procedimiento ~after-delay~ que toma un retraso de tiempo y un procedimiento a ejecutar y ejecuta el procedimiento dado después del retraso dado.
+
+Usando estos procedimientos, podemos definir las funciones de lógica digital primitivas. Para conectar una entrada a una salida a través de un inversor, usamos ~add-action!~ para asociar con el cable de entrada un procedimiento que se ejecutará siempre que la señal en el cable de entrada cambie de valor. El procedimiento calcula el ~logical-not~ de la señal de entrada, y luego, después de un ~inverter-delay~, establece la señal de salida a este nuevo valor:
+
+#+begin_src scheme
+(define (inverter input output)
+  (define (invert-input)
+    (let ((new-value (logical-not (get-signal input))))
+      (after-delay inverter-delay
+                   (lambda ()
+                     (set-signal! output new-value)))))
+  (add-action! input invert-input)
+  'ok)
+
+(define (logical-not s)
+  (cond ((= s 0) 1)
+        ((= s 1) 0)
+        (else (error "Invalid signal" s))))
+#+end_src
+
+Una puerta and es un poco más compleja. El procedimiento de acción debe ejecutarse si cualquiera de las entradas a la puerta cambia. Calcula el ~logical-and~ (usando un procedimiento análogo a ~logical-not~) de los valores de las señales en los cables de entrada y configura un cambio al nuevo valor para que ocurra en el cable de salida después de un ~and-gate-delay~.
+
+#+begin_src scheme
+(define (and-gate a1 a2 output)
+  (define (and-action-procedure)
+    (let ((new-value
+           (logical-and (get-signal a1) (get-signal a2))))
+      (after-delay and-gate-delay
+                   (lambda ()
+                     (set-signal! output new-value)))))
+  (add-action! a1 and-action-procedure)
+  (add-action! a2 and-action-procedure)
+  'ok)
+#+end_src
+
+**** Ejercicio 3.28
+:properties:
+:custom_id: exercise-3.28
+:end:
+
+Define una puerta or como una caja de función primitiva. Tu constructor ~or-gate~ debe ser similar a ~and-gate~.
+
+**** Ejercicio 3.29
+:properties:
+:custom_id: exercise-3.29
+:end:
+
+Otra forma de construir una puerta or es como un dispositivo de lógica digital compuesto, construido a partir de puertas and e inversores. Define un procedimiento ~or-gate~ que logre esto. ¿Cuál es el tiempo de retraso de la puerta or en términos de ~and-gate-delay~ e ~inverter-delay~?
+
+**** Ejercicio 3.30
+:properties:
+:custom_id: exercise-3.30
+:end:
+
+La [[figure-3.27][Figura 3.27]] muestra un <<i336>> sumador con acarreo en cascada formado al encadenar n sumadores completos. Esta es la forma más simple de sumador paralelo para sumar dos números binarios de n bits. Las entradas A_1, A_2, A_3, ..., A_n y B_1, B_2, B_3, ..., B_n son los dos números binarios a sumar (cada A_k y B_k es un 0 o un 1). El circuito genera S_1, S_2, S_3, ..., S_n, los n bits de la suma, y C, el acarreo de la suma. Escribe un procedimiento ~ripple-carry-adder~ que genere este circuito. El procedimiento debe tomar como argumentos tres listas de n cables cada una--los A_k, los B_k y los S_k--y también otro cable C. El inconveniente principal del sumador con acarreo en cascada es la necesidad de esperar a que las señales de acarreo se propaguen. ¿Cuál es el retraso necesario para obtener la salida completa de un sumador con acarreo en cascada de n bits, expresado en términos de los retrasos para puertas and, puertas or e inversores?
+
+<<figure-3.27>> Un sumador con acarreo en cascada para números de n bits.
+
+#+begin_example
+    :                                              :   :
+    : A_1 B_1   C_1   A_2 B_2   C_2   A_3 B_3   C_3:   : A_n B_n C_n=0
+    :  |   |   +---+   |   |   +---+   |   |   +-----  :  |   |   +-
+    |  |   |   |   |   |   |   |   |   |   |   |   :   :  |   |   |
+    : ++---+---++  |  ++---+---++  |  ++---+---++  :   : ++---+---++
+    : |   FA    |  |  |   FA    |  |  |   FA    |  :   : |   FA    |
+    : +--+---+--+  |  +--+---+--+  |  +--+---+--+  :   : +--+---+--+
+    :    |   |     |     |   |     |     |   |     :   :    |   |
+ C ------+   |     +-----+   |     +-----+   |     :  ------+   |
+    :        |       C_1     |       C_2     |     :   :C_(n-1) |
+    :        |               |               |     :   :        |
+            S_1             S_2             S_3                S_n
+#+end_example
+
+*Representación de cables*
+
+Un cable en nuestra simulación será un objeto computacional con dos variables de estado local: un ~signal-value~ (inicialmente tomado como 0) y una colección de ~action-procedures~ que se ejecutarán cuando la señal cambie de valor. Implementamos el cable, usando el estilo de paso de mensajes, como una colección de procedimientos locales junto con un procedimiento ~dispatch~ que selecciona la operación local apropiada, justo como lo hicimos con el objeto de cuenta bancaria simple en la sección [[#section-3.1.1][3.1.1]]:
+
+#+begin_src scheme
+(define (make-wire)
+  (let ((signal-value 0) (action-procedures '()))
+    (define (set-my-signal! new-value)
+      (if (not (= signal-value new-value))
+          (begin (set! signal-value new-value)
+                 (call-each action-procedures))
+          'done))
+
+    (define (accept-action-procedure! proc)
+      (set! action-procedures (cons proc action-procedures))
+      (proc))
+
+    (define (dispatch m)
+      (cond ((eq? m 'get-signal) signal-value)
+            ((eq? m 'set-signal!) set-my-signal!)
+            ((eq? m 'add-action!) accept-action-procedure!)
+            (else (error "Unknown operation - WIRE" m))))
+    dispatch))
+#+end_src
+
+El procedimiento local ~set-my-signal!~ prueba si el nuevo valor de señal cambia la señal en el cable. Si es así, ejecuta cada uno de los procedimientos de acción, usando el siguiente procedimiento ~call-each~, que llama a cada uno de los elementos en una lista de procedimientos sin argumentos:
+
+#+begin_src scheme
+(define (call-each procedures)
+  (if (null? procedures)
+      'done
+      (begin
+        ((car procedures))
+        (call-each (cdr procedures)))))
+#+end_src
+
+El procedimiento local ~accept-action-procedure!~ agrega el procedimiento dado a la lista de procedimientos a ejecutar, y luego ejecuta el nuevo procedimiento una vez. (Ver [[#exercise-3.31][Ejercicio 3.31]].)
+
+Con el procedimiento ~dispatch~ local configurado como se especificó, podemos proporcionar los siguientes procedimientos para acceder a las operaciones locales en cables:[fn:155]
+
+#+begin_src scheme
+(define (get-signal wire)
+  (wire 'get-signal))
+
+(define (set-signal! wire new-value)
+  ((wire 'set-signal!) new-value))
+
+(define (add-action! wire action-procedure)
+  ((wire 'add-action!) action-procedure))
+#+end_src
+
+Los cables, que tienen señales que varían con el tiempo y pueden adjuntarse incrementalmente a dispositivos, son típicos de los objetos mutables. Los hemos modelado como procedimientos con variables de estado local que se modifican mediante asignación. Cuando se crea un nuevo cable, se asigna un nuevo conjunto de variables de estado (por la expresión ~let~ en ~make-wire~) y se construye y devuelve un nuevo procedimiento ~dispatch~, capturando el entorno con las nuevas variables de estado.
+
+Los cables se comparten entre los diversos dispositivos que se han conectado a ellos. Por lo tanto, un cambio realizado por una interacción con un dispositivo afectará a todos los demás dispositivos conectados al cable. El cable comunica el cambio a sus vecinos llamando a los procedimientos de acción que se le proporcionaron cuando se establecieron las conexiones.
+
+*La agenda*
+
+Lo único que se necesita para completar el simulador es ~after-delay~. La idea aquí es que mantenemos una estructura de datos, llamada <<i14>> agenda, que contiene un cronograma de cosas por hacer. Las siguientes operaciones están definidas para las agendas:
+
+- ~(make-agenda)~ devuelve una nueva agenda vacía.
+
+- ~(empty-agenda? <AGENDA>)~ es verdadero si la agenda especificada está vacía.
+
+- ~(first-agenda-item <AGENDA>)~ devuelve el primer elemento en la agenda.
+
+- ~(remove-first-agenda-item! <AGENDA>)~ modifica la agenda eliminando el primer elemento.
+
+- ~(add-to-agenda! <TIME> <ACTION> <AGENDA>)~ modifica la agenda agregando el procedimiento de acción dado para que se ejecute en el tiempo especificado.
+
+- ~(current-time <AGENDA>)~ devuelve el tiempo de simulación actual.
+
+La agenda particular que usamos se denota por ~the-agenda~. El procedimiento ~after-delay~ agrega nuevos elementos a ~the-agenda~:
+
+#+begin_src scheme
+(define (after-delay delay action)
+  (add-to-agenda! (+ delay (current-time the-agenda))
+                  action
+                  the-agenda))
+#+end_src
+
+La simulación es impulsada por el procedimiento ~propagate~, que opera en ~the-agenda~, ejecutando cada procedimiento en la agenda en secuencia. En general, a medida que se ejecuta la simulación, se agregarán nuevos elementos a la agenda, y ~propagate~ continuará la simulación mientras haya elementos en la agenda:
+
+#+begin_src scheme
+(define (propagate)
+  (if (empty-agenda? the-agenda)
+      'done
+      (let ((first-item (first-agenda-item the-agenda)))
+        (first-item)
+        (remove-first-agenda-item! the-agenda)
+        (propagate))))
+#+end_src
+
+*Una simulación de muestra*
+
+El siguiente procedimiento, que coloca una "sonda" en un cable, muestra el simulador en acción. La sonda le dice al cable que, siempre que su señal cambie de valor, debe imprimir el nuevo valor de la señal, junto con el tiempo actual y un nombre que identifica el cable:
+
+#+begin_src scheme
+(define (probe name wire)
+  (add-action! wire
+               (lambda ()
+                 (newline)
+                 (display name)
+                 (display " ")
+                 (display (current-time the-agenda))
+                 (display "  New-value = ")
+                 (display (get-signal wire)))))
+#+end_src
+
+Comenzamos inicializando la agenda y especificando retrasos para las cajas de función primitivas:
+
+#+begin_src scheme
+(define the-agenda (make-agenda))
+(define inverter-delay 2)
+(define and-gate-delay 3)
+(define or-gate-delay 5)
+#+end_src
+
+Ahora definimos cuatro cables, colocando sondas en dos de ellos:
+
+#+begin_src scheme
+(define input-1 (make-wire))
+(define input-2 (make-wire))
+(define sum (make-wire))
+(define carry (make-wire))
+
+(probe 'sum sum)
+sum 0  New-value = 0
+
+(probe 'carry carry)
+carry 0  New-value = 0
+#+end_src
+
+A continuación conectamos los cables en un circuito semisumador (como en la [[figure-3.25][Figura 3.25]]), establecemos la señal en ~input-1~ a 1, y ejecutamos la simulación:
+
+#+begin_src scheme
+(half-adder input-1 input-2 sum carry)
+ok
+
+(set-signal! input-1 1)
+done
+
+(propagate)
+sum 8  New-value = 1
+done
+#+end_src
+
+La señal ~sum~ cambia a 1 en el tiempo 8. Ahora estamos ocho unidades de tiempo desde el comienzo de la simulación. En este punto, podemos establecer la señal en ~input-2~ a 1 y permitir que los valores se propaguen:
+
+#+begin_src scheme
+(set-signal! input-2 1)
+done
+
+(propagate)
+carry 11  New-value = 1
+sum 16  New-value = 0
+done
+#+end_src
+
+El ~carry~ cambia a 1 en el tiempo 11 y el ~sum~ cambia a 0 en el tiempo 16.
+
+**** Ejercicio 3.31
+:properties:
+:custom_id: exercise-3.31
+:end:
+
+El procedimiento interno ~accept-action-procedure!~ definido en ~make-wire~ especifica que cuando se agrega un nuevo procedimiento de acción a un cable, el procedimiento se ejecuta inmediatamente. Explica por qué esta inicialización es necesaria. En particular, rastrea el ejemplo del semisumador en los párrafos anteriores y di cómo diferiría la respuesta del sistema si hubiéramos definido ~accept-action-procedure!~ como
+
+#+begin_src scheme
+(define (accept-action-procedure! proc)
+  (set! action-procedures (cons proc action-procedures)))
+#+end_src
+
+*Implementación de la agenda*
+
+Finalmente, damos detalles de la estructura de datos de la agenda, que contiene los procedimientos que están programados para ejecución futura.
+
+La agenda está compuesta por <<i397>> segmentos de tiempo. Cada segmento de tiempo es un par que consiste en un número (el tiempo) y una cola (ver [[#exercise-3.32][Ejercicio 3.32]]) que contiene los procedimientos que están programados para ejecutarse durante ese segmento de tiempo.
+
+#+begin_src scheme
+(define (make-time-segment time queue)
+  (cons time queue))
+
+(define (segment-time s) (car s))
+
+(define (segment-queue s) (cdr s))
+#+end_src
+
+Operaremos en las colas de segmentos de tiempo usando las operaciones de cola descritas en la sección [[#section-3.3.2][3.3.2]].
+
+La agenda en sí es una tabla unidimensional de segmentos de tiempo. Difiere de las tablas descritas en la sección [[#section-3.3.3][3.3.3]] en que los segmentos estarán ordenados en orden de tiempo creciente. Además, almacenamos el <<i90>> tiempo actual (es decir, el tiempo de la última acción que se procesó) al principio de la agenda. Una agenda recién construida no tiene segmentos de tiempo y tiene un tiempo actual de 0:[fn:156]
+
+#+begin_src scheme
+(define (make-agenda) (list 0))
+
+(define (current-time agenda) (car agenda))
+
+(define (set-current-time! agenda time)
+  (set-car! agenda time))
+
+(define (segments agenda) (cdr agenda))
+
+(define (set-segments! agenda segments)
+  (set-cdr! agenda segments))
+
+(define (first-segment agenda) (car (segments agenda)))
+
+(define (rest-segments agenda) (cdr (segments agenda)))
+#+end_src
+
+Una agenda está vacía si no tiene segmentos de tiempo:
+
+#+begin_src scheme
+(define (empty-agenda? agenda)
+  (null? (segments agenda)))
+#+end_src
+
+Para agregar una acción a una agenda, primero verificamos si la agenda está vacía. Si es así, creamos un segmento de tiempo para la acción y lo instalamos en la agenda. De lo contrario, recorremos la agenda, examinando el tiempo de cada segmento. Si encontramos un segmento para nuestro tiempo designado, agregamos la acción a la cola asociada. Si alcanzamos un tiempo posterior al que estamos designados, insertamos un nuevo segmento de tiempo en la agenda justo antes de él. Si alcanzamos el final de la agenda, debemos crear un nuevo segmento de tiempo al final.
+
+#+begin_src scheme
+(define (add-to-agenda! time action agenda)
+  (define (belongs-before? segments)
+    (or (null? segments)
+        (< time (segment-time (car segments)))))
+  (define (make-new-time-segment time action)
+    (let ((q (make-queue)))
+      (insert-queue! q action)
+      (make-time-segment time q)))
+  (define (add-to-segments! segments)
+    (if (= (segment-time (car segments)) time)
+        (insert-queue! (segment-queue (car segments))
+                       action)
+        (let ((rest (cdr segments)))
+          (if (belongs-before? rest)
+              (set-cdr!
+               segments
+               (cons (make-new-time-segment time action)
+                     (cdr segments)))
+              (add-to-segments! rest)))))
+  (let ((segments (segments agenda)))
+    (if (belongs-before? segments)
+        (set-segments!
+         agenda
+         (cons (make-new-time-segment time action)
+               segments))
+        (add-to-segments! segments))))
+#+end_src
+
+El procedimiento que elimina el primer elemento de la agenda borra el elemento al frente de la cola en el primer segmento de tiempo. Si esta eliminación hace que el segmento de tiempo esté vacío, lo eliminamos de la lista de segmentos:[fn:157]
+
+#+begin_src scheme
+(define (remove-first-agenda-item! agenda)
+  (let ((q (segment-queue (first-segment agenda))))
+    (delete-queue! q)
+    (if (empty-queue? q)
+        (set-segments! agenda (rest-segments agenda)))))
+#+end_src
+
+El primer elemento de la agenda se encuentra al principio de la cola en el primer segmento de tiempo. Siempre que extraemos un elemento, también actualizamos el tiempo actual:[fn:158]
+
+#+begin_src scheme
+(define (first-agenda-item agenda)
+  (if (empty-agenda? agenda)
+      (error "Agenda is empty - FIRST-AGENDA-ITEM")
+      (let ((first-seg (first-segment agenda)))
+        (set-current-time! agenda (segment-time first-seg))
+        (front-queue (segment-queue first-seg)))))
+#+end_src
+
+**** Ejercicio 3.32
+:properties:
+:custom_id: exercise-3.32
+:end:
+
+Los procedimientos que se ejecutarán durante cada segmento de tiempo de la agenda se mantienen en una cola. Por lo tanto, los procedimientos para cada segmento se llaman en el orden en que se agregaron a la agenda (primero en entrar, primero en salir). Explica por qué debe usarse este orden. En particular, rastrea el comportamiento de una puerta and cuyas entradas cambian de 0,1 a 1,0 en el mismo segmento y di cómo diferiría el comportamiento si almacenáramos los procedimientos de un segmento en una lista ordinaria, agregando y eliminando procedimientos solo al frente (último en entrar, primero en salir).
+
+*** 3.3.5 Propagación de Restricciones
+:properties:
+:custom_id: section-3.3.5
+:end:
+
+Los programas de computadora tradicionalmente se organizan como cálculos unidireccionales, que realizan operaciones sobre argumentos preespecificados para producir salidas deseadas. Por otro lado, a menudo modelamos sistemas en términos de relaciones entre cantidades. Por ejemplo, un modelo matemático de una estructura mecánica podría incluir la información de que la deflexión d de una varilla metálica está relacionada con la fuerza f en la varilla, la longitud L de la varilla, el área de sección transversal A, y el módulo elástico E mediante la ecuación
+
+#+begin_example
+ dAE = FL
+#+end_example
+
+Tal ecuación no es unidireccional. Dadas cualesquiera cuatro de las cantidades, podemos usarla para calcular la quinta. Sin embargo, traducir la ecuación a un lenguaje de computadora tradicional nos forzaría a elegir una de las cantidades para ser calculada en términos de las otras cuatro. Por lo tanto, un procedimiento para calcular el área A no podría usarse para calcular la deflexión d, aunque los cálculos de A y d surjan de la misma ecuación.[fn:159]
+
+En esta sección, esbozamos el diseño de un lenguaje que nos permite trabajar en términos de las relaciones mismas. Los elementos primitivos del lenguaje son <<i296>> restricciones primitivas, que establecen que ciertas relaciones se mantienen entre cantidades. Por ejemplo, ~(adder a b c)~ especifica que las cantidades a, b, y c deben estar relacionadas por la ecuación a + b = c, ~(multiplier x y z)~ expresa la restricción xy = z, y ~(constant 3.14 x)~ dice que el valor de x debe ser 3.14.
+
+Nuestro lenguaje proporciona un medio de combinar restricciones primitivas para expresar relaciones más complejas. Combinamos restricciones construyendo <<i82>> redes de restricciones, en las que las restricciones se unen mediante <<i80>> conectores. Un conector es un objeto que "mantiene" un valor que puede participar en una o más restricciones. Por ejemplo, sabemos que la relación entre las temperaturas Fahrenheit y Celsius es
+
+#+begin_example
+ 9C = 5(F - 32)
+#+end_example
+
+Tal restricción puede pensarse como una red que consiste en restricciones primitivas de sumador, multiplicador y constante ([[figure-3.28][Figura 3.28]]). En la figura, vemos a la izquierda una caja multiplicadora con tres terminales, etiquetadas m1, m2 y p. Estas conectan el multiplicador al resto de la red de la siguiente manera: El terminal m1 está vinculado a un conector C, que mantendrá la temperatura Celsius. El terminal m2 está vinculado a un conector w, que también está vinculado a una caja constante que mantiene 9. El terminal p, que la caja multiplicadora restringe a ser el producto de m1 y m2, está vinculado al terminal p de otra caja multiplicadora, cuyo m2 está conectado a una constante 5 y cuyo m1 está conectado a uno de los términos en una suma.
+
+<<figure-3.28>> La relación 9C = 5(F - 32) expresada como una red de restricciones.
+
+#+begin_example
+        +---------+     +---------+   v   +---------+
+ C -----+ m1      |  u  |      m1 +-------+ a1      |
+        |    *  p +-----+ p  *    |       |    +  s +---- F
+     +--+ m2      |     |      m2 +--+ +--+ a2      |
+     |  +---------+     +---------+  | |  +---------+
+   w |                              x| |y
+     |    +-----+        +-----+     | |     +-----+
+     +----+  9  |        |  5  +-----+ +-----+  32 |
+          +-----+        +-----+             +-----+
+#+end_example
+
+El cálculo por tal red procede de la siguiente manera: Cuando a un conector se le da un valor (por el usuario o por una caja de restricción a la que está vinculado), despierta todas sus restricciones asociadas (excepto la restricción que acaba de despertarlo) para informarles que tiene un valor. Cada caja de restricción despertada luego sondea sus conectores para ver si hay suficiente información para determinar un valor para un conector. Si es así, la caja establece ese conector, que luego despierta todas sus restricciones asociadas, y así sucesivamente. Por ejemplo, en la conversión entre Celsius y Fahrenheit, w, x, e y se establecen inmediatamente por las cajas constantes a 9, 5 y 32, respectivamente. Los conectores despiertan los multiplicadores y el sumador, que determinan que no hay suficiente información para proceder. Si el usuario (o alguna otra parte de la red) establece C a un valor (digamos 25), el multiplicador más a la izquierda será despertado, y establecerá u a 25*9 = 225. Luego u despierta el segundo multiplicador, que establece v a 45, y v despierta el sumador, que establece f a 77.
+
+*Usando el sistema de restricciones*
+
+Para usar el sistema de restricciones para llevar a cabo el cálculo de temperatura descrito anteriormente, primero creamos dos conectores, ~C~ y ~F~, llamando al constructor ~make-connector~, y vinculamos ~C~ y ~F~ en una red apropiada:
+
+#+begin_src scheme
+(define C (make-connector))
+(define F (make-connector))
+(celsius-fahrenheit-converter C F)
+ok
+#+end_src
+
+El procedimiento que crea la red se define de la siguiente manera:
+
+#+begin_src scheme
+(define (celsius-fahrenheit-converter c f)
+  (let ((u (make-connector))
+        (v (make-connector))
+        (w (make-connector))
+        (x (make-connector))
+        (y (make-connector)))
+    (multiplier c w u)
+    (multiplier v x u)
+    (adder v y f)
+    (constant 9 w)
+    (constant 5 x)
+    (constant 32 y)
+    'ok))
+#+end_src
+
+Este procedimiento crea los conectores internos ~u~, ~v~, ~w~, ~x~, e ~y~, y los vincula como se muestra en la [[figure-3.28][Figura 3.28]] usando los constructores de restricción primitivos ~adder~, ~multiplier~ y ~constant~. Al igual que con el simulador de circuitos digitales de la sección [[#section-3.3.4][3.3.4]], expresar estas combinaciones de elementos primitivos en términos de procedimientos proporciona automáticamente a nuestro lenguaje un medio de abstracción para objetos compuestos.
+
+Para ver la red en acción, podemos colocar sondas en los conectores ~C~ y ~F~, usando un procedimiento ~probe~ similar al que usamos para monitorear cables en la sección [[#section-3.3.4][3.3.4]]. Colocar una sonda en un conector hará que se imprima un mensaje cada vez que el conector reciba un valor:
+
+#+begin_src scheme
+(probe "Celsius temp" C)
+(probe "Fahrenheit temp" F)
+#+end_src
+
+A continuación establecemos el valor de ~C~ a 25. (El tercer argumento de ~set-value!~ le dice a ~C~ que esta directiva proviene del ~user~.)
+
+#+begin_src scheme
+(set-value! C 25 'user)
+Probe: Celsius temp = 25
+Probe: Fahrenheit temp = 77
+done
+#+end_src
+
+La sonda en ~C~ despierta e informa el valor. ~C~ también propaga su valor a través de la red como se describió anteriormente. Esto establece ~F~ a 77, que es informado por la sonda en ~F~.
+
+Ahora podemos intentar establecer ~F~ a un nuevo valor, digamos 212:
+
+#+begin_src scheme
+(set-value! F 212 'user)
+Error! Contradiction (77 212)
+#+end_src
+
+El conector se queja de que ha detectado una contradicción: Su valor es 77, y alguien está tratando de establecerlo a 212. Si realmente queremos reutilizar la red con nuevos valores, podemos decirle a ~C~ que olvide su valor antiguo:
+
+#+begin_src scheme
+(forget-value! C 'user)
+Probe: Celsius temp = ?
+Probe: Fahrenheit temp = ?
+done
+#+end_src
+
+~C~ encuentra que el ~user~, quien estableció su valor originalmente, ahora está retractando ese valor, por lo que ~C~ acepta perder su valor, como muestra la sonda, e informa al resto de la red de este hecho. Esta información finalmente se propaga a ~F~, que ahora encuentra que no tiene razón para continuar creyendo que su propio valor es 77. Por lo tanto, ~F~ también renuncia a su valor, como muestra la sonda.
+
+Ahora que ~F~ no tiene valor, somos libres de establecerlo a 212:
+
+#+begin_src scheme
+(set-value! F 212 'user)
+Probe: Fahrenheit temp = 212
+Probe: Celsius temp = 100
+done
+#+end_src
+
+Este nuevo valor, cuando se propaga a través de la red, fuerza a ~C~ a tener un valor de 100, y esto es registrado por la sonda en ~C~. Nota que la misma red se está usando para calcular ~C~ dado ~F~ y para calcular ~F~ dado ~C~. Esta no direccionalidad del cálculo es la característica distintiva de los sistemas basados en restricciones.
+
+*Implementación del sistema de restricciones*
+
+El sistema de restricciones se implementa mediante objetos procedimentales con estado local, de una manera muy similar al simulador de circuitos digitales de la sección [[#section-3.3.4][3.3.4]]. Aunque los objetos primitivos del sistema de restricciones son algo más complejos, el sistema general es más simple, ya que no hay preocupación por las agendas y los retrasos lógicos.
+
+Las operaciones básicas en conectores son las siguientes:
+
+- ~(has-value? <CONNECTOR>)~ indica si el conector tiene un valor.
+
+- ~(get-value <CONNECTOR>)~ devuelve el valor actual del conector.
+
+- ~(set-value! <CONNECTOR> <NEW-VALUE> <INFORMANT>)~ indica que el informante está solicitando al conector que establezca su valor al nuevo valor.
+
+- ~(forget-value! <CONNECTOR> <RETRACTOR>)~ le dice al conector que el retractor le está solicitando que olvide su valor.
+
+- ~(connect <CONNECTOR> <NEW-CONSTRAINT>)~ le dice al conector que participe en la nueva restricción.
+
+Los conectores se comunican con las restricciones por medio de los procedimientos ~inform-about-value~, que le dice a la restricción dada que el conector tiene un valor, e ~inform-about-no-value~, que le dice a la restricción que el conector ha perdido su valor.
+
+~adder~ construye una restricción sumador entre los conectores sumandos ~a1~ y ~a2~ y un conector ~sum~. Un sumador se implementa como un procedimiento con estado local (el procedimiento ~me~ a continuación):
+
+#+begin_src scheme
+(define (adder a1 a2 sum)
+  (define (process-new-value)
+    (cond ((and (has-value? a1) (has-value? a2))
+           (set-value! sum
+                       (+ (get-value a1) (get-value a2))
+                       me))
+          ((and (has-value? a1) (has-value? sum))
+           (set-value! a2
+                       (- (get-value sum) (get-value a1))
+                       me))
+          ((and (has-value? a2) (has-value? sum))
+           (set-value! a1
+                       (- (get-value sum) (get-value a2))
+                       me))))
+  (define (process-forget-value)
+    (forget-value! sum me)
+    (forget-value! a1 me)
+    (forget-value! a2 me)
+    (process-new-value))
+  (define (me request)
+    (cond ((eq? request 'I-have-a-value)
+           (process-new-value))
+          ((eq? request 'I-lost-my-value)
+           (process-forget-value))
+          (else
+           (error "Unknown request - ADDER" request))))
+  (connect a1 me)
+  (connect a2 me)
+  (connect sum me)
+  me)
+#+end_src
+
+~adder~ conecta el nuevo sumador a los conectores designados y lo devuelve como su valor. El procedimiento ~me~, que representa el sumador, actúa como un despachador a los procedimientos locales. Las siguientes "interfaces de sintaxis" (ver nota al pie[fn:27] en la sección [[#section-3.3.4][3.3.4]]) se usan en conjunción con el despachador:
+
+#+begin_src scheme
+(define (inform-about-value constraint)
+  (constraint 'I-have-a-value))
+
+(define (inform-about-no-value constraint)
+  (constraint 'I-lost-my-value))
+#+end_src
+
+El procedimiento local ~process-new-value~ del sumador se llama cuando se informa al sumador que uno de sus conectores tiene un valor. El sumador primero verifica si tanto ~a1~ como ~a2~ tienen valores. Si es así, le dice a ~sum~ que establezca su valor a la suma de los dos sumandos. El argumento ~informant~ de ~set-value!~ es ~me~, que es el objeto sumador mismo. Si ~a1~ y ~a2~ no tienen ambos valores, entonces el sumador verifica si quizás ~a1~ y ~sum~ tienen valores. Si es así, establece ~a2~ a la diferencia de estos dos. Finalmente, si ~a2~ y ~sum~ tienen valores, esto le da al sumador suficiente información para establecer ~a1~. Si se le dice al sumador que uno de sus conectores ha perdido un valor, solicita que todos sus conectores ahora pierdan sus valores. (Solo aquellos valores que fueron establecidos por este sumador se pierden realmente.) Luego ejecuta ~process-new-value~. La razón de este último paso es que uno o más conectores aún pueden tener un valor (es decir, un conector puede haber tenido un valor que no fue establecido originalmente por el sumador), y estos valores pueden necesitar propagarse de vuelta a través del sumador.
+
+Un multiplicador es muy similar a un sumador. Establecerá su ~product~ a 0 si cualquiera de los factores es 0, incluso si el otro factor no se conoce.
+
+#+begin_src scheme
+(define (multiplier m1 m2 product)
+  (define (process-new-value)
+    (cond ((or (and (has-value? m1) (= (get-value m1) 0))
+               (and (has-value? m2) (= (get-value m2) 0)))
+           (set-value! product 0 me))
+          ((and (has-value? m1) (has-value? m2))
+           (set-value! product
+                       (* (get-value m1) (get-value m2))
+                       me))
+          ((and (has-value? product) (has-value? m1))
+           (set-value! m2
+                       (/ (get-value product) (get-value m1))
+                       me))
+          ((and (has-value? product) (has-value? m2))
+           (set-value! m1
+                       (/ (get-value product) (get-value m2))
+                       me))))
+  (define (process-forget-value)
+    (forget-value! product me)
+    (forget-value! m1 me)
+    (forget-value! m2 me)
+    (process-new-value))
+  (define (me request)
+    (cond ((eq? request 'I-have-a-value)
+           (process-new-value))
+          ((eq? request 'I-lost-my-value)
+           (process-forget-value))
+          (else
+           (error "Unknown request - MULTIPLIER" request))))
+  (connect m1 me)
+  (connect m2 me)
+  (connect product me)
+  me)
+#+end_src
+
+Un constructor ~constant~ simplemente establece el valor del conector designado. Cualquier mensaje ~I-have-a-value~ o ~I-lost-my-value~ enviado a la caja constante producirá un error.
+
+#+begin_src scheme
+(define (constant value connector)
+  (define (me request)
+    (error "Unknown request - CONSTANT" request))
+  (connect connector me)
+  (set-value! connector value me)
+  me)
+#+end_src
+
+Finalmente, una sonda imprime un mensaje sobre el establecimiento o desetablecimiento del conector designado:
+
+#+begin_src scheme
+(define (probe name connector)
+  (define (print-probe value)
+    (newline)
+    (display "Probe: ")
+    (display name)
+    (display " = ")
+    (display value))
+  (define (process-new-value)
+    (print-probe (get-value connector)))
+  (define (process-forget-value)
+    (print-probe "?"))
+  (define (me request)
+    (cond ((eq? request 'I-have-a-value)
+           (process-new-value))
+          ((eq? request 'I-lost-my-value)
+           (process-forget-value))
+          (else
+           (error "Unknown request - PROBE" request))))
+  (connect connector me)
+  me)
+#+end_src
+
+*Representación de conectores*
+
+Un conector se representa como un objeto procedimental con variables de estado local ~value~, el valor actual del conector; ~informant~, el objeto que estableció el valor del conector; y ~constraints~, una lista de las restricciones en las que participa el conector.
+
+#+begin_src scheme
+(define (make-connector)
+  (let ((value false) (informant false) (constraints '()))
+    (define (set-my-value newval setter)
+      (cond ((not (has-value? me))
+             (set! value newval)
+             (set! informant setter)
+             (for-each-except setter
+                              inform-about-value
+                              constraints))
+            ((not (= value newval))
+             (error "Contradiction" (list value newval)))
+            (else 'ignored)))
+    (define (forget-my-value retractor)
+      (if (eq? retractor informant)
+          (begin (set! informant false)
+                 (for-each-except retractor
+                                  inform-about-no-value
+                                  constraints))
+          'ignored))
+    (define (connect new-constraint)
+      (if (not (memq new-constraint constraints))
+          (set! constraints
+            (cons new-constraint constraints)))
+      (if (has-value? me)
+          (inform-about-value new-constraint))
+      'done)
+    (define (me request)
+      (cond ((eq? request 'has-value?)
+             (if informant true false))
+            ((eq? request 'value) value)
+            ((eq? request 'set-value!) set-my-value)
+            ((eq? request 'forget) forget-my-value)
+            ((eq? request 'connect) connect)
+            (else (error "Unknown operation - CONNECTOR"
+                         request))))
+    me))
+#+end_src
+
+El procedimiento local ~set-my-value~ del conector se llama cuando hay una solicitud para establecer el valor del conector. Si el conector no tiene actualmente un valor, establecerá su valor y recordará como ~informant~ la restricción que solicitó que se estableciera el valor.[fn:160] Luego el conector notificará a todas sus restricciones participantes excepto la restricción que solicitó que se estableciera el valor. Esto se logra usando el siguiente iterador, que aplica un procedimiento designado a todos los elementos de una lista excepto uno dado:
+
+#+begin_src scheme
+(define (for-each-except exception procedure list)
+  (define (loop items)
+    (cond ((null? items) 'done)
+          ((eq? (car items) exception) (loop (cdr items)))
+          (else (procedure (car items))
+                (loop (cdr items)))))
+  (loop list))
+#+end_src
+
+Si se le pide a un conector que olvide su valor, ejecuta el procedimiento local ~forget-my-value~, que primero verifica para asegurarse de que la solicitud proviene del mismo objeto que estableció el valor originalmente. Si es así, el conector informa a sus restricciones asociadas sobre la pérdida del valor.
+
+El procedimiento local ~connect~ agrega la nueva restricción designada a la lista de restricciones si aún no está en esa lista. Luego, si el conector tiene un valor, informa a la nueva restricción de este hecho.
+
+El procedimiento ~me~ del conector sirve como despachador a los otros procedimientos internos y también representa el conector como un objeto. Los siguientes procedimientos proporcionan una interfaz de sintaxis para el despachador:
+
+#+begin_src scheme
+(define (has-value? connector)
+  (connector 'has-value?))
+
+(define (get-value connector)
+  (connector 'value))
+
+(define (set-value! connector new-value informant)
+  ((connector 'set-value!) new-value informant))
+
+(define (forget-value! connector retractor)
+  ((connector 'forget) retractor))
+
+(define (connect connector new-constraint)
+  ((connector 'connect) new-constraint))
+#+end_src
+
+**** Ejercicio 3.33
+:properties:
+:custom_id: exercise-3.33
+:end:
+
+Usando restricciones primitivas de multiplicador, sumador y constante, define un procedimiento ~averager~ que tome tres conectores ~a~, ~b~ y ~c~ como entradas y establezca la restricción de que el valor de ~c~ es el promedio de los valores de ~a~ y ~b~.
+
+**** Ejercicio 3.34
+:properties:
+:custom_id: exercise-3.34
+:end:
+
+Louis Reasoner quiere construir un elevador al cuadrado, un dispositivo de restricción con dos terminales tal que el valor del conector ~b~ en el segundo terminal siempre será el cuadrado del valor ~a~ en el primer terminal. Propone el siguiente dispositivo simple hecho de un multiplicador:
+
+#+begin_src scheme
+(define (squarer a b)
+  (multiplier a a b))
+#+end_src
+
+Hay un defecto serio en esta idea. Explica.
+
+**** Ejercicio 3.35
+:properties:
+:custom_id: exercise-3.35
+:end:
+
+Ben Bitdiddle le dice a Louis que una forma de evitar el problema en el [[#exercise-3.34][Ejercicio 3.34]] es definir un elevador al cuadrado como una nueva restricción primitiva. Completa las porciones faltantes en el esquema de Ben para un procedimiento para implementar tal restricción:
+
+#+begin_src scheme
+(define (squarer a b)
+  (define (process-new-value)
+    (if (has-value? b)
+        (if (< (get-value b) 0)
+            (error "square less than 0 - SQUARER" (get-value b))
+            <ALTERNATIVE1>)
+        <ALTERNATIVE2>))
+  (define (process-forget-value) <BODY1>)
+  (define (me request) <BODY2>)
+  <REST OF DEFINITION>
+  me)
+#+end_src
+
+**** Ejercicio 3.36
+:properties:
+:custom_id: exercise-3.36
+:end:
+
+Supón que evaluamos la siguiente secuencia de expresiones en el entorno global:
+
+#+begin_src scheme
+(define a (make-connector))
+(define b (make-connector))
+(set-value! a 10 'user)
+#+end_src
+
+En algún momento durante la evaluación del ~set-value!~, se evalúa la siguiente expresión del procedimiento local del conector:
+
+#+begin_src scheme
+(for-each-except setter inform-about-value constraints)
+#+end_src
+
+Dibuja un diagrama de entorno que muestre el entorno en el que se evalúa la expresión anterior.
+
+**** Ejercicio 3.37
+:properties:
+:custom_id: exercise-3.37
+:end:
+
+El procedimiento ~celsius-fahrenheit-converter~ es engorroso en comparación con un estilo de definición más orientado a expresiones, como
+
+#+begin_src scheme
+(define (celsius-fahrenheit-converter x)
+  (c+ (c* (c/ (cv 9) (cv 5))
+          x)
+      (cv 32)))
+
+(define C (make-connector))
+(define F (celsius-fahrenheit-converter C))
+#+end_src
+
+Aquí ~c+~, ~c*~, etc. son las versiones de "restricción" de las operaciones aritméticas. Por ejemplo, ~c+~ toma dos conectores como argumentos y devuelve un conector que está relacionado con estos por una restricción de sumador:
+
+#+begin_src scheme
+(define (c+ x y)
+  (let ((z (make-connector)))
+    (adder x y z)
+    z))
+#+end_src
+
+Define procedimientos análogos ~c-~, ~c*~, ~c/~ y ~cv~ (valor constante) que nos permitan definir restricciones compuestas como en el ejemplo del convertidor anterior.[fn:161]
+
