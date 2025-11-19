@@ -21,8 +21,9 @@ For each part file:
 
 ### Cleanup Command
 ```
-After saving [filename]-castilian.org to sicp-castilian/:
-DELETE ALL intermediate files from assembly-line/ for this filename.
+After saving [filename]-castilian.org to org-castilian/:
+1. DELETE ALL intermediate files from assembly-line/ for this filename
+2. DELETE the original [filename].org from org-castilian/
 This is mandatory.
 ```
 
@@ -94,49 +95,53 @@ After successfully saving `[filename]-castilian.org` to `org-castilian/`:
 **DELETE from `assembly-line/`:**
 - All `[filename]-part#-trans-castilian-2.org` files
 
-The `assembly-line/` directory should be empty for this filename after cleanup.
+**DELETE from `org-castilian/`:**
+- The original `[filename].org` file (without `-castilian` suffix)
+
+The `assembly-line/` directory should be empty for this filename after cleanup, and only `[filename]-castilian.org` should remain in `org-castilian/`.
 
 ## Example Workflow
 
-**Input:** `org-castilian/sicp0.org` (30 blocks total)
+**Input:** `org-castilian/chapter1.org` (30 blocks total)
 
 **After Split:**
 ```
-assembly-line/sicp0-part1.org     (blocks 1-3)
-assembly-line/sicp0-part2.org     (blocks 4-6)
+assembly-line/chapter1-part1.org     (blocks 1-3)
+assembly-line/chapter1-part2.org     (blocks 4-6)
 ...
-assembly-line/sicp0-part10.org    (blocks 28-30)
+assembly-line/chapter1-part10.org    (blocks 28-30)
 ```
 
 **After Step 1:**
 ```
-assembly-line/sicp0-part1-trans-castilian-1.org
+assembly-line/chapter1-part1-trans-castilian-1.org
 ...
 ```
 
 **After Step 2:**
 ```
-assembly-line/sicp0-part1-trans-castilian-2.org
+assembly-line/chapter1-part1-trans-castilian-2.org
 ...
 ```
 
 **After Merge:**
 ```
-sicp-castilian/sicp0-castilian.org
+org-castilian/chapter1-castilian.org
 ```
 
 **After Cleanup:**
 ```
 assembly-line/  (empty)
-sicp-castilian/sicp0-castilian.org  (only this remains)
+org-castilian/chapter1-castilian.org  (only this remains - original chapter1.org is deleted)
+```
 ```
 
 ## Trigger Prompt
 
 ```
-Process the first org file that does NOT have `-castilian` in its filename from sicp-castilian/ through the trans-castilian assembly line.
+Process the first org file that does NOT have `-castilian` in its filename from org-castilian/ through the trans-castilian assembly line.
 
-Follow the instructions in assembly-line/trans-castilian.md.
+Follow the instructions in trans-castilian-sicp.md.
 ```
 
 ## Skills Location
