@@ -1,0 +1,484 @@
+** 2.4 Múltiples representaciones para datos abstractos
+:properties:
+:custom_id: section-2.4
+:end:
+Hemos introducido la abstracción de datos, una metodología para estructurar sistemas de tal manera que gran parte de un programa puede especificarse independientemente de las elecciones involucradas en implementar los objetos de datos que el programa manipula.  Por ejemplo, vimos en la sección [[#section-2.1.1][2.1.1]] cómo separar la tarea de diseñar un programa que usa números racionales de la tarea de implementar números racionales en términos de los mecanismos primitivos del lenguaje de computadora para construir datos compuestos.  La idea clave fue erigir una barrera de abstracción - en este caso, los selectores y constructores para números racionales (~make-rat~, ~numer~, ~denom~)--que aísla la forma en que se usan los números racionales de su representación subyacente en términos de estructura de lista.  Una barrera de abstracción similar aísla los detalles de los procedimientos que realizan aritmética racional (~add-rat~, ~sub-rat~, ~mul-rat~, y ~div-rat~) de los procedimientos de "nivel superior" que usan números racionales.  El programa resultante tiene la estructura mostrada en la [[figure-2.1][Figura 2.1]].
+Estas barreras de abstracción de datos son herramientas poderosas para controlar la complejidad.  Al aislar las representaciones subyacentes de objetos de datos, podemos dividir la tarea de diseñar un programa grande en tareas más pequeñas que pueden realizarse por separado.  Pero este tipo de abstracción de datos aún no es lo suficientemente poderoso, porque puede no tener siempre sentido hablar de "la representación subyacente" para un objeto de datos.
+
+Por un lado, podría haber más de una representación útil para un objeto de datos, y podríamos querer diseñar sistemas que puedan lidiar con múltiples representaciones.  Para tomar un ejemplo simple, los números complejos pueden representarse de dos maneras casi equivalentes: en forma rectangular (partes real e imaginaria) y en forma polar (magnitud y ángulo).  A veces la forma rectangular es más apropiada y a veces la forma polar es más apropiada.  De hecho, es perfectamente plausible imaginar un sistema en el que los números complejos se representan de ambas maneras, y en el que los procedimientos para manipular números complejos funcionan con cualquiera de las dos representaciones.
+Más importante aún, los sistemas de programación a menudo son diseñados por muchas personas trabajando durante períodos prolongados de tiempo, sujetos a requisitos que cambian con el tiempo.  En tal entorno, simplemente no es posible que todos acuerden por adelantado sobre las elecciones de representación de datos.  Así que además de las barreras de abstracción de datos que aíslan la representación del uso, necesitamos barreras de abstracción que aíslen diferentes elecciones de diseño entre sí y permitan que diferentes elecciones coexistan en un solo programa.  Además, dado que los programas grandes a menudo se crean combinando módulos preexistentes que fueron diseñados en aislamiento, necesitamos convenciones que permitan a los programadores incorporar módulos en sistemas más grandes <<i11>> aditivamente, es decir, sin tener que rediseñar o reimplementar estos módulos.
+En esta sección, aprenderemos cómo lidiar con datos que pueden ser representados de diferentes maneras por diferentes partes de un programa.  Esto requiere construir <<i163>> procedimientos genéricos--procedimientos que pueden operar sobre datos que pueden ser representados de más de una manera.  Nuestra técnica principal para construir procedimientos genéricos será trabajar en términos de objetos de datos que tienen <<i406>> etiquetas de tipo, es decir, objetos de datos que incluyen información explícita sobre cómo deben ser procesados.  También discutiremos <<i96>> programación dirigida por datos, una estrategia de implementación poderosa y conveniente para ensamblar aditivamente sistemas con operaciones genéricas.
+
+Comenzamos con el ejemplo simple de números complejos.  Veremos cómo las etiquetas de tipo y el estilo dirigido por datos nos permiten diseñar representaciones rectangulares y polares separadas para números complejos mientras mantenemos la noción de un objeto de datos abstracto "número complejo".  Lograremos esto definiendo procedimientos aritméticos para números complejos (~add-complex~, ~sub-complex~, ~mul-complex~, y ~div-complex~) en términos de selectores genéricos que acceden a partes de un número complejo independientemente de cómo el número esté representado.  El sistema de números complejos resultante, como se muestra en la [[figure-2.19][Figura 2.19]], contiene dos tipos diferentes de barreras de abstracción.  Las barreras de abstracción "horizontales" juegan el mismo papel que las de la [[figure-2.1][Figura 2.1]].  Aíslan las operaciones de "nivel superior" de las representaciones de "nivel inferior".  Además, hay una barrera "vertical" que nos da la capacidad de diseñar e instalar separadamente representaciones alternativas.
+<<figure-2.19>> Barreras de abstracción de datos en el sistema de números complejos.
+#+begin_example
+          Programas que usan números complejos
+   +-------------------------------------------------+
+ --| add-complex sub-complex mul-complex div-complex |--
+   +-------------------------------------------------+
+            Paquete de aritmética compleja
+ ---------------------------+---------------------------
+         Representación      |      Representación
+          rectangular        |         polar
+ ---------------------------+---------------------------
+   Estructura de lista y aritmética de máquina primitiva
+#+end_example
+
+En la sección [[#section-2.5][2.5]] mostraremos cómo usar etiquetas de tipo y estilo dirigido por datos para desarrollar un paquete aritmético genérico.  Esto proporciona procedimientos (~add~, ~mul~, y demás) que pueden usarse para manipular todo tipo de "números" y pueden extenderse fácilmente cuando se necesita un nuevo tipo de número.  En la sección [[#section-2.5.3][2.5.3]], mostraremos cómo usar aritmética genérica en un sistema que realiza álgebra simbólica.
+*** 2.4.1 Representaciones para números complejos
+:properties:
+:custom_id: section-2.4.1
+:end:
+Desarrollaremos un sistema que realiza operaciones aritméticas sobre números complejos como un ejemplo simple pero poco realista de un programa que usa operaciones genéricas.  Comenzamos discutiendo dos representaciones plausibles para números complejos como pares ordenados: forma rectangular (parte real y parte imaginaria) y forma polar (magnitud y ángulo).[fn:109] La sección [[#section-2.4.2][2.4.2]] mostrará cómo ambas representaciones pueden hacerse coexistir en un solo sistema mediante el uso de etiquetas de tipo y operaciones genéricas.
+
+Al igual que los números racionales, los números complejos se representan naturalmente como pares ordenados.  El conjunto de números complejos puede pensarse como un espacio bidimensional con dos ejes ortogonales, el eje "real" y el eje "imaginario".  (Ver [[figure-2.20][Figura 2.20]].)  Desde este punto de vista, el número complejo z = x + iy (donde i^2 = - 1) puede pensarse como el punto en el plano cuya coordenada real es x y cuya coordenada imaginaria es y.  La adición de números complejos se reduce en esta representación a la adición de coordenadas:
+#+begin_example
+ Real-part(z_1 + z_2) = Real-part(z_1) + Real-part(z_2)
+
+ Imaginary-part(z_1 + z_2) = Imaginary-part(z_1) + Imaginary-part(z_2)
+#+end_example
+Al multiplicar números complejos, es más natural pensar en términos de representar un número complejo en forma polar, como una magnitud y un ángulo (r y A en la [[figure-2.20][Figura 2.20]]).  El producto de dos números complejos es el vector obtenido al estirar un número complejo por la longitud del otro y luego rotándolo a través del ángulo del otro:
+
+#+begin_example
+ Magnitude(z_1 * z_2) = Magnitude(z_1) * Magnitude(z_2)
+
+ Angle(z_1 * z_2) = Angle(z_1) + Angle(z_2)
+#+end_example
+<<figure-2.20>> Números complejos como puntos en el plano.
+#+begin_example
+  Imaginario
+     ^
+     |
+   y |.........................* z = x + ?y = r e^(?A)
+     |                    __-- .
+     |                __--     .
+     |          r __--         .
+     |        __--             .
+     |    __-- \               .
+     |__--    A |              .
+ ----+----------+-------------------> Real
+                               x
+#+end_example
+
+Así, hay dos representaciones diferentes para números complejos, que son apropiadas para diferentes operaciones.  Sin embargo, desde el punto de vista de alguien que escribe un programa que usa números complejos, el principio de abstracción de datos sugiere que todas las operaciones para manipular números complejos deberían estar disponibles independientemente de qué representación use la computadora.  Por ejemplo, a menudo es útil poder encontrar la magnitud de un número complejo que está especificado por coordenadas rectangulares.  De manera similar, a menudo es útil poder determinar la parte real de un número complejo que está especificado por coordenadas polares.
+Para diseñar tal sistema, podemos seguir la misma estrategia de abstracción de datos que seguimos al diseñar el paquete de números racionales en la sección [[#section-2.1.1][2.1.1]].  Asumamos que las operaciones sobre números complejos están implementadas en términos de cuatro selectores: ~real-part~, ~imag-part~, ~magnitude~, y ~angle~.  También asumamos que tenemos dos procedimientos para construir números complejos: ~make-from-real-imag~ devuelve un número complejo con partes real e imaginaria especificadas, y ~make-from-mag-ang~ devuelve un número complejo con magnitud y ángulo especificados.  Estos procedimientos tienen la propiedad de que, para cualquier número complejo ~z~, tanto
+#+begin_src scheme
+(make-from-real-imag (real-part z) (imag-part z))
+#+end_src
+
+y
+#+begin_src scheme
+(make-from-mag-ang (magnitude z) (angle z))
+#+end_src
+producen números complejos que son iguales a ~z~.
+
+Usando estos constructores y selectores, podemos implementar aritmética sobre números complejos usando los "datos abstractos" especificados por los constructores y selectores, tal como lo hicimos para números racionales en la sección [[#section-2.1.1][2.1.1]].  Como se muestra en las fórmulas anteriores, podemos sumar y restar números complejos en términos de partes reales e imaginarias mientras multiplicamos y dividimos números complejos en términos de magnitudes y ángulos:
+#+begin_src scheme
+(define (add-complex z1 z2)
+  (make-from-real-imag (+ (real-part z1) (real-part z2))
+                       (+ (imag-part z1) (imag-part z2))))
+
+(define (sub-complex z1 z2)
+  (make-from-real-imag (- (real-part z1) (real-part z2))
+                       (- (imag-part z1) (imag-part z2))))
+
+(define (mul-complex z1 z2)
+  (make-from-mag-ang (* (magnitude z1) (magnitude z2))
+                     (+ (angle z1) (angle z2))))
+
+(define (div-complex z1 z2)
+  (make-from-mag-ang (/ (magnitude z1) (magnitude z2))
+                     (- (angle z1) (angle z2))))
+#+end_src
+Para completar el paquete de números complejos, debemos elegir una representación y debemos implementar los constructores y selectores en términos de números primitivos y estructura de lista primitiva.  Hay dos maneras obvias de hacer esto: Podemos representar un número complejo en "forma rectangular" como un par (parte real, parte imaginaria) o en "forma polar" como un par (magnitud, ángulo).  ¿Cuál deberíamos elegir?
+
+Para hacer las diferentes elecciones concretas, imaginemos que hay dos programadores, Ben Bitdiddle y Alyssa P. Hacker, que están diseñando independientemente representaciones para el sistema de números complejos.  Ben elige representar números complejos en forma rectangular.  Con esta elección, seleccionar las partes reales e imaginarias de un número complejo es directo, al igual que construir un número complejo con partes reales e imaginarias dadas.  Para encontrar la magnitud y el ángulo, o para construir un número complejo con una magnitud y ángulo dados, él usa las relaciones trigonométricas
+#+begin_example
+                       __________
+ x = r cos A     r = ./ x^2 + y^2
+
+ y = r sin A     A = arctan(y,x)
+#+end_example
+que relacionan las partes reales e imaginarias (x, y) con la magnitud y el ángulo (r, A).[fn:110] La representación de Ben está dada por lo tanto por los siguientes selectores y constructores:
+
+#+begin_src scheme
+(define (real-part z) (car z))
+
+(define (imag-part z) (cdr z))
+
+(define (magnitude z)
+  (sqrt (+ (square (real-part z)) (square (imag-part z)))))
+
+(define (angle z)
+  (atan (imag-part z) (real-part z)))
+
+(define (make-from-real-imag x y) (cons x y))
+
+(define (make-from-mag-ang r a)
+  (cons (* r (cos a)) (* r (sin a))))
+#+end_src
+Alyssa, en contraste, elige representar números complejos en forma polar.  Para ella, seleccionar la magnitud y el ángulo es directo, pero ella tiene que usar las relaciones trigonométricas para obtener las partes reales e imaginarias.  La representación de Alyssa es:
+#+begin_src scheme
+(define (real-part z)
+  (* (magnitude z) (cos (angle z))))
+
+(define (imag-part z)
+  (* (magnitude z) (sin (angle z))))
+
+(define (magnitude z) (car z))
+
+(define (angle z) (cdr z))
+
+(define (make-from-real-imag x y)
+  (cons (sqrt (+ (square x) (square y)))
+        (atan y x)))
+
+(define (make-from-mag-ang r a) (cons r a))
+#+end_src
+
+La disciplina de abstracción de datos asegura que la misma implementación de ~add-complex~, ~sub-complex~, ~mul-complex~, y ~div-complex~ funcionará con la representación de Ben o la representación de Alyssa.
+*** 2.4.2 Datos etiquetados
+:properties:
+:custom_id: section-2.4.2
+:end:
+Una manera de ver la abstracción de datos es como una aplicación del "principio de menor compromiso".  Al implementar el sistema de números complejos en la sección [[#section-2.4.1][2.4.1]], podemos usar ya sea la representación rectangular de Ben o la representación polar de Alyssa.  La barrera de abstracción formada por los selectores y constructores nos permite diferir hasta el último momento posible la elección de una representación concreta para nuestros objetos de datos y así retener la máxima flexibilidad en nuestro diseño de sistema.
+
+El principio de menor compromiso puede llevarse a extremos aún mayores.  Si lo deseamos, podemos mantener la ambigüedad de representación incluso /después/ de que hemos diseñado los selectores y constructores, y elegir usar tanto la representación de Ben /como/ la representación de Alyssa.  Si ambas representaciones están incluidas en un solo sistema, sin embargo, necesitaremos alguna manera de distinguir datos en forma polar de datos en forma rectangular.  De lo contrario, si se nos pidiera, por ejemplo, encontrar la ~magnitude~ del par (3,4), no sabríamos si responder 5 (interpretando el número en forma rectangular) o 3 (interpretando el número en forma polar).  Una manera directa de lograr esta distinción es incluir una <<i405>> etiqueta de tipo--el símbolo ~rectangular~ o ~polar~--como parte de cada número complejo.  Luego, cuando necesitemos manipular un número complejo, podemos usar la etiqueta para decidir qué selector aplicar.
+Para manipular datos etiquetados, asumiremos que tenemos procedimientos ~type-tag~ y ~contents~ que extraen de un objeto de datos la etiqueta y el contenido real (las coordenadas polares o rectangulares, en el caso de un número complejo).  También postularemos un procedimiento ~attach-tag~ que toma una etiqueta y contenido y produce un objeto de datos etiquetado.  Una manera directa de implementar esto es usar estructura de lista ordinaria:
+#+begin_src scheme
+(define (attach-tag type-tag contents)
+  (cons type-tag contents))
+
+(define (type-tag datum)
+  (if (pair? datum)
+      (car datum)
+      (error "Bad tagged datum - TYPE-TAG" datum)))
+
+(define (contents datum)
+  (if (pair? datum)
+      (cdr datum)
+      (error "Bad tagged datum - CONTENTS" datum)))
+#+end_src
+
+Usando estos procedimientos, podemos definir predicados ~rectangular?~ y ~polar?~, que reconocen números polares y rectangulares, respectivamente:
+#+begin_src scheme
+(define (rectangular? z)
+  (eq? (type-tag z) 'rectangular))
+
+(define (polar? z)
+  (eq? (type-tag z) 'polar))
+#+end_src
+Con etiquetas de tipo, Ben y Alyssa ahora pueden modificar su código para que sus dos representaciones diferentes puedan coexistir en el mismo sistema.  Cada vez que Ben construye un número complejo, él lo etiqueta como rectangular.  Cada vez que Alyssa construye un número complejo, ella lo etiqueta como polar.  Además, Ben y Alyssa deben asegurarse de que los nombres de sus procedimientos no entren en conflicto.  Una manera de hacer esto es que Ben agregue el sufijo ~rectangular~ al nombre de cada uno de sus procedimientos de representación y que Alyssa agregue ~polar~ a los nombres de los suyos.  Aquí está la representación rectangular revisada de Ben de la sección [[#section-2.4.1][2.4.1]]:
+
+#+begin_src scheme
+(define (real-part-rectangular z) (car z))
+
+(define (imag-part-rectangular z) (cdr z))
+
+(define (magnitude-rectangular z)
+  (sqrt (+ (square (real-part-rectangular z))
+           (square (imag-part-rectangular z)))))
+
+(define (angle-rectangular z)
+  (atan (imag-part-rectangular z)
+        (real-part-rectangular z)))
+
+(define (make-from-real-imag-rectangular x y)
+  (attach-tag 'rectangular (cons x y)))
+
+(define (make-from-mag-ang-rectangular r a)
+  (attach-tag 'rectangular
+              (cons (* r (cos a)) (* r (sin a)))))
+#+end_src
+y aquí está la representación polar revisada de Alyssa:
+#+begin_src scheme
+(define (real-part-polar z)
+  (* (magnitude-polar z) (cos (angle-polar z))))
+
+(define (imag-part-polar z)
+  (* (magnitude-polar z) (sin (angle-polar z))))
+
+(define (magnitude-polar z) (car z))
+
+(define (angle-polar z) (cdr z))
+
+(define (make-from-real-imag-polar x y)
+  (attach-tag 'polar
+              (cons (sqrt (+ (square x) (square y)))
+                    (atan y x))))
+
+(define (make-from-mag-ang-polar r a)
+  (attach-tag 'polar (cons r a)))
+#+end_src
+
+Cada selector genérico está implementado como un procedimiento que verifica la etiqueta de su argumento y llama al procedimiento apropiado para manejar datos de ese tipo.  Por ejemplo, para obtener la parte real de un número complejo, ~real-part~ examina la etiqueta para determinar si usar ~real-part-rectangular~ de Ben o ~real-part-polar~ de Alyssa.  En cualquier caso, usamos ~contents~ para extraer el dato desnudo, sin etiquetar y enviamos esto al procedimiento rectangular o polar según se requiera:
+#+begin_src scheme
+(define (real-part z)
+  (cond ((rectangular? z)
+         (real-part-rectangular (contents z)))
+        ((polar? z)
+         (real-part-polar (contents z)))
+        (else (error "Unknown type - REAL-PART" z))))
+
+(define (imag-part z)
+  (cond ((rectangular? z)
+         (imag-part-rectangular (contents z)))
+        ((polar? z)
+         (imag-part-polar (contents z)))
+        (else (error "Unknown type - IMAG-PART" z))))
+
+(define (magnitude z)
+  (cond ((rectangular? z)
+         (magnitude-rectangular (contents z)))
+        ((polar? z)
+         (magnitude-polar (contents z)))
+        (else (error "Unknown type - MAGNITUDE" z))))
+
+(define (angle z)
+  (cond ((rectangular? z)
+         (angle-rectangular (contents z)))
+        ((polar? z)
+         (angle-polar (contents z)))
+        (else (error "Unknown type - ANGLE" z))))
+#+end_src
+Para implementar las operaciones aritméticas de números complejos, podemos usar los mismos procedimientos ~add-complex~, ~sub-complex~, ~mul-complex~, y ~div-complex~ de la sección [[#section-2.4.1][2.4.1]], porque los selectores que llaman son genéricos, y por lo tanto funcionarán con cualquiera de las dos representaciones.  Por ejemplo, el procedimiento ~add-complex~ sigue siendo
+
+#+begin_src scheme
+(define (add-complex z1 z2)
+  (make-from-real-imag (+ (real-part z1) (real-part z2))
+                       (+ (imag-part z1) (imag-part z2))))
+#+end_src
+Finalmente, debemos elegir si construir números complejos usando la representación de Ben o la representación de Alyssa.  Una elección razonable es construir números rectangulares cada vez que tenemos partes reales e imaginarias y construir números polares cada vez que tenemos magnitudes y ángulos:
+#+begin_src scheme
+(define (make-from-real-imag x y)
+  (make-from-real-imag-rectangular x y))
+
+(define (make-from-mag-ang r a)
+  (make-from-mag-ang-polar r a))
+#+end_src
+
+<<figure-2.21>> Estructura del sistema genérico de aritmética compleja.
+#+begin_example
+     +--------------------------------------------------+
+ ----| add-complex sub-complex mul-complex- div-complex |----
+     +--------------------------------------------------+
+              Paquete de aritmética compleja
+                  +-----------------------+
+                  | real-part   imag-part |
+ -----------------|                       |------------------
+                  | magnitude   angle     |
+                  +-----------+-----------+
+            Representación    |       Representación
+             rectangular      |          polar
+ -----------------------------+------------------------------
+      Estructura de lista y aritmética de máquina primitiva
+#+end_example
+El sistema de números complejos resultante tiene la estructura mostrada en la [[figure-2.21][Figura 2.21]].  El sistema ha sido descompuesto en tres partes relativamente independientes: las operaciones aritméticas de números complejos, la implementación polar de Alyssa, y la implementación rectangular de Ben.  Las implementaciones polar y rectangular podrían haber sido escritas por Ben y Alyssa trabajando por separado, y ambas pueden ser usadas como representaciones subyacentes por un tercer programador implementando los procedimientos de aritmética compleja en términos de la interfaz abstracta de constructor/selector.
+
+Dado que cada objeto de datos está etiquetado con su tipo, los selectores operan sobre los datos de manera genérica.  Es decir, cada selector está definido para tener un comportamiento que depende del tipo particular de datos al que se aplica.  Nótese el mecanismo general para interconectar las representaciones separadas: Dentro de una implementación de representación dada (digamos, el paquete polar de Alyssa) un número complejo es un par sin etiquetar (magnitud, ángulo).  Cuando un selector genérico opera sobre un número de tipo ~polar~, elimina la etiqueta y pasa el contenido al código de Alyssa.  Inversamente, cuando Alyssa construye un número para uso general, ella lo etiqueta con un tipo para que pueda ser reconocido apropiadamente por los procedimientos de nivel superior.  Esta disciplina de eliminar y adjuntar etiquetas a medida que los objetos de datos se pasan de nivel a nivel puede ser una estrategia organizacional importante, como veremos en la sección [[#section-2.5][2.5]].
+*** 2.4.3 Programación dirigida por datos y aditividad
+:properties:
+:custom_id: section-2.4.3
+:end:
+La estrategia general de verificar el tipo de un dato y llamar un procedimiento apropiado se llama <<i114>> despacho por tipo.  Esta es una estrategia poderosa para obtener modularidad en el diseño de sistemas.  Por otro lado, implementar el despacho como en la sección [[#section-2.4.2][2.4.2]] tiene dos debilidades significativas.  Una debilidad es que los procedimientos de interfaz genérica (~real-part~, ~imag-part~, ~magnitude~, y ~angle~) deben conocer todas las diferentes representaciones.  Por ejemplo, supongamos que quisiéramos incorporar una nueva representación para números complejos en nuestro sistema de números complejos.  Necesitaríamos identificar esta nueva representación con un tipo, y luego agregar una cláusula a cada uno de los procedimientos de interfaz genérica para verificar el nuevo tipo y aplicar el selector apropiado para esa representación.
+
+Otra debilidad de la técnica es que aunque las representaciones individuales pueden diseñarse por separado, debemos garantizar que no haya dos procedimientos en todo el sistema con el mismo nombre.  Esta es la razón por la que Ben y Alyssa tuvieron que cambiar los nombres de sus procedimientos originales de la sección [[#section-2.4.1][2.4.1]].
+El problema subyacente a ambas debilidades es que la técnica para implementar interfaces genéricas no es <<i9>> aditiva.  La persona que implementa los procedimientos selectores genéricos debe modificar esos procedimientos cada vez que se instala una nueva representación, y las personas que interconectan las representaciones individuales deben modificar su código para evitar conflictos de nombres.  En cada uno de estos casos, los cambios que deben hacerse al código son directos, pero deben hacerse de todos modos, y esto es una fuente de inconveniencia y error.  Esto no es un gran problema para el sistema de números complejos tal como está, pero supongamos que hubiera no dos sino cientos de representaciones diferentes para números complejos.  Y supongamos que hubiera muchos selectores genéricos para mantener en la interfaz de datos abstractos.  Supongamos, de hecho, que ningún programador conociera todos los procedimientos de interfaz o todas las representaciones.  El problema es real y debe abordarse en programas como sistemas de gestión de bases de datos a gran escala.
+Lo que necesitamos es un medio para modularizar el diseño del sistema aún más.  Esto es proporcionado por la técnica de programación conocida como <<i98>> programación dirigida por datos.  Para entender cómo funciona la programación dirigida por datos, comencemos con la observación de que cada vez que tratamos con un conjunto de operaciones genéricas que son comunes a un conjunto de tipos diferentes, estamos, en efecto, tratando con una tabla bidimensional que contiene las operaciones posibles en un eje y los tipos posibles en el otro eje.  Las entradas en la tabla son los procedimientos que implementan cada operación para cada tipo de argumento presentado.  En el sistema de números complejos desarrollado en la sección anterior, la correspondencia entre nombre de operación, tipo de datos y procedimiento real estaba dispersa entre las diversas cláusulas condicionales en los procedimientos de interfaz genérica.  Pero la misma información podría haber sido organizada en una tabla, como se muestra en la [[figure-2.22][Figura 2.22]].
+
+La programación dirigida por datos es la técnica de diseñar programas para trabajar con tal tabla directamente.  Anteriormente, implementamos el mecanismo que interconecta el código de aritmética compleja con los dos paquetes de representación como un conjunto de procedimientos que cada uno realiza un despacho explícito por tipo.  Aquí implementaremos la interfaz como un solo procedimiento que busca la combinación del nombre de operación y tipo de argumento en la tabla para encontrar el procedimiento correcto a aplicar, y luego lo aplica al contenido del argumento.  Si hacemos esto, entonces para agregar un nuevo paquete de representación al sistema no necesitamos cambiar ningún procedimiento existente; solo necesitamos agregar nuevas entradas a la tabla.
+<<figure-2.22>> Tabla de operaciones para el sistema de números complejos.
+#+begin_example
+            |            Tipos
+ Operaciones| Polar           | Rectangular
+ ===========+=================+======================
+ real-part  | real-part-polar | real-part-rectangular
+ imag-part  | imag-part-polar | imag-part-rectangular
+ magnitude  | magnitude-polar | magnitude-rectangular
+ angle      | angle-polar     | angle-rectangular
+#+end_example
+
+Para implementar este plan, asumamos que tenemos dos procedimientos, ~put~ y ~get~, para manipular la tabla de operación-y-tipo:
+- ~(put <OP> <TYPE> <ITEM>)~ instala el ~<ITEM>~ en la tabla, indexado por el ~<OP>~ y el ~<TYPE>~.
+- ~(get <OP> <TYPE>)~ busca la entrada ~<OP>~, ~<TYPE>~ en la tabla y devuelve el ítem encontrado allí.  Si no se encuentra ningún ítem, ~get~ devuelve falso.
+
+Por ahora, podemos asumir que ~put~ y ~get~ están incluidos en nuestro lenguaje.  En el [[#section-3][Capítulo 3]] (sección [[#section-3.3.3][3.3.3]], [[#exercise-3.24][Ejercicio 3.24]]) veremos cómo implementar estas y otras operaciones para manipular tablas.
+Aquí está cómo la programación dirigida por datos puede usarse en el sistema de números complejos.  Ben, quien desarrolló la representación rectangular, implementa su código tal como lo hizo originalmente.  Él define una colección de procedimientos, o un <<i276>> paquete, e interconecta estos al resto del sistema agregando entradas a la tabla que le dicen al sistema cómo operar sobre números rectangulares.  Esto se logra llamando al siguiente procedimiento:
+#+begin_src scheme
+(define (install-rectangular-package)
+  ;; procedimientos internos
+  (define (real-part z) (car z))
+  (define (imag-part z) (cdr z))
+  (define (make-from-real-imag x y) (cons x y))
+  (define (magnitude z)
+    (sqrt (+ (square (real-part z))
+             (square (imag-part z)))))
+  (define (angle z)
+    (atan (imag-part z) (real-part z)))
+  (define (make-from-mag-ang r a)
+    (cons (* r (cos a)) (* r (sin a))))
+
+  ;; interfaz al resto del sistema
+  (define (tag x) (attach-tag 'rectangular x))
+  (put 'real-part '(rectangular) real-part)
+  (put 'imag-part '(rectangular) imag-part)
+  (put 'magnitude '(rectangular) magnitude)
+  (put 'angle '(rectangular) angle)
+  (put 'make-from-real-imag 'rectangular
+       (lambda (x y) (tag (make-from-real-imag x y))))
+  (put 'make-from-mag-ang 'rectangular
+       (lambda (r a) (tag (make-from-mag-ang r a))))
+  'done)
+#+end_src
+
+Nótese que los procedimientos internos aquí son los mismos procedimientos de la sección [[#section-2.4.1][2.4.1]] que Ben escribió cuando estaba trabajando en aislamiento.  No son necesarios cambios para interconectarlos al resto del sistema.  Además, dado que estas definiciones de procedimiento son internas al procedimiento de instalación, Ben no necesita preocuparse por conflictos de nombres con otros procedimientos fuera del paquete rectangular.  Para interconectar estos al resto del sistema, Ben instala su procedimiento ~real-part~ bajo el nombre de operación ~real-part~ y el tipo ~(rectangular)~, y de manera similar para los otros selectores.[fn:111] La interfaz también define los constructores a ser usados por el sistema externo.[fn:112] Estos son idénticos a los constructores definidos internamente por Ben, excepto que adjuntan la etiqueta.
+El paquete polar de Alyssa es análogo:
+#+begin_src scheme
+(define (install-polar-package)
+  ;; procedimientos internos
+  (define (magnitude z) (car z))
+  (define (angle z) (cdr z))
+  (define (make-from-mag-ang r a) (cons r a))
+  (define (real-part z)
+    (* (magnitude z) (cos (angle z))))
+  (define (imag-part z)
+    (* (magnitude z) (sin (angle z))))
+  (define (make-from-real-imag x y)
+    (cons (sqrt (+ (square x) (square y)))
+          (atan y x)))
+
+  ;; interfaz al resto del sistema
+  (define (tag x) (attach-tag 'polar x))
+  (put 'real-part '(polar) real-part)
+  (put 'imag-part '(polar) imag-part)
+  (put 'magnitude '(polar) magnitude)
+  (put 'angle '(polar) angle)
+  (put 'make-from-real-imag 'polar
+       (lambda (x y) (tag (make-from-real-imag x y))))
+  (put 'make-from-mag-ang 'polar
+       (lambda (r a) (tag (make-from-mag-ang r a))))
+  'done)
+#+end_src
+
+Aunque Ben y Alyssa ambos todavía usan sus procedimientos originales definidos con los mismos nombres que los del otro (por ejemplo, ~real-part~), estas definiciones ahora son internas a diferentes procedimientos (ver sección [[#section-1.1.8][1.1.8]]), así que no hay conflicto de nombres.
+Los selectores de aritmética compleja acceden a la tabla por medio de un procedimiento de "operación" general llamado ~apply-generic~, que aplica una operación genérica a algunos argumentos.  ~apply-generic~ busca en la tabla bajo el nombre de la operación y los tipos de los argumentos y aplica el procedimiento resultante si hay uno presente:[fn:113]
+#+begin_src scheme
+(define (apply-generic op . args)
+  (let ((type-tags (map type-tag args)))
+    (let ((proc (get op type-tags)))
+      (if proc
+          (apply proc (map contents args))
+          (error
+           "No method for these types - APPLY-GENERIC"
+           (list op type-tags))))))
+#+end_src
+
+Usando ~apply-generic~, podemos definir nuestros selectores genéricos como sigue:
+#+begin_src scheme
+(define (real-part z) (apply-generic 'real-part z))
+(define (imag-part z) (apply-generic 'imag-part z))
+(define (magnitude z) (apply-generic 'magnitude z))
+(define (angle z) (apply-generic 'angle z))
+#+end_src
+Obsérvese que estos no cambian en absoluto si se agrega una nueva representación al sistema.
+
+También podemos extraer de la tabla los constructores a ser usados por los programas externos a los paquetes para hacer números complejos a partir de partes reales e imaginarias y a partir de magnitudes y ángulos.  Como en la sección [[#section-2.4.2][2.4.2]], construimos números rectangulares cada vez que tenemos partes reales e imaginarias, y números polares cada vez que tenemos magnitudes y ángulos:
+#+begin_src scheme
+(define (make-from-real-imag x y)
+  ((get 'make-from-real-imag 'rectangular) x y))
+
+(define (make-from-mag-ang r a)
+  ((get 'make-from-mag-ang 'polar) r a))
+#+end_src
+**** Ejercicio 2.73
+:properties:
+:custom_id: exercise-2.73
+:end:
+
+La sección [[#section-2.3.2][2.3.2]] describió un programa que realiza diferenciación simbólica:
+#+begin_src scheme
+(define (deriv exp var)
+  (cond ((number? exp) 0)
+        ((variable? exp) (if (same-variable? exp var) 1 0))
+        ((sum? exp)
+         (make-sum (deriv (addend exp) var)
+                   (deriv (augend exp) var)))
+        ((product? exp)
+         (make-sum
+          (make-product (multiplier exp)
+                        (deriv (multiplicand exp) var))
+          (make-product (deriv (multiplier exp) var)
+                        (multiplicand exp))))
+        <AQUÍ SE PUEDEN AGREGAR MÁS REGLAS>
+        (else (error "unknown expression type - DERIV" exp))))
+#+end_src
+Podemos considerar este programa como realizando un despacho sobre el tipo de la expresión a ser diferenciada.  En esta situación la "etiqueta de tipo" del dato es el símbolo del operador algebraico (tal como ~+~) y la operación que se está realizando es ~deriv~.  Podemos transformar este programa en estilo dirigido por datos reescribiendo el procedimiento básico de derivada como
+
+#+begin_src scheme
+(define (deriv exp var)
+  (cond ((number? exp) 0)
+        ((variable? exp) (if (same-variable? exp var) 1 0))
+        (else ((get 'deriv (operator exp)) (operands exp)
+               var))))
+
+(define (operator exp) (car exp))
+
+(define (operands exp) (cdr exp))
+#+end_src
+a. Explique qué se hizo arriba.  ¿Por qué no podemos asimilar los predicados ~number?~ y ~same-variable?~ en el despacho dirigido por datos?
+b. Escriba los procedimientos para derivadas de sumas y productos, y el código auxiliar requerido para instalarlos en la tabla usada por el programa anterior.
+
+c. Elija cualquier regla de diferenciación adicional que desee, tal como la de exponentes ([[#exercise-2.56][Ejercicio 2.56]]), e instálela en este sistema dirigido por datos.
+d. En este manipulador algebraico simple el tipo de una expresión es el operador algebraico que la une.  Supongamos, sin embargo, que indexamos los procedimientos de la manera opuesta, de modo que la línea de despacho en ~deriv~ se viera como
+#+begin_src scheme
+((get (operator exp) 'deriv) (operands exp) var)
+#+end_src
+
+¿Qué cambios correspondientes al sistema de derivadas se requieren?
+**** Ejercicio 2.74
+:properties:
+:custom_id: exercise-2.74
+:end:
+Insatiable Enterprises, Inc., es una compañía de conglomerado altamente descentralizada que consiste de un gran número de divisiones independientes ubicadas por todo el mundo.  Las instalaciones de computadora de la compañía acaban de ser interconectadas por medio de un esquema inteligente de interfaz de red que hace que toda la red parezca a cualquier usuario ser una sola computadora.  La presidenta de Insatiable, en su primer intento de explotar la capacidad de la red para extraer información administrativa de los archivos de división, se consterna al descubrir que, aunque todos los archivos de división han sido implementados como estructuras de datos en Scheme, la estructura de datos particular usada varía de división a división.  Una reunión de gerentes de división se convoca apresuradamente para buscar una estrategia para integrar los archivos que satisfaga las necesidades de la sede central mientras preserva la autonomía existente de las divisiones.
+
+Muestre cómo tal estrategia puede implementarse con programación dirigida por datos.  Como ejemplo, suponga que los registros de personal de cada división consisten de un solo archivo, que contiene un conjunto de registros indexados por nombres de empleados.  La estructura del conjunto varía de división a división.  Además, el registro de cada empleado es en sí mismo un conjunto (estructurado diferentemente de división a división) que contiene información indexada bajo identificadores tales como ~address~ y ~salary~.  En particular:
+a. Implemente para la sede central un procedimiento ~get-record~ que recupere el registro de un empleado especificado de un archivo de personal especificado.  El procedimiento debería ser aplicable a cualquier archivo de división.  Explique cómo deberían estructurarse los archivos de las divisiones individuales.  En particular, ¿qué información de tipo debe suministrarse?
+b. Implemente para la sede central un procedimiento ~get-salary~ que devuelva la información de salario del registro de un empleado dado de cualquier archivo de personal de división.  ¿Cómo debería estructurarse el registro para hacer que esta operación funcione?
+
+c. Implemente para la sede central un procedimiento ~find-employee-record~.  Este debería buscar en todos los archivos de las divisiones el registro de un empleado dado y devolver el registro.  Asuma que este procedimiento toma como argumentos el nombre de un empleado y una lista de todos los archivos de las divisiones.
+d. Cuando Insatiable toma control de una nueva compañía, ¿qué cambios deben hacerse para incorporar la nueva información de personal en el sistema central?
+*Paso de mensajes*
+
+La idea clave de la programación dirigida por datos es manejar operaciones genéricas en programas tratando explícitamente con tablas de operación-y-tipo, tales como la tabla en la [[figure-2.22][Figura 2.22]].  El estilo de programación que usamos en la sección [[#section-2.4.2][2.4.2]] organizó el despacho requerido por tipo haciendo que cada operación se encargara de su propio despacho.  En efecto, esto descompone la tabla de operación-y-tipo en filas, con cada procedimiento de operación genérica representando una fila de la tabla.
+Una estrategia de implementación alternativa es descomponer la tabla en columnas y, en lugar de usar "operaciones inteligentes" que despachan sobre tipos de datos, trabajar con "objetos de datos inteligentes" que despachan sobre nombres de operación.  Podemos hacer esto arreglando las cosas de modo que un objeto de datos, tal como un número rectangular, esté representado como un procedimiento que toma como entrada el nombre de operación requerido y realiza la operación indicada.  En tal disciplina, ~make-from-real-imag~ podría escribirse como
+#+begin_src scheme
+(define (make-from-real-imag x y)
+  (define (dispatch op)
+    (cond ((eq? op 'real-part) x)
+          ((eq? op 'imag-part) y)
+          ((eq? op 'magnitude)
+           (sqrt (+ (square x) (square y))))
+          ((eq? op 'angle) (atan y x))
+          (else
+           (error "Unknown op - MAKE-FROM-REAL-IMAG" op))))
+  dispatch)
+#+end_src
+
+El procedimiento ~apply-generic~ correspondiente, que aplica una operación genérica a un argumento, ahora simplemente alimenta el nombre de la operación al objeto de datos y deja que el objeto haga el trabajo:[fn:114]
+#+begin_src scheme
+(define (apply-generic op arg) (arg op))
+#+end_src
+Nótese que el valor devuelto por ~make-from-real-imag~ es un procedimiento--el procedimiento ~dispatch~ interno.  Este es el procedimiento que se invoca cuando ~apply-generic~ solicita que se realice una operación.
+
+Este estilo de programación se llama <<i234>> paso de mensajes.  El nombre viene de la imagen de que un objeto de datos es una entidad que recibe el nombre de operación solicitado como un "mensaje".  Ya hemos visto un ejemplo de paso de mensajes en la sección [[#section-2.1.3][2.1.3]], donde vimos cómo ~cons~, ~car~, y ~cdr~ podían definirse sin objetos de datos sino solo procedimientos.  Aquí vemos que el paso de mensajes no es un truco matemático sino una técnica útil para organizar sistemas con operaciones genéricas.  En el resto de este capítulo continuaremos usando programación dirigida por datos, en lugar de paso de mensajes, para discutir operaciones aritméticas genéricas.  En el [[#section-3][Capítulo 3]] volveremos al paso de mensajes, y veremos que puede ser una herramienta poderosa para estructurar programas de simulación.
+**** Ejercicio 2.75
+:properties:
+:custom_id: exercise-2.75
+:end:
+Implemente el constructor ~make-from-mag-ang~ en estilo de paso de mensajes.  Este procedimiento debería ser análogo al procedimiento ~make-from-real-imag~ dado arriba.
+
+**** Ejercicio 2.76
+:properties:
+:custom_id: exercise-2.76
+:end:
+A medida que un sistema grande con operaciones genéricas evoluciona, pueden necesitarse nuevos tipos de objetos de datos o nuevas operaciones.  Para cada una de las tres estrategias--operaciones genéricas con despacho explícito, estilo dirigido por datos, y estilo de paso de mensajes--describa los cambios que deben hacerse a un sistema para agregar nuevos tipos o nuevas operaciones.  ¿Qué organización sería más apropiada para un sistema en el que deben agregarse a menudo nuevos tipos?  ¿Cuál sería más apropiada para un sistema en el que deben agregarse a menudo nuevas operaciones?
