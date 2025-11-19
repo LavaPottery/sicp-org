@@ -45,6 +45,8 @@ This is mandatory.
 - If parts already exist for this file (e.g., `[filename]-part#.org`), skip splitting
 - Only split if no parts exist
 
+**DO NOT USE CODE OR SCRIPTS TO SPLIT FILES. Do the splitting manually using file_create tool for each part.**
+
 **Splitting Process:**
 
 1. **Move** the org file from `org-castilian/` to `assembly-line/`
@@ -149,3 +151,4 @@ Follow the instructions in assembly-line/trans-castilian.md.
 The translation skills are located in the `skills/` directory:
 - `skills/castilian-translation_OPTIMIZED.md`
 - `skills/translate-code-comments_OPTIMIZED.md`
+
