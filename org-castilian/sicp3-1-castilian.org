@@ -1,0 +1,631 @@
+* 3 Modularidad, Objetos y Estado
+:properties:
+:custom_id: section-3
+:end:
+
+
+** Introducción
+:properties:
+:VISIBILITY: notoc
+:end:
+
+#+begin_quote
+[greek not included here]
+
+(Incluso mientras cambia, permanece quieto.)
+
+--Heraclitus
+#+end_quote
+
+
+#+begin_quote
+Plus c,a change, plus c'est la me*me chose.
+
+--Alphonse Karr
+#+end_quote
+
+
+Los capítulos anteriores introdujeron los elementos básicos a partir de los cuales se construyen los programas. Vimos cómo los procedimientos primitivos y los datos primitivos se combinan para construir entidades compuestas, y aprendimos que la abstracción es vital para ayudarnos a lidiar con la complejidad de los sistemas grandes. Pero estas herramientas no son suficientes para diseñar programas. La síntesis efectiva de programas también requiere principios organizativos que puedan guiarnos en la formulación del diseño general de un programa. En particular, necesitamos estrategias que nos ayuden a estructurar sistemas grandes para que sean <<i239>> modulares, es decir, para que puedan dividirse "naturalmente" en partes coherentes que puedan desarrollarse y mantenerse por separado.
+
+Una poderosa estrategia de diseño, que es particularmente apropiada para la construcción de programas que modelan sistemas físicos, es basar la estructura de nuestros programas en la estructura del sistema que se está modelando. Para cada objeto en el sistema, construimos un objeto computacional correspondiente. Para cada acción del sistema, definimos una operación simbólica en nuestro modelo computacional. Nuestra esperanza al usar esta estrategia es que extender el modelo para acomodar nuevos objetos o nuevas acciones no requiera cambios estratégicos en el programa, solo la adición de los nuevos análogos simbólicos de esos objetos o acciones. Si hemos tenido éxito en nuestra organización del sistema, entonces para agregar una nueva característica o depurar una antigua tendremos que trabajar solo en una parte localizada del sistema.
+
+
+En gran medida, entonces, la forma en que organizamos un programa grande está dictada por nuestra percepción del sistema a modelar. En este capítulo investigaremos dos estrategias organizativas prominentes que surgen de dos "visiones del mundo" bastante diferentes de la estructura de los sistemas. La primera estrategia organizativa se concentra en los <<i267>> objetos, viendo un sistema grande como una colección de objetos distintos cuyos comportamientos pueden cambiar con el tiempo. Una estrategia organizativa alternativa se concentra en los <<i369>> flujos de información que fluyen en el sistema, de manera muy similar a como un ingeniero eléctrico ve un sistema de procesamiento de señales.
+
+Tanto el enfoque basado en objetos como el enfoque de procesamiento de flujos plantean importantes cuestiones lingüísticas en programación. Con los objetos, debemos preocuparnos por cómo un objeto computacional puede cambiar y aún así mantener su identidad. Esto nos obligará a abandonar nuestro antiguo modelo de sustitución de computación (sección [[#section-1.1.5][1.1.5]]) en favor de un <<i124>> modelo de entorno de computación más mecanicista pero menos manejable teóricamente. Las dificultades de tratar con objetos, cambio e identidad son una consecuencia fundamental de la necesidad de lidiar con el tiempo en nuestros modelos computacionales. Estas dificultades se hacen aún mayores cuando permitimos la posibilidad de ejecución concurrente de programas. El enfoque de flujos puede explotarse más plenamente cuando desacoplamos el tiempo simulado en nuestro modelo del orden de los eventos que tienen lugar en la computadora durante la evaluación. Lograremos esto usando una técnica conocida como <<i105>> evaluación retardada.
+
+** 3.1 Asignación y Estado Local
+:properties:
+:custom_id: section-3.1
+:end:
+
+
+
+Ordinariamente vemos el mundo como poblado por objetos independientes, cada uno de los cuales tiene un estado que cambia con el tiempo. Se dice que un objeto "tiene estado" si su comportamiento está influenciado por su historia. Una cuenta bancaria, por ejemplo, tiene estado en el sentido de que la respuesta a la pregunta "¿Puedo retirar $100?" depende de la historia de transacciones de depósito y retiro. Podemos caracterizar el estado de un objeto mediante una o más <<i364>> variables de estado, que entre ellas mantienen suficiente información sobre la historia para determinar el comportamiento actual del objeto. En un sistema bancario simple, podríamos caracterizar el estado de una cuenta mediante un saldo actual en lugar de recordar toda la historia de transacciones de la cuenta.
+
+En un sistema compuesto por muchos objetos, los objetos rara vez son completamente independientes. Cada uno puede influir en los estados de otros a través de interacciones, que sirven para acoplar las variables de estado de un objeto a las de otros objetos. De hecho, la visión de que un sistema está compuesto por objetos separados es más útil cuando las variables de estado del sistema pueden agruparse en subsistemas estrechamente acoplados que están solo débilmente acoplados a otros subsistemas.
+
+Esta visión de un sistema puede ser un marco poderoso para organizar modelos computacionales del sistema. Para que tal modelo sea modular, debe descomponerse en objetos computacionales que modelen los objetos reales en el sistema. Cada objeto computacional debe tener sus propias <<i217>> variables de estado locales que describan el estado del objeto real. Dado que los estados de los objetos en el sistema que se está modelando cambian con el tiempo, las variables de estado de los objetos computacionales correspondientes también deben cambiar. Si elegimos modelar el flujo del tiempo en el sistema mediante el tiempo transcurrido en la computadora, entonces debemos tener una forma de construir objetos computacionales cuyos comportamientos cambien a medida que nuestros programas se ejecutan. En particular, si deseamos modelar variables de estado mediante nombres simbólicos ordinarios en el lenguaje de programación, entonces el lenguaje debe proporcionar un <<i24>> operador de asignación para permitirnos cambiar el valor asociado con un nombre.
+
+
+*** 3.1.1 Variables de Estado Locales
+:properties:
+:custom_id: section-3.1.1
+:end:
+
+
+Para ilustrar lo que queremos decir al tener un objeto computacional con estado variable en el tiempo, modelemos la situación de retirar dinero de una cuenta bancaria. Haremos esto usando un procedimiento ~withdraw~, que toma como argumento un ~amount~ a retirar. Si hay suficiente dinero en la cuenta para acomodar el retiro, entonces ~withdraw~ debería devolver el saldo restante después del retiro. De lo contrario, ~withdraw~ debería devolver el mensaje /Fondos insuficientes/. Por ejemplo, si comenzamos con $100 en la cuenta, deberíamos obtener la siguiente secuencia de respuestas usando ~withdraw~:
+
+#+begin_src scheme
+(withdraw 25)
+75
+
+(withdraw 25)
+50
+
+(withdraw 60)
+"Insufficient funds"
+
+(withdraw 15)
+35
+#+end_src
+
+
+Observa que la expresión ~(withdraw 25)~, evaluada dos veces, produce valores diferentes. Este es un nuevo tipo de comportamiento para un procedimiento. Hasta ahora, todos nuestros procedimientos podían verse como especificaciones para calcular funciones matemáticas. Una llamada a un procedimiento calculaba el valor de la función aplicada a los argumentos dados, y dos llamadas al mismo procedimiento con los mismos argumentos siempre producían el mismo resultado.[fn:129]
+
+Para implementar ~withdraw~, podemos usar una variable ~balance~ para indicar el saldo de dinero en la cuenta y definir ~withdraw~ como un procedimiento que accede a ~balance~. El procedimiento ~withdraw~ verifica si ~balance~ es al menos tan grande como el ~amount~ solicitado. Si es así, ~withdraw~ decrementa ~balance~ por ~amount~ y devuelve el nuevo valor de ~balance~. De lo contrario, ~withdraw~ devuelve el mensaje /Fondos insuficientes/. Aquí están las definiciones de ~balance~ y ~withdraw~:
+
+#+begin_src scheme
+(define balance 100)
+
+(define (withdraw amount)
+  (if (>= balance amount)
+      (begin (set! balance (- balance amount))
+             balance)
+      "Insufficient funds"))
+#+end_src
+
+
+Decrementar ~balance~ se logra mediante la expresión
+
+#+begin_src scheme
+(set! balance (- balance amount))
+#+end_src
+
+Esto usa la forma especial ~set!~, cuya sintaxis es
+
+
+#+begin_src scheme
+(set! <NAME> <NEW-VALUE>)
+#+end_src
+
+Aquí <NAME> es un símbolo y <NEW-VALUE> es cualquier expresión. ~set!~ cambia <NAME> de modo que su valor es el resultado obtenido al evaluar <NEW-VALUE>. En el caso que nos ocupa, estamos cambiando ~balance~ de modo que su nuevo valor será el resultado de restar ~amount~ del valor previo de ~balance~.[fn:130]
+
+~withdraw~ también usa la forma especial ~begin~ para causar que dos expresiones sean evaluadas en el caso donde la prueba ~if~ es verdadera: primero decrementando ~balance~ y luego devolviendo el valor de ~balance~. En general, evaluar la expresión
+
+
+#+begin_src scheme
+(begin <EXP_1> <EXP_2> ... <EXP_K>)
+#+end_src
+
+causa que las expresiones <EXP_1> hasta <EXP_K> sean evaluadas en secuencia y el valor de la expresión final <EXP_K> sea devuelto como el valor de toda la forma ~begin~.[fn:131]
+
+Aunque ~withdraw~ funciona como se desea, la variable ~balance~ presenta un problema. Como se especificó anteriormente, ~balance~ es un nombre definido en el entorno global y es libremente accesible para ser examinado o modificado por cualquier procedimiento. Sería mucho mejor si de alguna manera pudiéramos hacer ~balance~ interno a ~withdraw~, de modo que ~withdraw~ fuera el único procedimiento que pudiera acceder a ~balance~ directamente y cualquier otro procedimiento pudiera acceder a ~balance~ solo indirectamente (a través de llamadas a ~withdraw~). Esto modelaría más exactamente la noción de que ~balance~ es una variable de estado local usada por ~withdraw~ para llevar el registro del estado de la cuenta.
+
+
+Podemos hacer ~balance~ interno a ~withdraw~ reescribiendo la definición como sigue:
+
+#+begin_src scheme
+(define new-withdraw
+  (let ((balance 100))
+    (lambda (amount)
+      (if (>= balance amount)
+          (begin (set! balance (- balance amount))
+                 balance)
+          "Insufficient funds"))))
+#+end_src
+
+Lo que hemos hecho aquí es usar ~let~ para establecer un entorno con una variable local ~balance~, ligada al valor inicial 100. Dentro de este entorno local, usamos ~lambda~ para crear un procedimiento que toma ~amount~ como argumento y se comporta como nuestro procedimiento ~withdraw~ anterior. Este procedimiento--devuelto como resultado de evaluar la expresión ~let~--es ~new-withdraw~, que se comporta exactamente de la misma manera que ~withdraw~ pero cuya variable ~balance~ no es accesible por ningún otro procedimiento.[fn:132]
+
+
+Combinar ~set!~ con variables locales es la técnica general de programación que usaremos para construir objetos computacionales con estado local. Desafortunadamente, usar esta técnica plantea un problema grave: Cuando presentamos por primera vez los procedimientos, también presentamos el modelo de evaluación por sustitución (sección [[#section-1.1.5][1.1.5]]) para proporcionar una interpretación de lo que significa la aplicación de un procedimiento. Dijimos que aplicar un procedimiento debería interpretarse como evaluar el cuerpo del procedimiento con los parámetros formales reemplazados por sus valores. El problema es que, tan pronto como introducimos la asignación en nuestro lenguaje, la sustitución ya no es un modelo adecuado de aplicación de procedimientos. (Veremos por qué esto es así en la sección [[#section-3.1.3][3.1.3]].) Como consecuencia, técnicamente no tenemos en este punto ninguna forma de entender por qué el procedimiento ~new-withdraw~ se comporta como se afirma arriba. Para entender realmente un procedimiento como ~new-withdraw~, necesitaremos desarrollar un nuevo modelo de aplicación de procedimientos. En la sección [[#section-3.2][3.2]] presentaremos tal modelo, junto con una explicación de ~set!~ y variables locales. Primero, sin embargo, examinamos algunas variaciones sobre el tema establecido por ~new-withdraw~.
+
+El siguiente procedimiento, ~make-withdraw~, crea "procesadores de retiro". El parámetro formal ~balance~ en ~make-withdraw~ especifica la cantidad inicial de dinero en la cuenta.[fn:133]
+
+#+begin_src scheme
+(define (make-withdraw balance)
+  (lambda (amount)
+    (if (>= balance amount)
+        (begin (set! balance (- balance amount))
+               balance)
+        "Insufficient funds")))
+#+end_src
+
+
+~make-withdraw~ puede usarse de la siguiente manera para crear dos objetos ~W1~ y ~W2~:
+
+#+begin_src scheme
+(define W1 (make-withdraw 100))
+(define W2 (make-withdraw 100))
+
+(W1 50)
+50
+
+(W2 70)
+30
+
+(W2 40)
+"Insufficient funds"
+
+(W1 40)
+10
+#+end_src
+
+Observa que ~W1~ y ~W2~ son objetos completamente independientes, cada uno con su propia variable de estado local ~balance~. Los retiros de uno no afectan al otro.
+
+
+También podemos crear objetos que manejen depósitos además de retiros, y así podemos representar cuentas bancarias simples. Aquí hay un procedimiento que devuelve un "objeto cuenta-bancaria" con un saldo inicial especificado:
+
+#+begin_src scheme
+(define (make-account balance)
+  (define (withdraw amount)
+    (if (>= balance amount)
+        (begin (set! balance (- balance amount))
+               balance)
+        "Insufficient funds"))
+  (define (deposit amount)
+    (set! balance (+ balance amount))
+    balance)
+  (define (dispatch m)
+    (cond ((eq? m 'withdraw) withdraw)
+          ((eq? m 'deposit) deposit)
+          (else (error "Unknown request - MAKE-ACCOUNT"
+                       m))))
+  dispatch)
+#+end_src
+
+Cada llamada a ~make-account~ establece un entorno con una variable de estado local ~balance~. Dentro de este entorno, ~make-account~ define los procedimientos ~deposit~ y ~withdraw~ que acceden a ~balance~ y un procedimiento adicional ~dispatch~ que toma un "mensaje" como entrada y devuelve uno de los dos procedimientos locales. El procedimiento ~dispatch~ mismo es devuelto como el valor que representa el objeto cuenta-bancaria. Este es precisamente el estilo de programación por <<i235>> paso de mensajes que vimos en la sección [[#section-2.4.3][2.4.3]], aunque aquí lo estamos usando en conjunto con la capacidad de modificar variables locales.
+
+
+~make-account~ puede usarse de la siguiente manera:
+
+#+begin_src scheme
+(define acc (make-account 100))
+
+((acc 'withdraw) 50)
+50
+
+((acc 'withdraw) 60)
+"Insufficient funds"
+
+((acc 'deposit) 40)
+90
+
+((acc 'withdraw) 60)
+30
+#+end_src
+
+Cada llamada a ~acc~ devuelve el procedimiento ~deposit~ o ~withdraw~ definido localmente, que luego se aplica al ~amount~ especificado. Como fue el caso con ~make-withdraw~, otra llamada a ~make-account~
+
+
+#+begin_src scheme
+(define acc2 (make-account 100))
+#+end_src
+
+producirá un objeto cuenta completamente separado, que mantiene su propio ~balance~ local.
+
+**** Exercise 3.1
+:properties:
+:custom_id: exercise-3.1
+:end:
+
+
+
+Un <<i6>> acumulador es un procedimiento que se llama repetidamente con un único argumento numérico y acumula sus argumentos en una suma. Cada vez que se llama, devuelve la suma acumulada actualmente. Escribe un procedimiento ~make-accumulator~ que genere acumuladores, cada uno manteniendo una suma independiente. La entrada a ~make-accumulator~ debe especificar el valor inicial de la suma; por ejemplo
+
+#+begin_src scheme
+(define A (make-accumulator 5))
+
+(A 10)
+15
+
+(A 10)
+25
+#+end_src
+
+**** Exercise 3.2
+:properties:
+:custom_id: exercise-3.2
+:end:
+
+
+
+En aplicaciones de prueba de software, es útil poder contar el número de veces que se llama a un procedimiento dado durante el transcurso de un cálculo. Escribe un procedimiento ~make-monitored~ que tome como entrada un procedimiento, ~f~, que a su vez tome una entrada. El resultado devuelto por ~make-monitored~ es un tercer procedimiento, digamos ~mf~, que hace un seguimiento del número de veces que ha sido llamado mediante el mantenimiento de un contador interno. Si la entrada a ~mf~ es el símbolo especial ~how-many-calls?~, entonces ~mf~ devuelve el valor del contador. Si la entrada es el símbolo especial ~reset-count~, entonces ~mf~ reinicia el contador a cero. Para cualquier otra entrada, ~mf~ devuelve el resultado de llamar a ~f~ con esa entrada e incrementa el contador. Por ejemplo, podríamos hacer una versión monitoreada del procedimiento ~sqrt~:
+
+#+begin_src scheme
+(define s (make-monitored sqrt))
+
+(s 100)
+10
+
+(s 'how-many-calls?)
+1
+#+end_src
+
+**** Exercise 3.3
+:properties:
+:custom_id: exercise-3.3
+:end:
+
+
+
+Modifica el procedimiento ~make-account~ para que cree cuentas protegidas por contraseña. Es decir, ~make-account~ debe tomar un símbolo como argumento adicional, como en
+
+#+begin_src scheme
+(define acc (make-account 100 'secret-password))
+#+end_src
+
+El objeto cuenta resultante debe procesar una solicitud solo si está acompañada por la contraseña con la que se creó la cuenta, y de lo contrario debe devolver una queja:
+
+
+#+begin_src scheme
+((acc 'secret-password 'withdraw) 40)
+60
+
+((acc 'some-other-password 'deposit) 50)
+"Incorrect password"
+#+end_src
+
+**** Exercise 3.4
+:properties:
+:custom_id: exercise-3.4
+:end:
+
+
+Modifica el procedimiento ~make-account~ del [[#exercise-3.3][Ejercicio 3.3]] añadiendo otra variable de estado local de modo que, si se accede a una cuenta más de siete veces consecutivas con una contraseña incorrecta, invoque el procedimiento ~call-the-cops~.
+
+
+*** 3.1.2 The Benefits of Introducing Assignment
+:properties:
+:custom_id: section-3.1.2
+:end:
+
+
+Como veremos, introducir la asignación en nuestro lenguaje de programación nos lleva a una maraña de cuestiones conceptuales difíciles. Sin embargo, ver los sistemas como colecciones de objetos con estado local es una técnica poderosa para mantener un diseño modular. Como ejemplo simple, considera el diseño de un procedimiento ~rand~ que, cada vez que se llama, devuelve un entero elegido al azar.
+
+No está nada claro qué se quiere decir con "elegido al azar". Lo que presumiblemente queremos es que las llamadas sucesivas a ~rand~ produzcan una secuencia de números que tenga propiedades estadísticas de distribución uniforme. No discutiremos aquí métodos para generar secuencias adecuadas. Más bien, asumamos que tenemos un procedimiento ~rand-update~ que tiene la propiedad de que si comenzamos con un número dado x_1 y formamos
+
+
+#+begin_src scheme
+ x_2 = (rand-update x_1)
+ x_3 = (rand-update x_2)
+#+end_src
+
+entonces la secuencia de valores x_1, x_2, x_3, ..., tendrá las propiedades estadísticas deseadas.[fn:134]
+
+Podemos implementar ~rand~ como un procedimiento con una variable de estado local ~x~ que se inicializa con un valor fijo ~random-init~.  Cada llamada a ~rand~ calcula ~rand-update~ del valor actual de ~x~, devuelve esto como el número aleatorio, y también almacena esto como el nuevo valor de ~x~.
+
+
+#+begin_src scheme
+(define rand
+  (let ((x random-init))
+    (lambda ()
+      (set! x (rand-update x))
+      x)))
+#+end_src
+
+Por supuesto, podríamos generar la misma secuencia de números aleatorios sin usar asignación simplemente llamando a ~rand-update~ directamente.  Sin embargo, esto significaría que cualquier parte de nuestro programa que usara números aleatorios tendría que recordar explícitamente el valor actual de ~x~ para pasarlo como argumento a ~rand-update~.  Para darse cuenta de qué molestia sería esto, consideremos el uso de números aleatorios para implementar una técnica llamada <<i245>> simulación Monte Carlo.
+
+El método Monte Carlo consiste en elegir experimentos de muestra al azar de un conjunto grande y luego hacer deducciones basándose en las probabilidades estimadas a partir de tabular los resultados de esos experimentos.  Por ejemplo, podemos aproximar \pi usando el hecho de que 6/\pi^2 es la probabilidad de que dos enteros elegidos al azar no tengan factores en común; es decir, que su máximo común divisor sea 1.[fn:135] Para obtener la aproximación a \pi, realizamos un gran número de experimentos.  En cada experimento elegimos dos enteros al azar y realizamos una prueba para ver si su GCD es 1.  La fracción de veces que la prueba se aprueba nos da nuestra estimación de 6/\pi^2, y de esto obtenemos nuestra aproximación a \pi.
+
+
+El corazón de nuestro programa es un procedimiento ~monte-carlo~, que toma como argumentos el número de veces para intentar un experimento, junto con el experimento, representado como un procedimiento sin argumentos que devolverá verdadero o falso cada vez que se ejecute.  ~monte-carlo~ ejecuta el experimento durante el número designado de ensayos y devuelve un número que indica la fracción de ensayos en los que el experimento resultó ser verdadero.
+
+#+begin_src scheme
+(define (estimate-pi trials)
+  (sqrt (/ 6 (monte-carlo trials cesaro-test))))
+
+(define (cesaro-test)
+  (= (gcd (rand) (rand)) 1))
+
+(define (monte-carlo trials experiment)
+  (define (iter trials-remaining trials-passed)
+    (cond ((= trials-remaining 0)
+           (/ trials-passed trials))
+          ((experiment)
+           (iter (- trials-remaining 1) (+ trials-passed 1)))
+          (else
+           (iter (- trials-remaining 1) trials-passed))))
+  (iter trials 0))
+#+end_src
+
+Ahora intentemos el mismo cálculo usando ~rand-update~ directamente en lugar de ~rand~, la forma en que nos veríamos obligados a proceder si no usáramos asignación para modelar estado local:
+
+
+#+begin_src scheme
+(define (estimate-pi trials)
+  (sqrt (/ 6 (random-gcd-test trials random-init))))
+
+(define (random-gcd-test trials initial-x)
+  (define (iter trials-remaining trials-passed x)
+    (let ((x1 (rand-update x)))
+      (let ((x2 (rand-update x1)))
+        (cond ((= trials-remaining 0)
+               (/ trials-passed trials))
+              ((= (gcd x1 x2) 1)
+               (iter (- trials-remaining 1)
+                     (+ trials-passed 1)
+                     x2))
+              (else
+               (iter (- trials-remaining 1)
+                     trials-passed
+                     x2))))))
+  (iter trials 0 initial-x))
+#+end_src
+
+Aunque el programa sigue siendo simple, revela algunas dolorosas violaciones de modularidad.  En nuestra primera versión del programa, usando ~rand~, podemos expresar el método Monte Carlo directamente como un procedimiento ~monte-carlo~ general que toma como argumento un procedimiento ~experiment~ arbitrario.  En nuestra segunda versión del programa, sin estado local para el generador de números aleatorios, ~random-gcd-test~ debe manipular explícitamente los números aleatorios ~x1~ y ~x2~ y reciclar ~x2~ a través del bucle iterativo como la nueva entrada a ~rand-update~.  Este manejo explícito de los números aleatorios entrelaza la estructura de acumular resultados de prueba con el hecho de que nuestro experimento particular usa dos números aleatorios, mientras que otros experimentos Monte Carlo podrían usar un número aleatorio o tres.  Incluso el procedimiento de nivel superior ~estimate-pi~ tiene que preocuparse por proporcionar un número aleatorio inicial.  El hecho de que los internos del generador de números aleatorios se estén filtrando a otras partes del programa hace difícil para nosotros aislar la idea Monte Carlo para que pueda aplicarse a otras tareas.  En la primera versión del programa, la asignación encapsula el estado del generador de números aleatorios dentro del procedimiento ~rand~, de modo que los detalles de generación de números aleatorios permanecen independientes del resto del programa.
+
+El fenómeno general ilustrado por el ejemplo Monte Carlo es este: Desde el punto de vista de una parte de un proceso complejo, las otras partes parecen cambiar con el tiempo.  Tienen estado local oculto que varía con el tiempo.  Si deseamos escribir programas de computadora cuya estructura refleje esta descomposición, hacemos objetos computacionales (como cuentas bancarias y generadores de números aleatorios) cuyo comportamiento cambia con el tiempo.  Modelamos el estado con variables de estado local, y modelamos los cambios de estado con asignaciones a esas variables.
+
+
+Es tentador concluir esta discusión diciendo que, al introducir la asignación y la técnica de ocultar estado en variables locales, somos capaces de estructurar sistemas de una manera más modular que si todo el estado tuviera que ser manipulado explícitamente, pasando parámetros adicionales.  Desafortunadamente, como veremos, la historia no es tan simple.
+
+**** Ejercicio 3.5
+:properties:
+:custom_id: exercise-3.5
+:end:
+
+
+<<i244>> La integración Monte Carlo es un método para estimar integrales definidas mediante simulación Monte Carlo.  Consideremos calcular el área de una región del espacio descrita por un predicado P(x, y) que es verdadero para puntos (x, y) en la región y falso para puntos que no están en la región.  Por ejemplo, la región contenida dentro de un círculo de radio 3 centrado en (5, 7) se describe mediante el predicado que prueba si (x
+- 5)^2 + (y - 7)^2 <= 3^2.  Para estimar el área de la región descrita por tal
+predicado, comenzamos eligiendo un rectángulo que contenga la región.  Por ejemplo, un rectángulo con esquinas diagonalmente opuestas en (2, 4) y (8, 10) contiene el círculo anterior.  La integral deseada es el área de esa porción del rectángulo que se encuentra en la región.  Podemos estimar la integral eligiendo, al azar, puntos (x,y) que se encuentren en el rectángulo, y probando P(x, y) para cada punto para determinar si el punto se encuentra en la región.  Si intentamos esto con muchos puntos, entonces la fracción de puntos que caen en la región debería dar una estimación de la proporción del rectángulo que se encuentra en la región.  Por lo tanto, multiplicar esta fracción por el área de todo el rectángulo debería producir una estimación de la integral.
+
+
+Implementa la integración Monte Carlo como un procedimiento ~estimate-integral~ que tome como argumentos un predicado ~P~, límites superior e inferior ~x1~, ~x2~, ~y1~, y ~y2~ para el rectángulo, y el número de ensayos a realizar para producir la estimación.  Tu procedimiento debe usar el mismo procedimiento ~monte-carlo~ que se usó anteriormente para estimar \pi.  Usa tu ~estimate-integral~ para producir una estimación de \pi midiendo el área de un círculo unitario.
+
+Te resultará útil tener un procedimiento que devuelva un número elegido al azar de un rango dado.  El siguiente procedimiento ~random-in-range~ implementa esto en términos del procedimiento ~random~ usado en la sección [[#section-1.2.6][1.2.6]], que devuelve un número no negativo menor que su entrada.[fn:136]
+
+#+begin_src scheme
+(define (random-in-range low high)
+  (let ((range (- high low)))
+    (+ low (random range))))
+#+end_src
+
+
+**** Ejercicio 3.6
+:properties:
+:custom_id: exercise-3.6
+:end:
+
+
+Es útil poder restablecer un generador de números aleatorios para producir una secuencia que comience desde un valor dado.  Diseña un nuevo procedimiento ~rand~ que se llame con un argumento que sea el símbolo ~generate~ o el símbolo ~reset~ y se comporte de la siguiente manera: ~(rand 'generate)~ produce un nuevo número aleatorio; '((rand 'reset) <NEW-VALUE>)' restablece la variable de estado interna al <NEW-VALUE> designado.  Así, al restablecer el estado, uno puede generar secuencias repetibles.  Estas son muy útiles cuando se prueban y depuran programas que usan números aleatorios.
+
+*** 3.1.3 Los costos de introducir asignación
+:properties:
+:custom_id: section-3.1.3
+:end:
+
+
+
+Como hemos visto, la operación ~set!~ nos permite modelar objetos que tienen estado local.  Sin embargo, esta ventaja tiene un precio.  Nuestro lenguaje de programación ya no puede ser interpretado en términos del modelo de sustitución de aplicación de procedimientos que introdujimos en la sección [[#section-1.1.5][1.1.5]].  Además, ningún modelo simple con propiedades matemáticas "agradables" puede ser un marco adecuado para tratar con objetos y asignación en lenguajes de programación.
+
+Mientras no usemos asignaciones, dos evaluaciones del mismo procedimiento con los mismos argumentos producirán el mismo resultado, de modo que los procedimientos pueden verse como cálculo de funciones matemáticas.  La programación sin uso alguno de asignaciones, como hicimos a lo largo de los primeros dos capítulos de este libro, se conoce en consecuencia como <<i154>> programación funcional.
+
+Para entender cómo la asignación complica las cosas, consideremos una versión simplificada del procedimiento ~make-withdraw~ de la sección [[#section-3.1.1][3.1.1]] que no se molesta en verificar una cantidad insuficiente:
+
+
+#+begin_src scheme
+(define (make-simplified-withdraw balance)
+  (lambda (amount)
+    (set! balance (- balance amount))
+    balance))
+
+(define W (make-simplified-withdraw 25))
+
+(W 20)
+5
+
+(W 10)
+ - 5
+#+end_src
+
+Compara este procedimiento con el siguiente procedimiento ~make-decrementer~, que no usa ~set!~:
+
+#+begin_src scheme
+(define (make-decrementer balance)
+  (lambda (amount)
+    (- balance amount)))
+#+end_src
+
+
+~make-decrementer~ devuelve un procedimiento que resta su entrada de una cantidad designada ~balance~, pero no hay efecto acumulativo sobre llamadas sucesivas, como con ~make-simplified-withdraw~:
+
+#+begin_src scheme
+(define D (make-decrementer 25))
+
+(D 20)
+5
+
+(D 10)
+15
+#+end_src
+
+Podemos usar el modelo de sustitución para explicar cómo funciona ~make-decrementer~.  Por ejemplo, analicemos la evaluación de la expresión
+
+
+#+begin_src scheme
+((make-decrementer 25) 20)
+#+end_src
+
+Primero simplificamos el operador de la combinación sustituyendo 25 por ~balance~ en el cuerpo de ~make-decrementer~. Esto reduce la expresión a
+
+#+begin_src scheme
+((lambda (amount) (- 25 amount)) 20)
+#+end_src
+
+
+Ahora aplicamos el operador sustituyendo 20 por ~amount~ en el cuerpo de la expresión ~lambda~:
+
+#+begin_src scheme
+(- 25 20)
+#+end_src
+
+La respuesta final es 5.
+
+
+Observa, sin embargo, lo que sucede si intentamos un análisis de sustitución similar con ~make-simplified-withdraw~:
+
+#+begin_src scheme
+((make-simplified-withdraw 25) 20)
+#+end_src
+
+Primero simplificamos el operador sustituyendo 25 por ~balance~ en el cuerpo de ~make-simplified-withdraw~. Esto reduce la expresión a[fn:137]
+
+
+#+begin_src scheme
+((lambda (amount) (set! balance (- 25 amount)) 25) 20)
+#+end_src
+
+Ahora aplicamos el operador sustituyendo 20 por ~amount~ en el cuerpo de la expresión ~lambda~:
+
+#+begin_src scheme
+(set! balance (- 25 20)) 25
+#+end_src
+
+
+Si nos adhiriéramos al modelo de sustitución, tendríamos que decir que el significado de la aplicación del procedimiento es primero establecer ~balance~ a 5 y luego devolver 25 como el valor de la expresión. Esto da la respuesta incorrecta. Para obtener la respuesta correcta, tendríamos que distinguir de alguna manera la primera aparición de ~balance~ (antes del efecto del ~set!~) de la segunda aparición de ~balance~ (después del efecto del ~set!~), y el modelo de sustitución no puede hacer esto.
+
+El problema aquí es que la sustitución se basa en última instancia en la noción de que los símbolos en nuestro lenguaje son esencialmente nombres para valores. Pero tan pronto como introducimos ~set!~ y la idea de que el valor de una variable puede cambiar, una variable ya no puede ser simplemente un nombre. Ahora una variable de alguna manera se refiere a un lugar donde se puede almacenar un valor, y el valor almacenado en este lugar puede cambiar. En la sección [[#section-3.2][3.2]] veremos cómo los entornos desempeñan este papel de "lugar" en nuestro modelo computacional.
+
+*Igualdad y cambio*
+
+
+El problema que surge aquí es más profundo que la mera ruptura de un modelo particular de computación. Tan pronto como introducimos cambios en nuestros modelos computacionales, muchas nociones que anteriormente eran directas se vuelven problemáticas. Considera el concepto de dos cosas siendo "lo mismo".
+
+Supongamos que llamamos a ~make-decrementer~ dos veces con el mismo argumento para crear dos procedimientos:
+
+#+begin_src scheme
+(define D1 (make-decrementer 25))
+
+(define D2 (make-decrementer 25))
+#+end_src
+
+
+¿Son ~D1~ y ~D2~ lo mismo? Una respuesta aceptable es sí, porque ~D1~ y ~D2~ tienen el mismo comportamiento computacional: cada uno es un procedimiento que resta su entrada de 25. De hecho, ~D1~ podría sustituirse por ~D2~ en cualquier cálculo sin cambiar el resultado.
+
+Contrasta esto con hacer dos llamadas a ~make-simplified-withdraw~:
+
+#+begin_src scheme
+(define W1 (make-simplified-withdraw 25))
+
+(define W2 (make-simplified-withdraw 25))
+#+end_src
+
+
+¿Son ~W1~ y ~W2~ lo mismo? Seguramente no, porque las llamadas a ~W1~ y ~W2~ tienen efectos distintos, como se muestra en la siguiente secuencia de interacciones:
+
+#+begin_src scheme
+(W1 20)
+5
+
+(W1 20)
+ - 15
+
+(W2 20)
+5
+#+end_src
+
+Aunque ~W1~ y ~W2~ son "iguales" en el sentido de que ambos se crean al evaluar la misma expresión, ~(make-simplified-withdraw 25)~, no es cierto que ~W1~ pueda sustituirse por ~W2~ en cualquier expresión sin cambiar el resultado de evaluar la expresión.
+
+
+Un lenguaje que soporta el concepto de que "lo igual puede ser sustituido por lo igual" en una expresión sin cambiar el valor de la expresión se dice que es <<i329>> referencialmente transparente. La transparencia referencial se viola cuando incluimos ~set!~ en nuestro lenguaje de computación. Esto hace que sea complicado determinar cuándo podemos simplificar expresiones sustituyendo expresiones equivalentes. En consecuencia, razonar sobre programas que usan asignación se vuelve drásticamente más difícil.
+
+Una vez que renunciamos a la transparencia referencial, la noción de lo que significa que los objetos computacionales sean "lo mismo" se vuelve difícil de capturar de manera formal. De hecho, el significado de "lo mismo" en el mundo real que modelan nuestros programas difícilmente es claro en sí mismo. En general, podemos determinar que dos objetos aparentemente idénticos son realmente "el mismo" solo modificando un objeto y luego observando si el otro objeto ha cambiado de la misma manera. Pero ¿cómo podemos saber si un objeto ha "cambiado" excepto observando el "mismo" objeto dos veces y viendo si alguna propiedad del objeto difiere de una observación a la siguiente? Así, no podemos determinar el "cambio" sin alguna noción /a priori/ de "igualdad", y no podemos determinar la igualdad sin observar los efectos del cambio.
+
+Como ejemplo de cómo surge este problema en la programación, considera la situación donde Peter y Paul tienen una cuenta bancaria con $100 en ella. Hay una diferencia sustancial entre modelar esto como
+
+
+#+begin_src scheme
+(define peter-acc (make-account 100))
+(define paul-acc (make-account 100))
+#+end_src
+
+y modelarlo como
+
+#+begin_src scheme
+(define peter-acc (make-account 100))
+(define paul-acc peter-acc)
+#+end_src
+
+
+En la primera situación, las dos cuentas bancarias son distintas. Las transacciones realizadas por Peter no afectarán a la cuenta de Paul, y viceversa. En la segunda situación, sin embargo, hemos definido ~paul-acc~ como /la misma cosa/ que ~peter-acc~. En efecto, Peter y Paul tienen ahora una cuenta bancaria conjunta, y si Peter hace una retirada de ~peter-acc~, Paul observará menos dinero en ~paul-acc~. Estas dos situaciones similares pero distintas pueden causar confusión al construir modelos computacionales. Con la cuenta compartida, en particular, puede ser especialmente confuso que haya un objeto (la cuenta bancaria) que tiene dos nombres diferentes (~peter-acc~ y ~paul-acc~); si estamos buscando todos los lugares en nuestro programa donde ~paul-acc~ puede ser cambiado, debemos recordar mirar también las cosas que cambian ~peter-acc~.[fn:138]
+
+Con referencia a las observaciones anteriores sobre "mismidad" y "cambio", observa que si Peter y Paul solo pudieran examinar los saldos de sus cuentas bancarias, y no pudieran realizar operaciones que cambiaran el saldo, entonces la cuestión de si las dos cuentas son distintas sería irrelevante. En general, mientras nunca modifiquemos objetos de datos, podemos considerar que un objeto de datos compuesto es precisamente la totalidad de sus piezas. Por ejemplo, un número racional está determinado al dar su numerador y su denominador. Pero esta visión ya no es válida en presencia de cambio, donde un objeto de datos compuesto tiene una "identidad" que es algo diferente de las piezas de las que está compuesto. Una cuenta bancaria sigue siendo "la misma" cuenta bancaria incluso si cambiamos el saldo al hacer una retirada; a la inversa, podríamos tener dos cuentas bancarias diferentes con la misma información de estado. Esta complicación es una consecuencia, no de nuestro lenguaje de programación, sino de nuestra percepción de una cuenta bancaria como un objeto. No consideramos, por ejemplo, ordinariamente un número racional como un objeto cambiable con identidad, de tal manera que pudiéramos cambiar el numerador y aún tener "el mismo" número racional.
+
+*Peligros de la programación imperativa*
+
+
+En contraste con la programación funcional, la programación que hace un uso extensivo de la asignación se conoce como programación <<i179>> imperativa. Además de plantear complicaciones sobre los modelos computacionales, los programas escritos en estilo imperativo son susceptibles a errores que no pueden ocurrir en programas funcionales. Por ejemplo, recuerda el programa iterativo de factorial de la sección [[#section-1.2.1][1.2.1]]:
+
+#+begin_src scheme
+(define (factorial n)
+  (define (iter product counter)
+    (if (> counter n)
+        product
+        (iter (* counter product)
+              (+ counter 1))))
+  (iter 1 1))
+#+end_src
+
+En lugar de pasar argumentos en el bucle iterativo interno, podríamos adoptar un estilo más imperativo usando asignación explícita para actualizar los valores de las variables ~product~ y ~counter~:
+
+
+#+begin_src scheme
+(define (factorial n)
+  (let ((product 1)
+        (counter 1))
+    (define (iter)
+      (if (> counter n)
+          product
+          (begin (set! product (* counter product))
+                 (set! counter (+ counter 1))
+                 (iter))))
+    (iter)))
+#+end_src
+
+Esto no cambia los resultados producidos por el programa, pero sí introduce una trampa sutil. ¿Cómo decidimos el orden de las asignaciones? Casualmente, el programa es correcto tal como está escrito. Pero escribir las asignaciones en el orden opuesto
+
+#+begin_src scheme
+(set! counter (+ counter 1))
+(set! product (* counter product))
+#+end_src
+
+
+habría producido un resultado diferente e incorrecto. En general, la programación con asignación nos obliga a considerar cuidadosamente los órdenes relativos de las asignaciones para asegurarnos de que cada sentencia está usando la versión correcta de las variables que han sido cambiadas. Este problema simplemente no surge en los programas funcionales.[fn:139]
+
+La complejidad de los programas imperativos se vuelve aún peor si consideramos aplicaciones en las que varios procesos se ejecutan concurrentemente. Volveremos a esto en la sección [[#section-3.4][3.4]]. Primero, sin embargo, abordaremos el problema de proporcionar un modelo computacional para expresiones que involucran asignación, y exploraremos los usos de objetos con estado local en el diseño de simulaciones.
+
+**** Exercise 3.7
+:properties:
+:custom_id: exercise-3.7
+:end:
+
+
+
+Considera los objetos de cuenta bancaria creados por ~make-account~, con la modificación de contraseña descrita en [[#exercise-3.3][Exercise 3.3]]. Supón que nuestro sistema bancario requiere la capacidad de crear cuentas conjuntas. Define un procedimiento ~make-joint~ que logre esto. ~make-joint~ debe tomar tres argumentos. El primero es una cuenta protegida por contraseña. El segundo argumento debe coincidir con la contraseña con la que se definió la cuenta para que la operación ~make-joint~ pueda proceder. El tercer argumento es una nueva contraseña. ~make-joint~ debe crear un acceso adicional a la cuenta original usando la nueva contraseña. Por ejemplo, si ~peter-acc~ es una cuenta bancaria con contraseña ~open-sesame~, entonces
+
+#+begin_src scheme
+(define paul-acc
+  (make-joint peter-acc 'open-sesame 'rosebud))
+#+end_src
+
+permitirá realizar transacciones en ~peter-acc~ usando el nombre ~paul-acc~ y la contraseña ~rosebud~. Puede que desees modificar tu solución al [[#exercise-3.3][Exercise 3.3]] para acomodar esta nueva característica
+
+**** Exercise 3.8
+:properties:
+:custom_id: exercise-3.8
+:end:
+
+
+Cuando definimos el modelo de evaluación en la sección [[#section-1.1.3][1.1.3]], dijimos que el primer paso en evaluar una expresión es evaluar sus subexpresiones. Pero nunca especificamos el orden en que las subexpresiones deben ser evaluadas (por ejemplo, de izquierda a derecha o de derecha a izquierda). Cuando introducimos la asignación, el orden en que los argumentos de un procedimiento son evaluados puede hacer una diferencia en el resultado. Define un procedimiento simple ~f~ tal que evaluar ~(+ (f 0) (f 1))~ retorne 0 si los argumentos de ~+~ son evaluados de izquierda a derecha pero retorne 1 si los argumentos son evaluados de derecha a izquierda.
+
