@@ -65,6 +65,7 @@ This is mandatory.
    - 1 block left → go back, split last 4 blocks into 2+2 instead
    - 2 blocks left → save as final part with 2 blocks
 5. **Delete** the original file from `assembly-line/` after splitting
+6. **Git commit immediately** - commit all part files to prevent data loss
 
 **IMPORTANT**: Original file is deleted from `org-castilian/` when processing begins and only returns (with `-castilian` suffix) when fully complete.
 
@@ -77,18 +78,21 @@ This is mandatory.
 2. Apply skill: `castilian-translation_OPTIMIZED.md`
 3. Save result as: `[filename]-part#-trans-castilian-1.org`
 4. Delete `[filename]-part#.org`
+5. **Git commit immediately** - commit the translation to prevent data loss
 
 **Step 2: Code Comment Translation**
 1. Read `[filename]-part#-trans-castilian-1.org`
 2. Apply skill: `translate-code-comments_OPTIMIZED.md`
 3. Save result as: `[filename]-part#-trans-castilian-2.org`
 4. Delete `[filename]-part#-trans-castilian-1.org`
+5. **Git commit immediately** - commit the completed part to prevent data loss
 
 ### Post-Processing: Merge and Finalize
 
 1. **Concatenate** all `[filename]-part#-trans-castilian-2.org` files in numerical order (part1, part2, part3...)
 2. **Ensure proper spacing** between merged parts (blank line between parts)
 3. **Save** final result to: `org-castilian/[filename]-castilian.org`
+4. **Git commit immediately** - commit the final merged file to prevent data loss
 
 ### Cleanup (MANDATORY)
 
@@ -99,6 +103,8 @@ After successfully saving `[filename]-castilian.org` to `org-castilian/`:
 
 **DELETE from `org-castilian/`:**
 - The original `[filename].org` file (without `-castilian` suffix)
+
+**Git commit immediately** - commit the cleanup to prevent data loss
 
 The `assembly-line/` directory should be empty for this filename after cleanup, and only `[filename]-castilian.org` should remain in `org-castilian/`.
 
@@ -151,4 +157,3 @@ Follow the instructions in assembly-line/trans-castilian.md.
 The translation skills are located in the `skills/` directory:
 - `skills/castilian-translation_OPTIMIZED.md`
 - `skills/translate-code-comments_OPTIMIZED.md`
-
