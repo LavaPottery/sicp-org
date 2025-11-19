@@ -1,4 +1,4 @@
-# Trans-Castilian Assembly Line (SICP Edition)
+# Trans-Castilian Assembly Line
 
 ## DIRECT COMMANDS - READ THIS FIRST
 
@@ -141,7 +141,7 @@ org-castilian/chapter1-castilian.org  (only this remains - original chapter1.org
 ```
 Process the first org file that does NOT have `-castilian` in its filename from org-castilian/ through the trans-castilian assembly line.
 
-Follow the instructions in trans-castilian-sicp.md.
+Follow the instructions in assembly-line/trans-castilian.md.
 ```
 
 ## Skills Location
