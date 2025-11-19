@@ -1,0 +1,881 @@
+** 1.3 Formulación de Abstracciones con Procedimientos de Orden Superior
+:properties:
+:custom_id: section-1.3
+:end:
+
+Hemos visto que los procedimientos son, en efecto, abstracciones que describen operaciones compuestas sobre números independientemente de los números particulares. Por ejemplo, cuando
+
+#+begin_src scheme
+(define (cube x) (* x x x))
+#+end_src
+
+no estamos hablando del cubo de un número en particular, sino más bien de un método para obtener el cubo de cualquier número. Por supuesto, podríamos arreglárnoslas sin definir nunca este procedimiento, escribiendo siempre expresiones como
+
+#+begin_src scheme
+(* 3 3 3)
+(* x x x)
+(* y y y)
+#+end_src
+
+y nunca mencionando ~cube~ explícitamente. Esto nos colocaría en una seria desventaja, obligándonos a trabajar siempre al nivel de las operaciones particulares que resultan ser primitivas en el lenguaje (multiplicación, en este caso) en lugar de en términos de operaciones de nivel superior. Nuestros programas serían capaces de calcular cubos, pero nuestro lenguaje carecería de la capacidad de expresar el concepto de elevar al cubo. Una de las cosas que deberíamos exigir de un lenguaje de programación potente es la capacidad de construir abstracciones asignando nombres a patrones comunes y luego trabajar en términos de las abstracciones directamente. Los procedimientos proporcionan esta capacidad. Por esta razón, todos los lenguajes de programación, excepto los más primitivos, incluyen mecanismos para definir procedimientos.
+
+Sin embargo, incluso en el procesamiento numérico estaremos gravemente limitados en nuestra capacidad de crear abstracciones si nos restringimos a procedimientos cuyos parámetros deben ser números. A menudo, el mismo patrón de programación se utilizará con varios procedimientos diferentes. Para expresar tales patrones como conceptos, necesitaremos construir procedimientos que puedan aceptar procedimientos como argumentos o devolver procedimientos como valores. Los procedimientos que manipulan procedimientos se llaman <<i177>> procedimientos de orden superior. Esta sección muestra cómo los procedimientos de orden superior pueden servir como poderosos mecanismos de abstracción, aumentando enormemente el poder expresivo de nuestro lenguaje.
+
+*** 1.3.1 Procedimientos como Argumentos
+:properties:
+:custom_id: section-1.3.1
+:end:
+
+Consideremos los siguientes tres procedimientos. El primero calcula la suma de los enteros desde ~a~ hasta ~b~:
+
+#+begin_src scheme
+(define (sum-integers a b)
+  (if (> a b)
+      0
+      (+ a (sum-integers (+ a 1) b))))
+#+end_src
+
+El segundo calcula la suma de los cubos de los enteros en el rango dado:
+
+#+begin_src scheme
+(define (sum-cubes a b)
+  (if (> a b)
+      0
+      (+ (cube a) (sum-cubes (+ a 1) b))))
+#+end_src
+
+El tercero calcula la suma de una secuencia de términos en la serie
+
+#+begin_example
+   1       1       1
+ ----- + ----- + ------ + ...
+ 1 * 3   5 * 7   9 * 11
+#+end_example
+
+que converge a \pi/8 (muy lentamente):[fn:49]
+
+#+begin_src scheme
+(define (pi-sum a b)
+  (if (> a b)
+      0
+      (+ (/ 1.0 (* a (+ a 2))) (pi-sum (+ a 4) b))))
+#+end_src
+
+Estos tres procedimientos claramente comparten un patrón subyacente común. Son en su mayor parte idénticos, difiriendo solo en el nombre del procedimiento, la función de ~a~ usada para calcular el término a añadir, y la función que proporciona el siguiente valor de ~a~. Podríamos generar cada uno de los procedimientos rellenando espacios en la misma plantilla:
+
+#+begin_src scheme
+(define (<NAME> a b)
+  (if (> a b)
+      0
+      (+ (<TERM> a)
+         (<NAME> (<NEXT> a) b))))
+#+end_src
+
+La presencia de tal patrón común es una fuerte evidencia de que hay una abstracción útil esperando a ser sacada a la superficie. De hecho, los matemáticos identificaron hace mucho tiempo la abstracción de <<i378>> sumatorio de una serie e inventaron "notación sigma", por ejemplo
+
+#+begin_example
+  b
+ ---
+ >    f(n) = f(a) + ... + f(b)
+ ---
+ n=a
+#+end_example
+
+para expresar este concepto. El poder de la notación sigma es que permite a los matemáticos tratar con el concepto de sumatorio en sí mismo en lugar de solo con sumas particulares--por ejemplo, formular resultados generales sobre sumas que son independientes de la serie particular que se está sumando.
+
+De manera similar, como diseñadores de programas, nos gustaría que nuestro lenguaje fuera lo suficientemente potente para que podamos escribir un procedimiento que exprese el concepto de sumatorio en sí mismo en lugar de solo procedimientos que calculen sumas particulares. Podemos hacerlo fácilmente en nuestro lenguaje procedimental tomando la plantilla común mostrada arriba y transformando los "espacios" en parámetros formales:
+
+#+begin_src scheme
+(define (sum term a next b)
+  (if (> a b)
+      0
+      (+ (term a)
+         (sum term (next a) next b))))
+#+end_src
+
+Observa que ~sum~ toma como sus argumentos los límites inferior y superior ~a~ y ~b~ junto con los procedimientos ~term~ y ~next~. Podemos usar ~sum~ igual que usaríamos cualquier procedimiento. Por ejemplo, podemos usarlo (junto con un procedimiento ~inc~ que incrementa su argumento en 1) para definir ~sum-cubes~:
+
+#+begin_src scheme
+(define (inc n) (+ n 1))
+
+(define (sum-cubes a b)
+  (sum cube a inc b))
+#+end_src
+
+Usando esto, podemos calcular la suma de los cubos de los enteros del 1 al 10:
+
+#+begin_src scheme
+(sum-cubes 1 10)
+3025
+#+end_src
+
+Con la ayuda de un procedimiento identidad para calcular el término, podemos definir ~sum-integers~ en términos de ~sum~:
+
+#+begin_src scheme
+(define (identity x) x)
+
+(define (sum-integers a b)
+  (sum identity a inc b))
+#+end_src
+
+Luego podemos sumar los enteros del 1 al 10:
+
+#+begin_src scheme
+(sum-integers 1 10)
+55
+#+end_src
+
+También podemos definir ~pi-sum~ de la misma manera:[fn:50]
+
+#+begin_src scheme
+(define (pi-sum a b)
+  (define (pi-term x)
+    (/ 1.0 (* x (+ x 2))))
+  (define (pi-next x)
+    (+ x 4))
+  (sum pi-term a pi-next b))
+#+end_src
+
+Usando estos procedimientos, podemos calcular una aproximación a \pi:
+
+#+begin_src scheme
+(* 8 (pi-sum 1 1000))
+3.139592655589783
+#+end_src
+
+Una vez que tenemos ~sum~, podemos usarlo como un bloque de construcción para formular más conceptos. Por ejemplo, la integral definida de una función f entre los límites a y b puede aproximarse numéricamente usando la fórmula
+
+#+begin_example
+ /b     /  /     dx \    /          dx \    /           dx \      \
+ |  f = | f| a + -- | + f| a + dx + -- | + f| a + 2dx + -- | + ...| dx
+ /a     \  \     2  /    \          2  /    \           2  /      /
+#+end_example
+
+para valores pequeños de dx. Podemos expresar esto directamente como un procedimiento:
+
+#+begin_src scheme
+(define (integral f a b dx)
+  (define (add-dx x) (+ x dx))
+  (* (sum f (+ a (/ dx 2.0)) add-dx b)
+     dx))
+
+(integral cube 0 1 0.01)
+.24998750000000042
+
+(integral cube 0 1 0.001)
+.249999875000001
+#+end_src
+
+(El valor exacto de la integral de ~cube~ entre 0 y 1 es 1/4.)
+
+**** Ejercicio 1.29
+:properties:
+:custom_id: exercise-1.29
+:end:
+
+La Regla de Simpson es un método más preciso de integración numérica que el método ilustrado arriba. Usando la Regla de Simpson, la integral de una función f entre a y b se aproxima como
+
+#+begin_example
+ h
+ - (y_0 + 4y_1 + 2y_2 + 4y_3 + 2y_4 + ... + 2y_(n-2) + 4y_(n-1) + y_n)
+ 3
+#+end_example
+
+donde h = (b - a)/n, para algún entero par n, e y_k = f(a + kh). (Incrementar n aumenta la precisión de la aproximación.) Define un procedimiento que tome como argumentos f, a, b y n y devuelva el valor de la integral, calculado usando la Regla de Simpson. Usa tu procedimiento para integrar ~cube~ entre 0 y 1 (con n = 100 y n = 1000), y compara los resultados con los del procedimiento ~integral~ mostrado arriba.
+
+**** Ejercicio 1.30
+:properties:
+:custom_id: exercise-1.30
+:end:
+
+El procedimiento ~sum~ de arriba genera una recursión lineal. El procedimiento puede reescribirse para que la suma se realice iterativamente. Muestra cómo hacer esto rellenando las expresiones que faltan en la siguiente definición:
+
+#+begin_src scheme
+(define (sum term a next b)
+  (define (iter a result)
+    (if <??>
+        <??>
+        (iter <??> <??>)))
+  (iter <??> <??>))
+#+end_src
+
+**** Ejercicio 1.31
+:properties:
+:custom_id: exercise-1.31
+:end:
+
+a. El procedimiento ~sum~ es solo la más simple de una vasta cantidad de abstracciones similares que pueden capturarse como procedimientos de orden superior.[fn:51] Escribe un procedimiento análogo llamado ~product~ que devuelva el producto de los valores de una función en puntos sobre un rango dado. Muestra cómo definir ~factorial~ en términos de ~product~. También usa ~product~ para calcular aproximaciones a \pi usando la fórmula[fn:52]
+
+#+begin_example
+ pi   2 * 4 * 4 * 6 * 6 * 8 ...
+ -- = ---------------------
+  4   3 * 3 * 5 * 5 * 7 * 7 ...
+#+end_example
+
+b. Si tu procedimiento ~product~ genera un proceso recursivo, escribe uno que genere un proceso iterativo. Si genera un proceso iterativo, escribe uno que genere un proceso recursivo.
+
+**** Ejercicio 1.32
+:properties:
+:custom_id: exercise-1.32
+:end:
+
+a. Muestra que ~sum~ y ~product~ ([[#exercise-1.31][Ejercicio 1.31]]) son ambos casos especiales de una noción aún más general llamada ~accumulate~ que combina una colección de términos, usando alguna función de acumulación general:
+
+#+begin_src scheme
+(accumulate combiner null-value term a next b)
+#+end_src
+
+~accumulate~ toma como argumentos las mismas especificaciones de término y rango que ~sum~ y ~product~, junto con un procedimiento ~combiner~ (de dos argumentos) que especifica cómo el término actual debe combinarse con la acumulación de los términos precedentes y un ~null-value~ que especifica qué valor base usar cuando los términos se agoten. Escribe ~accumulate~ y muestra cómo ~sum~ y ~product~ pueden definirse como simples llamadas a ~accumulate~.
+
+b. Si tu procedimiento ~accumulate~ genera un proceso recursivo, escribe uno que genere un proceso iterativo. Si genera un proceso iterativo, escribe uno que genere un proceso recursivo.
+
+**** Ejercicio 1.33
+:properties:
+:custom_id: exercise-1.33
+:end:
+
+Puedes obtener una versión aún más general de ~accumulate~ ([[#exercise-1.32][Ejercicio 1.32]]) introduciendo la noción de un <<i137>> filtro sobre los términos a combinar. Es decir, combinar solo aquellos términos derivados de valores en el rango que satisfacen una condición especificada. La abstracción ~filtered-accumulate~ resultante toma los mismos argumentos que accumulate, junto con un predicado adicional de un argumento que especifica el filtro. Escribe ~filtered-accumulate~ como un procedimiento. Muestra cómo expresar lo siguiente usando ~filtered-accumulate~:
+
+a. la suma de los cuadrados de los números primos en el intervalo a a b (asumiendo que ya tienes un predicado ~prime?~ escrito)
+
+b. el producto de todos los enteros positivos menores que n que son relativamente primos con n (es decir, todos los enteros positivos i < n tales que GCD(i,n) = 1).
+
+*** 1.3.2 Construcción de Procedimientos Usando Lambda
+:properties:
+:custom_id: section-1.3.2
+:end:
+
+Al usar ~sum~ como en la sección [[#section-1.3.1][1.3.1]], parece terriblemente incómodo tener que definir procedimientos triviales como ~pi-term~ y ~pi-next~ solo para poder usarlos como argumentos de nuestro procedimiento de orden superior. En lugar de definir ~pi-next~ y ~pi-term~, sería más conveniente tener una forma de especificar directamente "el procedimiento que devuelve su entrada incrementada en 4" y "el procedimiento que devuelve el recíproco de su entrada por su entrada más 2." Podemos hacer esto introduciendo la forma especial ~lambda~, que crea procedimientos. Usando ~lambda~ podemos describir lo que queremos como
+
+#+begin_src scheme
+(lambda (x) (+ x 4))
+#+end_src
+
+y
+
+#+begin_src scheme
+(lambda (x) (/ 1.0 (* x (+ x 2))))
+#+end_src
+
+Entonces nuestro procedimiento ~pi-sum~ puede expresarse sin definir ningún procedimiento auxiliar como
+
+#+begin_src scheme
+(define (pi-sum a b)
+  (sum (lambda (x) (/ 1.0 (* x (+ x 2))))
+       a
+       (lambda (x) (+ x 4))
+       b))
+#+end_src
+
+De nuevo usando ~lambda~, podemos escribir el procedimiento ~integral~ sin tener que definir el procedimiento auxiliar ~add-dx~:
+
+#+begin_src scheme
+(define (integral f a b dx)
+  (* (sum f
+          (+ a (/ dx 2.0))
+          (lambda (x) (+ x dx))
+          b)
+     dx))
+#+end_src
+
+En general, ~lambda~ se usa para crear procedimientos de la misma manera que ~define~, excepto que no se especifica ningún nombre para el procedimiento:
+
+#+begin_src scheme
+(lambda (<FORMAL-PARAMETERS>) <BODY>)
+#+end_src
+
+El procedimiento resultante es tanto un procedimiento como uno que se crea usando ~define~. La única diferencia es que no se ha asociado con ningún nombre en el entorno. De hecho,
+
+#+begin_src scheme
+(define (plus4 x) (+ x 4))
+#+end_src
+
+es equivalente a
+
+#+begin_src scheme
+(define plus4 (lambda (x) (+ x 4)))
+#+end_src
+
+Podemos leer una expresión ~lambda~ como sigue:
+
+#+begin_src scheme
+(lambda                     (x)     (+   x     4))
+    |                        |       |   |     |
+el procedimiento de un argumento x que suma x y 4
+#+end_src
+
+Como cualquier expresión que tiene un procedimiento como su valor, una expresión ~lambda~ puede usarse como el operador en una combinación tal como
+
+#+begin_src scheme
+((lambda (x y z) (+ x y (square z))) 1 2 3)
+12
+#+end_src
+
+o, más generalmente, en cualquier contexto donde normalmente usaríamos un nombre de procedimiento.[fn:53]
+
+*Usando ~let~ para crear variables locales*
+
+Otro uso de ~lambda~ es en la creación de variables locales. A menudo necesitamos variables locales en nuestros procedimientos además de aquellas que han sido vinculadas como parámetros formales. Por ejemplo, supongamos que deseamos calcular la función
+
+#+begin_example
+ f(x,y) = x(1 + xy)^2 + y(1 - y) + (1 + xy)(1 - y)
+#+end_example
+
+que también podríamos expresar como
+
+#+begin_example
+      a = 1 + xy
+      b = 1 - y
+ f(x,y) = xa^2 + yb + ab
+#+end_example
+
+Al escribir un procedimiento para calcular f, nos gustaría incluir como variables locales no solo x e y sino también los nombres de cantidades intermedias como a y b. Una forma de lograr esto es usar un procedimiento auxiliar para vincular las variables locales:
+
+#+begin_src scheme
+(define (f x y)
+  (define (f-helper a b)
+    (+ (* x (square a))
+       (* y b)
+       (* a b)))
+  (f-helper (+ 1 (* x y))
+            (- 1 y)))
+#+end_src
+
+Por supuesto, podríamos usar una expresión ~lambda~ para especificar un procedimiento anónimo para vincular nuestras variables locales. El cuerpo de ~f~ entonces se convierte en una sola llamada a ese procedimiento:
+
+#+begin_src scheme
+(define (f x y)
+  ((lambda (a b)
+     (+ (* x (square a))
+        (* y b)
+        (* a b)))
+   (+ 1 (* x y))
+   (- 1 y)))
+#+end_src
+
+Esta construcción es tan útil que hay una forma especial llamada ~let~ para hacer su uso más conveniente. Usando ~let~, el procedimiento ~f~ podría escribirse como
+
+#+begin_src scheme
+(define (f x y)
+  (let ((a (+ 1 (* x y)))
+        (b (- 1 y)))
+    (+ (* x (square a))
+       (* y b)
+       (* a b))))
+#+end_src
+
+La forma general de una expresión ~let~ es
+
+#+begin_src scheme
+(let ((<VAR1> <EXP1>)
+      (<VAR2> <EXP2>)
+      ...
+      (<VARN> <VARN>))
+  <BODY>)
+#+end_src
+
+que puede pensarse como diciendo
+
+#+begin_example
+ sea <VAR_1> con el valor <EXP_1> y
+     <VAR_2> con el valor <EXP_2> y
+     ...
+     <VAR_N> con el valor <EXP_N>
+ en  <BODY>
+#+end_example
+
+La primera parte de la expresión ~let~ es una lista de pares nombre-expresión. Cuando se evalúa el ~let~, cada nombre se asocia con el valor de la expresión correspondiente. El cuerpo del ~let~ se evalúa con estos nombres vinculados como variables locales. La forma en que esto sucede es que la expresión ~let~ se interpreta como una sintaxis alternativa para
+
+#+begin_src scheme
+((lambda (<VAR_1> ... <VAR_N>)
+   <BODY>)
+ <EXP_1>
+ ...
+ <EXP_N>)
+#+end_src
+
+No se requiere ningún mecanismo nuevo en el intérprete para proporcionar variables locales. Una expresión ~let~ es simplemente azúcar sintáctico para la aplicación ~lambda~ subyacente.
+
+Podemos ver de esta equivalencia que el alcance de una variable especificada por una expresión ~let~ es el cuerpo del ~let~. Esto implica que:
+
+- ~Let~ permite vincular variables tan localmente como sea posible a donde van a ser usadas. Por ejemplo, si el valor de ~x~ es 5, el valor de la expresión
+
+#+begin_src scheme
+(+ (let ((x 3))
+     (+ x (* x 10)))
+   x)
+#+end_src
+
+es 38. Aquí, la ~x~ en el cuerpo del ~let~ es 3, por lo que el valor de la expresión ~let~ es 33. Por otro lado, la ~x~ que es el segundo argumento del ~+~ más externo sigue siendo 5.
+
+- Los valores de las variables se calculan fuera del ~let~. Esto importa cuando las expresiones que proporcionan los valores para las variables locales dependen de variables que tienen los mismos nombres que las variables locales mismas. Por ejemplo, si el valor de ~x~ es 2, la expresión
+
+#+begin_src scheme
+(let ((x 3)
+      (y (+ x 2)))
+  (* x y))
+#+end_src
+
+tendrá el valor 12 porque, dentro del cuerpo del ~let~, ~x~ será 3 e ~y~ será 4 (que es la ~x~ externa más 2).
+
+A veces podemos usar definiciones internas para obtener el mismo efecto que con ~let~. Por ejemplo, podríamos haber definido el procedimiento ~f~ arriba como
+
+#+begin_src scheme
+(define (f x y)
+  (define a (+ 1 (* x y)))
+  (define b (- 1 y))
+  (+ (* x (square a))
+     (* y b)
+     (* a b)))
+#+end_src
+
+Preferimos, sin embargo, usar ~let~ en situaciones como esta y usar ~define~ interno solo para procedimientos internos.[fn:54]
+
+**** Ejercicio 1.34
+:properties:
+:custom_id: exercise-1.34
+:end:
+
+Supongamos que definimos el procedimiento
+
+#+begin_src scheme
+(define (f g)
+  (g 2))
+#+end_src
+
+Entonces tenemos
+
+#+begin_src scheme
+(f square)
+4
+
+(f (lambda (z) (* z (+ z 1))))
+6
+#+end_src
+
+¿Qué sucede si (perversamente) pedimos al intérprete que evalúe la combinación ~(f f)~? Explica.
+
+*** 1.3.3 Procedimientos como Métodos Generales
+:properties:
+:custom_id: section-1.3.3
+:end:
+
+Introdujimos procedimientos compuestos en la sección [[#section-1.1.4][1.1.4]] como un mecanismo para abstraer patrones de operaciones numéricas para hacerlos independientes de los números particulares involucrados. Con procedimientos de orden superior, como el procedimiento ~integral~ de la sección [[#section-1.3.1][1.3.1]], comenzamos a ver un tipo más poderoso de abstracción: procedimientos usados para expresar métodos generales de computación, independientes de las funciones particulares involucradas. En esta sección discutimos dos ejemplos más elaborados--métodos generales para encontrar ceros y puntos fijos de funciones--y mostramos cómo estos métodos pueden expresarse directamente como procedimientos.
+
+*Encontrar raíces de ecuaciones mediante el método del intervalo medio*
+
+El <<i171>> método del intervalo medio es una técnica simple pero poderosa para encontrar raíces de una ecuación f(x) = 0, donde f es una función continua. La idea es que, si nos dan puntos a y b tales que f(a) < 0 < f(b), entonces f debe tener al menos un cero entre a y b. Para localizar un cero, sea x el promedio de a y b y calculemos f(x). Si f(x) > 0, entonces f debe tener un cero entre a y x. Si f(x) < 0, entonces f debe tener un cero entre x y b. Continuando de esta manera, podemos identificar intervalos cada vez más pequeños en los que f debe tener un cero. Cuando alcanzamos un punto donde el intervalo es lo suficientemente pequeño, el proceso se detiene. Dado que el intervalo de incertidumbre se reduce a la mitad en cada paso del proceso, el número de pasos requeridos crece como \theta(log( L/T)), donde L es la longitud del intervalo original y T es la tolerancia de error (es decir, el tamaño del intervalo que consideraremos "suficientemente pequeño"). Aquí hay un procedimiento que implementa esta estrategia:
+
+#+begin_src scheme
+(define (search f neg-point pos-point)
+  (let ((midpoint (average neg-point pos-point)))
+    (if (close-enough? neg-point pos-point)
+        midpoint
+        (let ((test-value (f midpoint)))
+          (cond ((positive? test-value)
+                 (search f neg-point midpoint))
+                ((negative? test-value)
+                 (search f midpoint pos-point))
+                (else midpoint))))))
+#+end_src
+
+Asumimos que inicialmente se nos da la función f junto con puntos en los que sus valores son negativos y positivos. Primero calculamos el punto medio de los dos puntos dados. Luego verificamos si el intervalo dado es lo suficientemente pequeño, y si es así simplemente devolvemos el punto medio como nuestra respuesta. De lo contrario, calculamos como valor de prueba el valor de f en el punto medio. Si el valor de prueba es positivo, entonces continuamos el proceso con un nuevo intervalo que va desde el punto negativo original hasta el punto medio. Si el valor de prueba es negativo, continuamos con el intervalo desde el punto medio hasta el punto positivo. Finalmente, existe la posibilidad de que el valor de prueba sea 0, en cuyo caso el punto medio es en sí mismo la raíz que estamos buscando.
+
+Para probar si los extremos están "suficientemente cerca" podemos usar un procedimiento similar al usado en la sección [[#section-1.1.7][1.1.7]] para calcular raíces cuadradas:[fn:55]
+
+#+begin_src scheme
+(define (close-enough? x y)
+  (< (abs (- x y)) 0.001))
+#+end_src
+
+~search~ es incómodo de usar directamente, porque podemos darle accidentalmente puntos en los que los valores de f no tienen el signo requerido, en cuyo caso obtenemos una respuesta incorrecta. En su lugar, usaremos ~search~ a través del siguiente procedimiento, que verifica cuál de los extremos tiene un valor de función negativo y cuál tiene un valor positivo, y llama al procedimiento ~search~ en consecuencia. Si la función tiene el mismo signo en los dos puntos dados, el método del intervalo medio no se puede usar, en cuyo caso el procedimiento señala un error.[fn:56]
+
+#+begin_src scheme
+(define (half-interval-method f a b)
+  (let ((a-value (f a))
+        (b-value (f b)))
+    (cond ((and (negative? a-value) (positive? b-value))
+           (search f a b))
+          ((and (negative? b-value) (positive? a-value))
+           (search f b a))
+          (else
+           (error "Values are not of opposite sign" a b)))))
+#+end_src
+
+El siguiente ejemplo usa el método del intervalo medio para aproximar \pi como la raíz entre 2 y 4 de ~sin~ x = 0:
+
+#+begin_src scheme
+(half-interval-method sin 2.0 4.0)
+3.14111328125
+#+end_src
+
+Aquí hay otro ejemplo, usando el método del intervalo medio para buscar una raíz de la ecuación x^3 - 2x - 3 = 0 entre 1 y 2:
+
+#+begin_src scheme
+(half-interval-method (lambda (x) (- (* x x x) (* 2 x) 3))
+                      1.0
+                      2.0)
+1.89306640625
+#+end_src
+
+*Encontrar puntos fijos de funciones*
+
+Un número x se llama <<i140>> punto fijo de una función f si x satisface la ecuación f(x) = x. Para algunas funciones f podemos localizar un punto fijo comenzando con una conjetura inicial y aplicando f repetidamente,
+
+#+begin_example
+ f(x), f(f(x), (f(f(f(x))))
+#+end_example
+
+hasta que el valor no cambie mucho. Usando esta idea, podemos idear un procedimiento ~fixed-point~ que tome como entradas una función y una conjetura inicial y produzca una aproximación a un punto fijo de la función. Aplicamos la función repetidamente hasta que encontremos dos valores sucesivos cuya diferencia sea menor que alguna tolerancia prescrita:
+
+#+begin_src scheme
+(define tolerance 0.00001)
+
+(define (fixed-point f first-guess)
+  (define (close-enough? v1 v2)
+    (< (abs (- v1 v2)) tolerance))
+  (define (try guess)
+    (let ((next (f guess)))
+      (if (close-enough? guess next)
+          next
+          (try next))))
+  (try first-guess))
+#+end_src
+
+Por ejemplo, podemos usar este método para aproximar el punto fijo de la función coseno, comenzando con 1 como una aproximación inicial:[fn:57]
+
+#+begin_src scheme
+(fixed-point cos 1.0)
+.7390822985224023
+#+end_src
+
+De manera similar, podemos encontrar una solución a la ecuación y = ~sin~ y + ~cos~ y:
+
+#+begin_src scheme
+(fixed-point (lambda (y) (+ (sin y) (cos y)))
+             1.0)
+1.2587315962971173
+#+end_src
+
+El proceso de punto fijo recuerda al proceso que usamos para encontrar raíces cuadradas en la sección [[#section-1.1.7][1.1.7]]. Ambos se basan en la idea de mejorar repetidamente una conjetura hasta que el resultado satisfaga algún criterio. De hecho, podemos formular fácilmente el cálculo de la raíz cuadrada como una búsqueda de punto fijo. Calcular la raíz cuadrada de algún número x requiere encontrar una y tal que y^2 = x. Poniendo esta ecuación en la forma equivalente y = x/y, reconocemos que estamos buscando un punto fijo de la función[fn:58] y |-> x/y, y por lo tanto podemos intentar calcular raíces cuadradas como
+
+#+begin_src scheme
+(define (sqrt x)
+  (fixed-point (lambda (y) (/ x y))
+               1.0))
+#+end_src
+
+Desafortunadamente, esta búsqueda de punto fijo no converge. Considera una conjetura inicial y_1. La siguiente conjetura es y_2 = x/y_1 y la siguiente conjetura es y_3 = x/y_2 = x/(x/y_1) = y_1. Esto resulta en un bucle infinito en el que las dos conjeturas y_1 e y_2 se repiten una y otra vez, oscilando alrededor de la respuesta.
+
+Una forma de controlar tales oscilaciones es evitar que las conjeturas cambien tanto. Dado que la respuesta está siempre entre nuestra conjetura y y x/y, podemos hacer una nueva conjetura que no esté tan lejos de y como x/y promediando y con x/y, de modo que la siguiente conjetura después de y sea (1/2)(y + x/y) en lugar de x/y. El proceso de hacer tal secuencia de conjeturas es simplemente el proceso de buscar un punto fijo de y |-> (1/2)(y + x/y):
+
+#+begin_src scheme
+(define (sqrt x)
+  (fixed-point (lambda (y) (average y (/ x y)))
+               1.0))
+#+end_src
+
+(Observa que y = (1/2)(y + x/y) es una transformación simple de la ecuación y = x/y; para derivarla, suma y a ambos lados de la ecuación y divide por 2.)
+
+Con esta modificación, el procedimiento de raíz cuadrada funciona. De hecho, si desenrollamos las definiciones, podemos ver que la secuencia de aproximaciones a la raíz cuadrada generada aquí es precisamente la misma que la generada por nuestro procedimiento original de raíz cuadrada de la sección [[#section-1.1.7][1.1.7]]. Este enfoque de promediar aproximaciones sucesivas a una solución, una técnica que llamamos <<i27>> amortiguamiento promedio, a menudo ayuda a la convergencia de búsquedas de punto fijo.
+
+**** Ejercicio 1.35
+:properties:
+:custom_id: exercise-1.35
+:end:
+
+Muestra que la proporción áurea \phi (sección [[#section-1.2.2][1.2.2]]) es un punto fijo de la transformación x |-> 1 + 1/x, y usa este hecho para calcular \phi por medio del procedimiento ~fixed-point~.
+
+**** Ejercicio 1.36
+:properties:
+:custom_id: exercise-1.36
+:end:
+
+Modifica ~fixed-point~ para que imprima la secuencia de aproximaciones que genera, usando las primitivas ~newline~ y ~display~ mostradas en [[#exercise-1.22][Ejercicio 1.22]]. Luego encuentra una solución a x^x = 1000 encontrando un punto fijo de x |-> log(1000)/log(x). (Usa el procedimiento primitivo ~log~ de Scheme, que calcula logaritmos naturales.) Compara el número de pasos que esto toma con y sin amortiguamiento promedio. (Nota que no puedes empezar ~fixed-point~ con una conjetura de 1, ya que esto causaría una división por log(1) = 0.)
+
+**** Ejercicio 1.37
+:properties:
+:custom_id: exercise-1.37
+:end:
+
+a. Una <<i85>> fracción continua infinita es una expresión de la forma
+
+#+begin_example
+            N_1
+ f = ---------------------
+                N_2
+     D_1 + ---------------
+                    N_3
+           D_2 + ---------
+                 D_3 + ...
+#+end_example
+
+Como ejemplo, se puede mostrar que la expansión de fracción continua infinita con los n_i y los D_i todos iguales a 1 produce 1/\phi, donde \phi es la proporción áurea (descrita en la sección [[#section-1.2.2][1.2.2]]). Una forma de aproximar una fracción continua infinita es truncar la expansión después de un número dado de términos. Tal truncamiento--una llamada <<i200>> fracción continua finita de k términos--tiene la forma
+
+#+begin_example
+        N_1
+ -----------------
+           N_2
+ D_1 + -----------
+       ...    N_K
+           + -----
+              D_K
+#+end_example
+
+Supongamos que ~n~ y ~d~ son procedimientos de un argumento (el índice de término i) que devuelven los n_i y D_i de los términos de la fracción continua. Define un procedimiento ~cont-frac~ tal que evaluar ~(cont-frac n d k)~ calcule el valor de la fracción continua finita de k términos. Verifica tu procedimiento aproximando 1/\phi usando
+
+#+begin_src scheme
+(cont-frac (lambda (i) 1.0)
+           (lambda (i) 1.0)
+           k)
+#+end_src
+
+para valores sucesivos de ~k~. ¿Qué tan grande debes hacer ~k~ para obtener una aproximación que sea precisa a 4 decimales?
+
+b. Si tu procedimiento ~cont-frac~ genera un proceso recursivo, escribe uno que genere un proceso iterativo. Si genera un proceso iterativo, escribe uno que genere un proceso recursivo.
+
+**** Ejercicio 1.38
+:properties:
+:custom_id: exercise-1.38
+:end:
+
+En 1737, el matemático suizo Leonhard Euler publicó una memoria 'De Fractionibus Continuis', que incluía una expansión de fracción continua para e - 2, donde e es la base de los logaritmos naturales. En esta fracción, los n_i son todos 1, y los D_i son sucesivamente 1, 2, 1, 1, 4, 1, 1, 6, 1, 1, 8, .... Escribe un programa que use tu procedimiento ~cont-frac~ del [[#exercise-1.37][Ejercicio 1.37]] para aproximar e, basado en la expansión de Euler.
+
+**** Ejercicio 1.39
+:properties:
+:custom_id: exercise-1.39
+:end:
+
+Una representación de fracción continua de la función tangente fue publicada en 1770 por el matemático alemán J.H. Lambert:
+
+#+begin_example
+               x
+ tan x = ---------------
+                 x^2
+         1 - -----------
+                   x^2
+             3 - -------
+                 5 - ...
+#+end_example
+
+donde x está en radianes. Define un procedimiento ~(tan-cf x k)~ que calcule una aproximación a la función tangente basada en la fórmula de Lambert. ~k~ especifica el número de términos a calcular, como en [[#exercise-1.37][Ejercicio 1.37]].
+
+*** 1.3.4 Procedimientos como Valores Devueltos
+:properties:
+:custom_id: section-1.3.4
+:end:
+
+Los ejemplos anteriores demuestran cómo la capacidad de pasar procedimientos como argumentos mejora significativamente el poder expresivo de nuestro lenguaje de programación. Podemos lograr aún más poder expresivo creando procedimientos cuyos valores devueltos son en sí mismos procedimientos.
+
+Podemos ilustrar esta idea mirando de nuevo el ejemplo de punto fijo descrito al final de la sección [[#section-1.3.3][1.3.3]]. Formulamos una nueva versión del procedimiento de raíz cuadrada como una búsqueda de punto fijo, comenzando con la observación de que [sqrt]x es un punto fijo de la función y |-> x/y. Luego usamos amortiguamiento promedio para hacer que las aproximaciones converjan. El amortiguamiento promedio es una técnica general útil en sí misma. A saber, dada una función f, consideramos la función cuyo valor en x es igual al promedio de x y f(x).
+
+Podemos expresar la idea del amortiguamiento promedio por medio del siguiente procedimiento:
+
+#+begin_src scheme
+(define (average-damp f)
+  (lambda (x) (average x (f x))))
+#+end_src
+
+~average-damp~ es un procedimiento que toma como su argumento un procedimiento ~f~ y devuelve como su valor un procedimiento (producido por el ~lambda~) que, cuando se aplica a un número ~x~, produce el promedio de ~x~ y ~(f x)~. Por ejemplo, aplicar ~average-damp~ al procedimiento ~square~ produce un procedimiento cuyo valor en algún número x es el promedio de x y x^2. Aplicar este procedimiento resultante a 10 devuelve el promedio de 10 y 100, o 55:[fn:59]
+
+#+begin_src scheme
+((average-damp square) 10)
+55
+#+end_src
+
+Usando ~average-damp~, podemos reformular el procedimiento de raíz cuadrada como sigue:
+
+#+begin_src scheme
+(define (sqrt x)
+  (fixed-point (average-damp (lambda (y) (/ x y)))
+               1.0))
+#+end_src
+
+Observa cómo esta formulación hace explícitas las tres ideas en el método: búsqueda de punto fijo, amortiguamiento promedio, y la función y |-> x/y. Es instructivo comparar esta formulación del método de raíz cuadrada con la versión original dada en la sección [[#section-1.1.7][1.1.7]]. Ten en cuenta que estos procedimientos expresan el mismo proceso, y observa cuánto más clara se vuelve la idea cuando expresamos el proceso en términos de estas abstracciones. En general, hay muchas formas de formular un proceso como un procedimiento. Los programadores experimentados saben cómo elegir formulaciones procedimentales que son particularmente perspicuas, y donde elementos útiles del proceso se exponen como entidades separadas que pueden reutilizarse en otras aplicaciones. Como un ejemplo simple de reutilización, observa que la raíz cúbica de x es un punto fijo de la función y |-> x/y^2, por lo que podemos generalizar inmediatamente nuestro procedimiento de raíz cuadrada a uno que extrae raíces cúbicas:[fn:60]
+
+#+begin_src scheme
+(define (cube-root x)
+  (fixed-point (average-damp (lambda (y) (/ x (square y))))
+               1.0))
+#+end_src
+
+*Método de Newton*
+
+Cuando introdujimos por primera vez el procedimiento de raíz cuadrada, en la sección [[#section-1.1.7][1.1.7]], mencionamos que este era un caso especial del <<i254>> método de Newton. Si x |-> g(x) es una función diferenciable, entonces una solución de la ecuación g(x) = 0 es un punto fijo de la función x |-> f(x) donde
+
+#+begin_example
+            g(x)
+ f(x) = x - -----
+            Dg(x)
+#+end_example
+
+y Dg(x) es la derivada de g evaluada en x. El método de Newton es el uso del método de punto fijo que vimos arriba para aproximar una solución de la ecuación encontrando un punto fijo de la función f.[fn:61]
+
+Para muchas funciones g y para conjeturas iniciales suficientemente buenas para x, el método de Newton converge muy rápidamente a una solución de g(x) = 0.[fn:62]
+
+Para implementar el método de Newton como un procedimiento, primero debemos expresar la idea de derivada. Nota que "derivada," como el amortiguamiento promedio, es algo que transforma una función en otra función. Por ejemplo, la derivada de la función x |-> x^3 es la función x |-> 3x^2. En general, si g es una función y dx es un número pequeño, entonces la derivada Dg de g es la función cuyo valor en cualquier número x está dado (en el límite de dx pequeño) por
+
+#+begin_example
+         g(x + dx) - g(x)
+ Dg(c) = ----------------
+                dx
+#+end_example
+
+Así, podemos expresar la idea de derivada (tomando dx como, digamos, 0.00001) como el procedimiento
+
+#+begin_src scheme
+(define (deriv g)
+  (lambda (x)
+    (/ (- (g (+ x dx)) (g x))
+       dx)))
+#+end_src
+
+junto con la definición
+
+#+begin_src scheme
+(define dx 0.00001)
+#+end_src
+
+Como ~average-damp~, ~deriv~ es un procedimiento que toma un procedimiento como argumento y devuelve un procedimiento como valor. Por ejemplo, para aproximar la derivada de x |-> x^3 en 5 (cuyo valor exacto es 75) podemos evaluar
+
+#+begin_src scheme
+(define (cube x) (* x x x))
+
+((deriv cube) 5)
+75.00014999664018
+#+end_src
+
+Con la ayuda de ~deriv~, podemos expresar el método de Newton como un proceso de punto fijo:
+
+#+begin_src scheme
+(define (newton-transform g)
+  (lambda (x)
+    (- x (/ (g x) ((deriv g) x)))))
+
+(define (newtons-method g guess)
+  (fixed-point (newton-transform g) guess))
+#+end_src
+
+El procedimiento ~newton-transform~ expresa la fórmula al comienzo de esta sección, y ~newtons-method~ se define fácilmente en términos de esto. Toma como argumentos un procedimiento que calcula la función para la cual queremos encontrar un cero, junto con una conjetura inicial. Por ejemplo, para encontrar la raíz cuadrada de x, podemos usar el método de Newton para encontrar un cero de la función y |-> y^2 - x comenzando con una conjetura inicial de 1.[fn:63]
+
+Esto proporciona otra forma más del procedimiento de raíz cuadrada:
+
+#+begin_src scheme
+(define (sqrt x)
+  (newtons-method (lambda (y) (- (square y) x))
+                  1.0))
+#+end_src
+
+*Abstracciones y procedimientos de primera clase*
+
+Hemos visto dos formas de expresar el cálculo de la raíz cuadrada como una instancia de un método más general, una vez como una búsqueda de punto fijo y una vez usando el método de Newton. Dado que el método de Newton fue en sí mismo expresado como un proceso de punto fijo, en realidad vimos dos formas de calcular raíces cuadradas como puntos fijos. Cada método comienza con una función y encuentra un punto fijo de alguna transformación de la función. Podemos expresar esta idea general en sí misma como un procedimiento:
+
+#+begin_src scheme
+(define (fixed-point-of-transform g transform guess)
+  (fixed-point (transform g) guess))
+#+end_src
+
+Este procedimiento muy general toma como sus argumentos un procedimiento ~g~ que calcula alguna función, un procedimiento que transforma ~g~, y una conjetura inicial. El resultado devuelto es un punto fijo de la función transformada.
+
+Usando esta abstracción, podemos reformular el primer cálculo de raíz cuadrada de esta sección (donde buscamos un punto fijo de la versión amortiguada promedio de y |-> x/y) como una instancia de este método general:
+
+#+begin_src scheme
+(define (sqrt x)
+  (fixed-point-of-transform (lambda (y) (/ x y))
+                            average-damp
+                            1.0))
+#+end_src
+
+De manera similar, podemos expresar el segundo cálculo de raíz cuadrada de esta sección (una instancia del método de Newton que encuentra un punto fijo de la transformación de Newton de y |-> y^2 - x) como
+
+#+begin_src scheme
+(define (sqrt x)
+  (fixed-point-of-transform (lambda (y) (- (square y) x))
+                            newton-transform
+                            1.0))
+#+end_src
+
+Comenzamos la sección [[#section-1.3][1.3]] con la observación de que los procedimientos compuestos son un mecanismo de abstracción crucial, porque nos permiten expresar métodos generales de computación como elementos explícitos en nuestro lenguaje de programación. Ahora hemos visto cómo los procedimientos de orden superior nos permiten manipular estos métodos generales para crear más abstracciones.
+
+Como programadores, debemos estar alerta a las oportunidades de identificar las abstracciones subyacentes en nuestros programas y construir sobre ellas y generalizarlas para crear abstracciones más poderosas. Esto no quiere decir que uno siempre deba escribir programas de la manera más abstracta posible; los programadores expertos saben cómo elegir el nivel de abstracción apropiado para su tarea. Pero es importante poder pensar en términos de estas abstracciones, para que podamos estar listos para aplicarlas en nuevos contextos. La importancia de los procedimientos de orden superior es que nos permiten representar estas abstracciones explícitamente como elementos en nuestro lenguaje de programación, para que puedan manejarse como cualquier otro elemento computacional.
+
+En general, los lenguajes de programación imponen restricciones en las formas en que los elementos computacionales pueden manipularse. Los elementos con las restricciones más bajas se dice que tienen <<i139>> estatus de primera clase. Algunos de los "derechos y privilegios" de los elementos de primera clase son:[fn:64]
+
+- Pueden ser nombrados por variables.
+- Pueden ser pasados como argumentos a procedimientos.
+- Pueden ser devueltos como los resultados de procedimientos.
+- Pueden ser incluidos en estructuras de datos.[fn:65]
+
+Lisp, a diferencia de otros lenguajes de programación comunes, otorga a los procedimientos estatus completo de primera clase. Esto plantea desafíos para una implementación eficiente, pero la ganancia resultante en poder expresivo es enorme.[fn:66]
+
+**** Ejercicio 1.40
+:properties:
+:custom_id: exercise-1.40
+:end:
+
+Define un procedimiento ~cubic~ que pueda usarse junto con el procedimiento ~newtons-method~ en expresiones de la forma
+
+#+begin_src scheme
+(newtons-method (cubic a b c) 1)
+#+end_src
+
+para aproximar ceros del cúbico x^3 + ax^2 + bx + c.
+
+**** Ejercicio 1.41
+:properties:
+:custom_id: exercise-1.41
+:end:
+
+Define un procedimiento ~double~ que tome un procedimiento de un argumento como argumento y devuelva un procedimiento que aplica el procedimiento original dos veces. Por ejemplo, si ~inc~ es un procedimiento que suma 1 a su argumento, entonces ~(double inc)~ debería ser un procedimiento que suma 2. ¿Qué valor devuelve
+
+#+begin_src scheme
+(((double (double double)) inc) 5)
+#+end_src
+
+**** Ejercicio 1.42
+:properties:
+:custom_id: exercise-1.42
+:end:
+
+Sean f y g dos funciones de un argumento. La <<i72>> composición f después de g se define como la función x |-> f(g(x)). Define un procedimiento ~compose~ que implemente composición. Por ejemplo, si ~inc~ es un procedimiento que suma 1 a su argumento,
+
+#+begin_src scheme
+((compose square inc) 6)
+49
+#+end_src
+
+**** Ejercicio 1.43
+:properties:
+:custom_id: exercise-1.43
+:end:
+
+Si f es una función numérica y n es un entero positivo, entonces podemos formar la enésima aplicación repetida de f, que se define como la función cuyo valor en x es f(f(...(f(x))...)). Por ejemplo, si f es la función x |-> x + 1, entonces la enésima aplicación repetida de f es la función x |-> x + n. Si f es la operación de elevar al cuadrado un número, entonces la enésima aplicación repetida de f es la función que eleva su argumento a la potencia 2^n. Escribe un procedimiento que tome como entradas un procedimiento que calcula f y un entero positivo n y devuelva el procedimiento que calcula la enésima aplicación repetida de f. Tu procedimiento debería poder usarse como sigue:
+
+#+begin_src scheme
+((repeated square 2) 5)
+625
+#+end_src
+
+Pista: Puede resultarte conveniente usar ~compose~ del [[#exercise-1.42][Ejercicio 1.42]].
+
+**** Ejercicio 1.44
+:properties:
+:custom_id: exercise-1.44
+:end:
+
+La idea de <<i356>> suavizar una función es un concepto importante en el procesamiento de señales. Si f es una función y dx es algún número pequeño, entonces la versión suavizada de f es la función cuyo valor en un punto x es el promedio de f(x - dx), f(x) y f(x + dx). Escribe un procedimiento ~smooth~ que tome como entrada un procedimiento que calcula f y devuelva un procedimiento que calcula la f suavizada. A veces es valioso suavizar repetidamente una función (es decir, suavizar la función suavizada, y así sucesivamente) para obtener la <<i250>> función suavizada n veces. Muestra cómo generar la función suavizada n veces de cualquier función dada usando ~smooth~ y ~repeated~ del [[#exercise-1.43][Ejercicio 1.43]].
+
+**** Ejercicio 1.45
+:properties:
+:custom_id: exercise-1.45
+:end:
+
+Vimos en la sección [[#section-1.3.3][1.3.3]] que intentar calcular raíces cuadradas encontrando ingenuamente un punto fijo de y |-> x/y no converge, y que esto puede arreglarse con amortiguamiento promedio. El mismo método funciona para encontrar raíces cúbicas como puntos fijos de la y |-> x/y^2 amortiguada promedio. Desafortunadamente, el proceso no funciona para raíces cuartas--un solo amortiguamiento promedio no es suficiente para hacer que una búsqueda de punto fijo para y |-> x/y^3 converja. Por otro lado, si amortiguamos promedio dos veces (es decir, usamos el amortiguamiento promedio del amortiguamiento promedio de y |-> x/y^3) la búsqueda de punto fijo sí converge. Haz algunos experimentos para determinar cuántos amortiguamientos promedio se requieren para calcular raíces enésimas como una búsqueda de punto fijo basada en amortiguamiento promedio repetido de y |-> x/y^(n-1). Usa esto para implementar un procedimiento simple para calcular raíces enésimas usando ~fixed-point~, ~average-damp~, y el procedimiento ~repeated~ del [[#exercise-1.43][Ejercicio 1.43]]. Asume que cualquier operación aritmética que necesites está disponible como primitiva.
+
+**** Ejercicio 1.46
+:properties:
+:custom_id: exercise-1.46
+:end:
+
+Varios de los métodos numéricos descritos en este capítulo son instancias de una estrategia computacional extremadamente general conocida como <<i198>> mejora iterativa. La mejora iterativa dice que, para calcular algo, comenzamos con una conjetura inicial para la respuesta, probamos si la conjetura es suficientemente buena, y de lo contrario mejoramos la conjetura y continuamos el proceso usando la conjetura mejorada como la nueva conjetura. Escribe un procedimiento ~iterative-improve~ que tome dos procedimientos como argumentos: un método para decir si una conjetura es suficientemente buena y un método para mejorar una conjetura. ~iterative-improve~ debería devolver como su valor un procedimiento que toma una conjetura como argumento y sigue mejorando la conjetura hasta que sea suficientemente buena. Reescribe el procedimiento ~sqrt~ de la sección [[#section-1.1.7][1.1.7]] y el procedimiento ~fixed-point~ de la sección [[#section-1.3.3][1.3.3]] en términos de ~iterative-improve~.
+
