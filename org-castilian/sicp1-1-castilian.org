@@ -1,0 +1,872 @@
+* 1 Construyendo Abstracciones con Procedimientos
+:properties:
+:custom_id: section-1
+:VISIBILITY: children
+:end:
+
+** Introducción
+:properties:
+:UNNUMBERED: notoc
+:end:
+
+#+begin_quote
+Los actos de la mente, en los cuales ejerce su poder sobre ideas simples, son principalmente estos tres: 1. Combinar varias ideas simples en una compuesta, y así se crean todas las ideas complejas. 2. El segundo es reunir dos ideas, ya sean simples o complejas, y colocarlas una al lado de la otra para poder verlas de una vez, sin unirlas en una sola, por lo cual obtiene todas sus ideas de relaciones. 3. El tercero es separarlas de todas las demás ideas que las acompañan en su existencia real: esto se llama abstracción, y así se crean todas sus ideas generales.
+
+--John Locke, /An Essay Concerning Human Understanding/ (1690)
+#+end_quote
+
+Estamos a punto de estudiar la idea de un <<i77>> proceso computacional. Los procesos computacionales son seres abstractos que habitan en los ordenadores. A medida que evolucionan, los procesos manipulan otras cosas abstractas llamadas <<i91>> datos. La evolución de un proceso está dirigida por un patrón de reglas llamado <<i305>> programa. Las personas crean programas para dirigir procesos. En efecto, conjuramos los espíritus del ordenador con nuestros hechizos.
+
+Un proceso computacional es, de hecho, muy parecido a la idea de un espíritu según un hechicero. No se puede ver ni tocar. No está compuesto de materia en absoluto. Sin embargo, es muy real. Puede realizar trabajo intelectual. Puede responder preguntas. Puede afectar al mundo desembolsando dinero en un banco o controlando un brazo robótico en una fábrica. Los programas que usamos para conjurar procesos son como los hechizos de un hechicero. Están cuidadosamente compuestos de expresiones simbólicas en <<i306>> lenguajes de programación arcanos y esotéricos que prescriben las tareas que queremos que nuestros procesos realicen.
+
+Un proceso computacional, en un ordenador que funciona correctamente, ejecuta programas de manera precisa y exacta. Por lo tanto, como el aprendiz de hechicero, los programadores novatos deben aprender a comprender y anticipar las consecuencias de su conjuro. Incluso pequeños errores (normalmente llamados <<i45>> bugs o <<i164>> glitches) en los programas pueden tener consecuencias complejas e imprevistas.
+
+Afortunadamente, aprender a programar es considerablemente menos peligroso que aprender hechicería, porque los espíritus con los que tratamos están convenientemente contenidos de manera segura. La programación en el mundo real, sin embargo, requiere cuidado, experiencia y sabiduría. Un pequeño bug en un programa de diseño asistido por ordenador, por ejemplo, puede llevar al colapso catastrófico de un avión o una presa, o a la autodestrucción de un robot industrial.
+
+Los ingenieros de software maestros tienen la capacidad de organizar programas de modo que puedan estar razonablemente seguros de que los procesos resultantes realizarán las tareas previstas. Pueden visualizar el comportamiento de sus sistemas con antelación. Saben cómo estructurar programas para que problemas imprevistos no conduzcan a consecuencias catastróficas, y cuando surgen problemas, pueden <<i101>> depurar sus programas. Los sistemas computacionales bien diseñados, como los automóviles o reactores nucleares bien diseñados, están diseñados de manera modular, de modo que las partes puedan construirse, reemplazarse y depurarse por separado.
+
+*Programando en Lisp*
+
+Necesitamos un lenguaje apropiado para describir procesos, y usaremos para este propósito el lenguaje de programación Lisp. Así como nuestros pensamientos cotidianos se expresan generalmente en nuestro lenguaje natural (como inglés, francés o japonés), y las descripciones de fenómenos cuantitativos se expresan con notaciones matemáticas, nuestros pensamientos procedurales se expresarán en Lisp. Lisp fue inventado a finales de la década de 1950 como un formalismo para razonar sobre el uso de ciertos tipos de expresiones lógicas, llamadas <<i323>> ecuaciones de recursión, como un modelo de computación. El lenguaje fue concebido por John McCarthy y se basa en su artículo "Recursive Functions of Symbolic Expressions and Their Computation by Machine" (McCarthy 1960).
+
+A pesar de su inicio como un formalismo matemático, Lisp es un lenguaje de programación práctico. Un <<i194>> intérprete de Lisp es una máquina que ejecuta procesos descritos en el lenguaje Lisp. El primer intérprete de Lisp fue implementado por McCarthy con la ayuda de colegas y estudiantes en el Artificial Intelligence Group del MIT Research Laboratory of Electronics y en el MIT Computation Center.[fn:1] Lisp, cuyo nombre es un acrónimo de LISt Processing, fue diseñado para proporcionar capacidades de manipulación de símbolos para abordar problemas de programación como la diferenciación simbólica e integración de expresiones algebraicas. Incluía para este propósito nuevos objetos de datos conocidos como átomos y listas, que lo distinguían de manera más notable de todos los demás lenguajes de la época.
+
+Lisp no fue el producto de un esfuerzo de diseño concertado. En cambio, evolucionó de manera informal y experimental en respuesta a las necesidades de los usuarios y a consideraciones pragmáticas de implementación. La evolución informal de Lisp ha continuado a través de los años, y la comunidad de usuarios de Lisp ha resistido tradicionalmente los intentos de promulgar cualquier definición "oficial" del lenguaje. Esta evolución, junto con la flexibilidad y elegancia de la concepción inicial, ha permitido que Lisp, que es el segundo lenguaje más antiguo en uso generalizado hoy en día (solo Fortran es más antiguo), se adapte continuamente para abarcar las ideas más modernas sobre diseño de programas. Así, Lisp es ahora una familia de dialectos que, aunque comparten la mayoría de las características originales, pueden diferir entre sí de maneras significativas. El dialecto de Lisp utilizado en este libro se llama Scheme.[fn:2]
+
+Debido a su carácter experimental y su énfasis en la manipulación de símbolos, Lisp fue al principio muy ineficiente para cálculos numéricos, al menos en comparación con Fortran. Sin embargo, a lo largo de los años se han desarrollado compiladores de Lisp que traducen programas a código de máquina que puede realizar cálculos numéricos de manera razonablemente eficiente. Y para aplicaciones especiales, Lisp se ha utilizado con gran efectividad.[fn:3] Aunque Lisp aún no ha superado su antigua reputación como irremediablemente ineficiente, Lisp se usa ahora en muchas aplicaciones donde la eficiencia no es la preocupación central. Por ejemplo, Lisp se ha convertido en un lenguaje de elección para lenguajes de shell de sistemas operativos y para lenguajes de extensión para editores y sistemas de diseño asistido por computadora.
+
+Si Lisp no es un lenguaje convencional, ¿por qué lo estamos usando como el marco para nuestra discusión sobre programación? Porque el lenguaje posee características únicas que lo convierten en un medio excelente para estudiar construcciones de programación y estructuras de datos importantes y para relacionarlas con las características lingüísticas que las soportan. La más significativa de estas características es el hecho de que las descripciones de procesos en Lisp, llamadas <<i303>> procedimientos, pueden ser representadas y manipuladas como datos de Lisp. La importancia de esto es que existen técnicas poderosas de diseño de programas que dependen de la capacidad de difuminar la distinción tradicional entre datos "pasivos" y procesos "activos". Como descubriremos, la flexibilidad de Lisp en el manejo de procedimientos como datos lo convierte en uno de los lenguajes más convenientes que existen para explorar estas técnicas. La capacidad de representar procedimientos como datos también hace de Lisp un lenguaje excelente para escribir programas que deben manipular otros programas como datos, como los intérpretes y compiladores que soportan lenguajes de computadora. Más allá de estas consideraciones, programar en Lisp es muy divertido.
+
+** 1.1 The Elements of Programming
+:properties:
+:custom_id: section-1.1
+:end:
+
+Un lenguaje de programación poderoso es más que solo un medio para instruir a una computadora a realizar tareas. El lenguaje también sirve como un marco dentro del cual organizamos nuestras ideas sobre procesos. Por lo tanto, cuando describimos un lenguaje, debemos prestar particular atención a los medios que el lenguaje proporciona para combinar ideas simples y formar ideas más complejas. Todo lenguaje poderoso tiene tres mecanismos para lograr esto:
+
+- <<i297>> expresiones primitivas que representan las entidades más simples con las que el lenguaje se ocupa,
+
+- <<i228>> medios de combinación mediante los cuales se construyen elementos compuestos a partir de otros más simples, y
+
+- <<i227>> medios de abstracción mediante los cuales los elementos compuestos pueden ser nombrados y manipulados como unidades.
+
+
+En programación, tratamos con dos tipos de elementos: procedimientos y datos. (Más adelante descubriremos que realmente no son tan distintos.) De manera informal, los datos son "cosas" que queremos manipular, y los procedimientos son descripciones de las reglas para manipular los datos. Por lo tanto, cualquier lenguaje de programación poderoso debería ser capaz de describir datos primitivos y procedimientos primitivos y debería tener métodos para combinar y abstraer procedimientos y datos.
+
+En este capítulo trataremos solo con datos numéricos simples para poder enfocarnos en las reglas para construir procedimientos.[fn:4] En capítulos posteriores veremos que estas mismas reglas nos permiten construir procedimientos para manipular datos compuestos también.
+
+*** 1.1.1 Expressions
+:properties:
+:custom_id: section-1.1.1
+:end:
+
+Una manera fácil de comenzar a programar es examinar algunas interacciones típicas con un intérprete del dialecto Scheme de Lisp. Imagina que estás sentado en una terminal de computadora. Escribes una <<i134>> expresión, y el intérprete responde mostrando el resultado de su <<i128>> evaluación de esa expresión.
+
+Un tipo de expresión primitiva que podrías escribir es un número. (Más precisamente, la expresión que escribes consiste en los numerales que representan el número en base 10.) Si le presentas a Lisp un número
+
+#+begin_src scheme
+486
+#+end_src
+
+el intérprete responderá imprimiendo [fn:5]
+
+#+begin_src scheme
+486
+#+end_src
+
+Las expresiones que representan números pueden combinarse con una expresión que representa un procedimiento primitivo (como ~+~ o ~*~) para formar una expresión compuesta que representa la aplicación del procedimiento a esos números. Por ejemplo:
+
+#+begin_src scheme
+(+ 137 349)
+486
+
+(- 1000 334)
+666
+
+(* 5 99)
+495
+
+(/ 10 5)
+2
+
+(+ 2.7 10)
+12.7
+#+end_src
+
+Expresiones como estas, formadas al delimitar una lista de expresiones entre paréntesis para denotar la aplicación de un procedimiento, se llaman <<i67>> combinaciones. El elemento más a la izquierda en la lista se llama <<i270>> operador, y los otros elementos se llaman <<i269>> operandos. El valor de una combinación se obtiene aplicando el procedimiento especificado por el operador a los <<i21>> argumentos que son los valores de los operandos.
+
+La convención de colocar el operador a la izquierda de los operandos se conoce como <<i294>> notación prefija, y puede ser algo confusa al principio porque se aparta significativamente de la convención matemática habitual. Sin embargo, la notación prefija tiene varias ventajas. Una de ellas es que puede acomodar procedimientos que pueden tomar un número arbitrario de argumentos, como en los siguientes ejemplos:
+
+#+begin_src scheme
+(+ 21 35 12 7)
+75
+
+(* 25 4 12)
+1200
+#+end_src
+
+No puede surgir ninguna ambigüedad, porque el operador es siempre el elemento más a la izquierda y la combinación completa está delimitada por los paréntesis.
+
+Una segunda ventaja de la notación prefija es que se extiende de manera directa para permitir que las combinaciones sean anidadas, es decir, para tener combinaciones cuyos elementos son en sí mismos combinaciones:
+
+#+begin_src scheme
+(+ (* 3 5) (- 10 6))
+19
+#+end_src
+
+No hay límite (en principio) para la profundidad de tal anidamiento y para la complejidad general de las expresiones que el intérprete de Lisp puede evaluar. Somos nosotros los humanos quienes nos confundimos con expresiones aún relativamente simples como
+
+#+begin_src scheme
+(+ (* 3 (+ (* 2 4) (+ 3 5))) (+ (- 10 7) 6))
+#+end_src
+
+que el intérprete evaluaría fácilmente como 57. Podemos ayudarnos escribiendo tal expresión en la forma
+
+#+begin_src scheme
+(+ (* 3
+      (+ (* 2 4)
+         (+ 3 5)))
+   (+ (- 10 7)
+      6))
+#+end_src
+
+siguiendo una convención de formato conocida como <<i295>> impresión bonita, en la cual cada combinación larga se escribe de manera que los operandos estén alineados verticalmente. Las sangrías resultantes muestran claramente la estructura de la expresión.[fn:6]
+
+Incluso con expresiones complejas, el intérprete siempre opera en el mismo ciclo básico: Lee una expresión desde la terminal, evalúa la expresión e imprime el resultado. Este modo de operación a menudo se expresa diciendo que el intérprete se ejecuta en un <<i319>> bucle leer-evaluar-imprimir. Observa en particular que no es necesario instruir explícitamente al intérprete para que imprima el valor de la expresión.[fn:7]
+
+*** 1.1.2 Naming and the Environment
+:properties:
+:custom_id: section-1.1.2
+:end:
+
+Un aspecto crítico de un lenguaje de programación son los medios que proporciona para usar nombres para referirse a objetos computacionales. Decimos que el nombre identifica una <<i420>> variable cuyo <<i417>> valor es el objeto.
+
+En el dialecto Scheme de Lisp, nombramos cosas con ~define~. Escribir
+
+#+begin_src scheme
+(define size 2)
+#+end_src
+
+hace que el intérprete asocie el valor 2 con el nombre ~size~.[fn:8] Una vez que el nombre ~size~ ha sido asociado con el número 2, podemos referirnos al valor 2 por nombre:
+
+#+begin_src scheme
+size
+2
+
+(* 5 size)
+10
+#+end_src
+
+Aquí hay más ejemplos del uso de ~define~:
+
+#+begin_src scheme
+(define pi 3.14159)
+
+(define radius 10)
+
+(* pi (* radius radius))
+314.159
+
+(define circumference (* 2 pi radius))
+
+circumference
+62.8318
+#+end_src
+
+~define~ es el medio más simple de abstracción de nuestro lenguaje, ya que nos permite usar nombres simples para referirnos a los resultados de operaciones compuestas, como la ~circumference~ calculada arriba. En general, los objetos computacionales pueden tener estructuras muy complejas, y sería extremadamente inconveniente tener que recordar y repetir sus detalles cada vez que queremos usarlos. De hecho, los programas complejos se construyen creando, paso a paso, objetos computacionales de complejidad creciente. El intérprete hace que esta construcción de programas paso a paso sea particularmente conveniente porque las asociaciones nombre-objeto se pueden crear de manera incremental en interacciones sucesivas. Esta característica fomenta el desarrollo y prueba incremental de programas y es en gran medida responsable del hecho de que un programa Lisp generalmente consiste en un gran número de procedimientos relativamente simples.
+
+Debe quedar claro que la posibilidad de asociar valores con símbolos y luego recuperarlos significa que el intérprete debe mantener algún tipo de memoria que lleve un registro de los pares nombre-objeto. Esta memoria se llama <<i123>> entorno (más precisamente el <<i167>> entorno global, ya que veremos más adelante que un cálculo puede involucrar varios entornos diferentes).[fn:9]
+
+*** 1.1.3 Evaluating Combinations
+:properties:
+:custom_id: section-1.1.3
+:end:
+
+Uno de nuestros objetivos en este capítulo es aislar cuestiones sobre el pensamiento procedimental. Como ejemplo, consideremos que, al evaluar combinaciones, el intérprete en sí está siguiendo un procedimiento.
+
+Para evaluar una combinación, haz lo siguiente:
+
+  1. Evalúa las subexpresiones de la combinación.
+
+  2. Aplica el procedimiento que es el valor de la subexpresión más a la izquierda (el operador) a los argumentos que son los valores de las otras subexpresiones (los operandos).
+
+
+Incluso esta regla simple ilustra algunos puntos importantes sobre los procesos en general. Primero, observa que el primer paso dicta que para lograr el proceso de evaluación de una combinación debemos primero realizar el proceso de evaluación en cada elemento de la combinación. Por lo tanto, la regla de evaluación es <<i325>> recursiva por naturaleza; es decir, incluye, como uno de sus pasos, la necesidad de invocar la regla misma.[fn:10]
+
+Observa cuán sucintamente la idea de recursión puede usarse para expresar lo que, en el caso de una combinación profundamente anidada, de otro modo se vería como un proceso bastante complicado. Por ejemplo, evaluar
+
+#+begin_src scheme
+(* (+ 2 (* 4 6))
+   (+ 3 5 7))
+#+end_src
+
+requiere que la regla de evaluación se aplique a cuatro combinaciones diferentes. Podemos obtener una imagen de este proceso representando la combinación en forma de árbol, como se muestra en [[figure-1.1][Figure 1.1]]. Cada combinación está representada por un nodo con ramas correspondientes al operador y los operandos de la combinación que surgen de él. Los nodos terminales (es decir, nodos sin ramas que surgen de ellos) representan operadores o números. Viendo la evaluación en términos del árbol, podemos imaginar que los valores de los operandos se filtran hacia arriba, comenzando desde los nodos terminales y luego combinándose en niveles cada vez más altos. En general, veremos que la recursión es una técnica muy poderosa para tratar con objetos jerárquicos en forma de árbol. De hecho, la forma de "filtrar valores hacia arriba" de la regla de evaluación es un ejemplo de un tipo general de proceso conocido como <<i399>> acumulación de árbol.
+
+<<figure-1.1>> Representación de árbol, mostrando el valor de cada subcombinación.
+
+#+begin_example
+   390
+   /|\____________
+  / |             \
+ ,*  26            15
+    /|\            |
+   / | \         // \\
+  +  2  24      / |  | \
+        /|\    +  3  5  7
+       / | \
+      ,*  4  6
+#+end_example
+
+A continuación, observa que la aplicación repetida del primer paso nos lleva al punto donde necesitamos evaluar, no combinaciones, sino expresiones primitivas como numerales, operadores integrados u otros nombres. Nos ocupamos de los casos primitivos estipulando que
+
+- los valores de los numerales son los números que nombran,
+
+- los valores de los operadores integrados son las secuencias de instrucciones de máquina que ejecutan las operaciones correspondientes, y
+
+- los valores de otros nombres son los objetos asociados con esos nombres en el entorno.
+
+
+Podemos considerar la segunda regla como un caso especial de la tercera estipulando que símbolos como ~+~ y ~*~ también están incluidos en el entorno global, y están asociados con las secuencias de instrucciones de máquina que son sus "valores". El punto clave a observar es el papel del entorno en determinar el significado de los símbolos en las expresiones. En un lenguaje interactivo como Lisp, no tiene sentido hablar del valor de una expresión como ~(+ x 1)~ sin especificar ninguna información sobre el entorno que proporcionaría un significado para el símbolo ~x~ (o incluso para el símbolo ~+~). Como veremos en [[#section-3][Chapter 3]], la noción general del entorno como provedor de un contexto en el cual la evaluación tiene lugar jugará un papel importante en nuestra comprensión de la ejecución de programas.
+
+Observa que la regla de evaluación dada arriba no maneja definiciones. Por ejemplo, evaluar ~(define x 3)~ no aplica ~define~ a dos argumentos, uno de los cuales es el valor del símbolo ~x~ y el otro es 3, ya que el propósito de ~define~ es precisamente asociar ~x~ con un valor. (Es decir, ~(define x 3)~ no es una combinación.)
+
+Tales excepciones a la regla general de evaluación se llaman <<i360>> formas especiales. ~define~ es el único ejemplo de una forma especial que hemos visto hasta ahora, pero nos encontraremos con otras en breve. Cada forma especial tiene su propia regla de evaluación. Los diversos tipos de expresiones (cada una con su regla de evaluación asociada) constituyen la sintaxis del lenguaje de programación. En comparación con la mayoría de los otros lenguajes de programación, Lisp tiene una sintaxis muy simple; es decir, la regla de evaluación de expresiones puede describirse mediante una regla general simple junto con reglas especializadas para un pequeño número de formas especiales.[fn:11]
+
+*** 1.1.4 Compound Procedures
+:properties:
+:custom_id: section-1.1.4
+:end:
+
+Hemos identificado en Lisp algunos de los elementos que deben aparecer en cualquier lenguaje de programación poderoso:
+
+- Los números y las operaciones aritméticas son datos y procedimientos primitivos.
+- El anidamiento de combinaciones proporciona un medio de combinar operaciones.
+- Las definiciones que asocian nombres con valores proporcionan un medio limitado de abstracción.
+
+
+Ahora aprenderemos sobre <<i302>> definiciones de procedimientos, una técnica de abstracción mucho más poderosa mediante la cual se puede dar un nombre a una operación compuesta y luego referirse a ella como una unidad.
+
+Comenzamos examinando cómo expresar la idea de "elevar al cuadrado". Podríamos decir, "Para elevar algo al cuadrado, multiplícalo por sí mismo". Esto se expresa en nuestro lenguaje como
+
+#+begin_src scheme
+(define (square x) (* x x))
+#+end_src
+
+Podemos entender esto de la siguiente manera:
+
+#+begin_example
+ (define (square    x)         (*      x         x))
+   |        |       |           |      |         |
+  To     square  something,  multiply  it  by  itself.
+#+end_example
+
+Aquí tenemos un <<i75>> procedimiento compuesto, al cual se le ha dado el nombre ~square~. El procedimiento representa la operación de multiplicar algo por sí mismo. La cosa a ser multiplicada recibe un nombre local, ~x~, que juega el mismo papel que un pronombre en el lenguaje natural. Evaluar la definición crea este procedimiento compuesto y lo asocia con el nombre ~square~.[fn:12]
+
+La forma general de una definición de procedimiento es
+
+#+begin_src scheme
+(define (<NAME> <FORMAL PARAMETERS>) <BODY>)
+#+end_src
+
+El <NAME> es un símbolo que se asociará con la definición del procedimiento en el entorno.[fn:13] Los <FORMAL PARAMETERS> son los nombres utilizados dentro del cuerpo del procedimiento para referirse a los argumentos correspondientes del procedimiento. El <BODY> es una expresión que producirá el valor de la aplicación del procedimiento cuando los parámetros formales sean reemplazados por los argumentos reales a los cuales se aplica el procedimiento.[fn:14] El <NAME> y los <FORMAL PARAMETERS> se agrupan entre paréntesis, tal como lo estarían en una llamada real al procedimiento que se está definiendo.
+
+Habiendo definido ~square~, ahora podemos usarlo:
+
+#+begin_src scheme
+(square 21)
+441
+
+(square (+ 2 5))
+49
+
+(square (square 3))
+81
+#+end_src
+
+También podemos usar ~square~ como un bloque de construcción para definir otros procedimientos. Por ejemplo, x^2 + y^2 puede expresarse como
+
+#+begin_src scheme
+(+ (square x) (square y))
+#+end_src
+
+Podemos definir fácilmente un procedimiento ~sum-of-squares~ que, dados dos números cualesquiera como argumentos, produce la suma de sus cuadrados:
+
+#+begin_src scheme
+(define (sum-of-squares x y)
+  (+ (square x) (square y)))
+(sum-of-squares 3 4)
+25
+#+end_src
+
+Ahora podemos usar ~sum-of-squares~ como un bloque de construcción para construir más procedimientos:
+
+#+begin_src scheme
+(define (f a)
+  (sum-of-squares (+ a 1) (* a 2)))
+
+(f 5)
+136
+#+end_src
+
+Los procedimientos compuestos se usan exactamente de la misma manera que los procedimientos primitivos. De hecho, no se podría distinguir mirando la definición de ~sum-of-squares~ dada arriba si ~square~ estuviera integrado en el intérprete, como ~+~ y ~*~, o definido como un procedimiento compuesto.
+
+*** 1.1.5 The Substitution Model for Procedure Application
+:properties:
+:custom_id: section-1.1.5
+:end:
+
+Para evaluar una combinación cuyo operador nombra un procedimiento compuesto, el intérprete sigue un proceso muy similar al de las combinaciones cuyos operadores nombran procedimientos primitivos, que describimos en la sección [[#section-1.1.3][1.1.3]]. Es decir, el intérprete evalúa los elementos de la combinación y aplica el procedimiento (que es el valor del operador de la combinación) a los argumentos (que son los valores de los operandos de la combinación).
+
+Podemos asumir que el mecanismo para aplicar procedimientos primitivos a argumentos está integrado en el intérprete. Para procedimientos compuestos, el proceso de aplicación es el siguiente:
+
+#+begin_quote
+Para aplicar un procedimiento compuesto a argumentos, evalúa el cuerpo del procedimiento con cada parámetro formal reemplazado por el argumento correspondiente.
+#+end_quote
+
+Para ilustrar este proceso, evaluemos la combinación
+
+#+begin_src scheme
+(f 5)
+#+end_src
+
+donde ~f~ es el procedimiento definido en la sección [[#section-1.1.4][1.1.4]]. Comenzamos recuperando el cuerpo de ~f~:
+
+#+begin_src scheme
+(sum-of-squares (+ a 1) (* a 2))
+#+end_src
+
+Luego reemplazamos el parámetro formal ~a~ por el argumento 5:
+
+#+begin_src scheme
+(sum-of-squares (+ 5 1) (* 5 2))
+#+end_src
+
+Así, el problema se reduce a la evaluación de una combinación con dos operandos y un operador ~sum-of-squares~. Evaluar esta combinación involucra tres subproblemas. Debemos evaluar el operador para obtener el procedimiento a aplicar, y debemos evaluar los operandos para obtener los argumentos. Ahora ~(+ 5 1)~ produce 6 y ~(* 5 2)~ produce 10, por lo que debemos aplicar el procedimiento ~sum-of-squares~ a 6 y 10. Estos valores se sustituyen por los parámetros formales ~x~ y ~y~ en el cuerpo de ~sum-of-squares~, reduciendo la expresión a
+
+#+begin_src scheme
+(+ (square 6) (square 10))
+#+end_src
+
+Si usamos la definición de ~square~, esto se reduce a
+
+#+begin_src scheme
+(+ (* 6 6) (* 10 10))
+#+end_src
+
+que se reduce por multiplicación a
+
+#+begin_src scheme
+(+ 36 100)
+#+end_src
+
+y finalmente a
+
+#+begin_src scheme
+136
+#+end_src
+
+El proceso que acabamos de describir se llama <<i375>> modelo de sustitución para la aplicación de procedimientos. Puede tomarse como un modelo que determina el "significado" de la aplicación de procedimientos, en la medida en que los procedimientos en este capítulo están involucrados. Sin embargo, hay dos puntos que deben enfatizarse:
+
+- El propósito de la sustitución es ayudarnos a pensar sobre la aplicación de procedimientos, no proporcionar una descripción de cómo funciona realmente el intérprete. Los intérpretes típicos no evalúan las aplicaciones de procedimientos manipulando el texto de un procedimiento para sustituir valores por los parámetros formales. En la práctica, la "sustitución" se logra usando un entorno local para los parámetros formales. Discutiremos esto más completamente en [[#section-3][Chapter 3]] y [[#section-4][Chapter 4]] cuando examinemos la implementación de un intérprete en detalle.
+
+- A lo largo de este libro, presentaremos una secuencia de modelos cada vez más elaborados de cómo funcionan los intérpretes, culminando con una implementación completa de un intérprete y compilador en [[#section-5][Chapter 5]]. El modelo de sustitución es solo el primero de estos modelos--una manera de comenzar a pensar formalmente sobre el proceso de evaluación. En general, cuando modelamos fenómenos en ciencia e ingeniería, comenzamos con modelos simplificados e incompletos. A medida que examinamos las cosas con mayor detalle, estos modelos simples se vuelven inadecuados y deben ser reemplazados por modelos más refinados. El modelo de sustitución no es una excepción. En particular, cuando abordemos en [[#section-3][Chapter 3]] el uso de procedimientos con "datos mutables", veremos que el modelo de sustitución se desmorona y debe ser reemplazado por un modelo más complicado de aplicación de procedimientos.[fn:15]
+
+*Applicative order versus normal order*
+
+Según la descripción de evaluación dada en la sección [[#section-1.1.3][1.1.3]], el intérprete primero evalúa el operador y los operandos y luego aplica el procedimiento resultante a los argumentos resultantes. Esta no es la única manera de realizar la evaluación. Un modelo de evaluación alternativo no evaluaría los operandos hasta que se necesitaran sus valores. En su lugar, primero sustituiría las expresiones de operandos por parámetros hasta obtener una expresión que involucre solo operadores primitivos, y luego realizaría la evaluación. Si usáramos este método, la evaluación de ~(f 5)~ procedería según la secuencia de expansiones
+
+#+begin_src scheme
+(sum-of-squares (+ 5 1) (* 5 2))
+
+(+    (square (+ 5 1))      (square (* 5 2))  )
+
+(+    (* (+ 5 1) (+ 5 1))   (* (* 5 2) (* 5 2)))
+#+end_src
+
+seguido por las reducciones
+
+#+begin_src scheme
+(+         (* 6 6)             (* 10 10))
+
+(+           36                   100)
+
+                    136
+#+end_src
+
+Esto da la misma respuesta que nuestro modelo de evaluación anterior, pero el proceso es diferente. En particular, las evaluaciones de ~(+ 5 1)~ y ~(* 5 2)~ se realizan cada una dos veces aquí, correspondiendo a la reducción de la expresión ~(* x x)~ con ~x~ reemplazado respectivamente por ~(+ 5 1)~ y ~(* 5 2)~.
+
+Este método alternativo de evaluación "expandir completamente y luego reducir" se conoce como <<i263>> evaluación de orden normal, en contraste con el método "evaluar los argumentos y luego aplicar" que el intérprete realmente usa, que se llama <<i19>> evaluación de orden aplicativo. Se puede demostrar que, para aplicaciones de procedimientos que pueden modelarse usando sustitución (incluyendo todos los procedimientos en los primeros dos capítulos de este libro) y que producen valores legítimos, la evaluación de orden normal y la evaluación de orden aplicativo producen el mismo valor. (Ver [[#exercise-1.5][Exercise 1.5]] para un caso de un valor "ilegítimo" donde la evaluación de orden normal y la evaluación de orden aplicativo no dan el mismo resultado.)
+
+Lisp usa evaluación de orden aplicativo, en parte debido a la eficiencia adicional obtenida al evitar múltiples evaluaciones de expresiones como las ilustradas con ~(+ 5 1)~ y ~(* 5 2)~ arriba y, más significativamente, porque la evaluación de orden normal se vuelve mucho más complicada de manejar cuando salimos del reino de los procedimientos que pueden modelarse por sustitución. Por otro lado, la evaluación de orden normal puede ser una herramienta extremadamente valiosa, y investigaremos algunas de sus implicaciones en [[#section-3][Chapter 3]] y [[#section-4][Chapter 4]].[fn:16]
+
+*** 1.1.6 Conditional Expressions and Predicates
+:properties:
+:custom_id: section-1.1.6
+:end:
+
+El poder expresivo de la clase de procedimientos que podemos definir en este punto es muy limitado, porque no tenemos manera de hacer pruebas y realizar diferentes operaciones dependiendo del resultado de una prueba. Por ejemplo, no podemos definir un procedimiento que calcule el valor absoluto de un número probando si el número es positivo, negativo o cero y tomando diferentes acciones en los diferentes casos según la regla
+
+#+begin_example
+       /
+       |   x  if x > 0
+ |x| = <   0  if x = 0
+       |  -x  if x < 0
+       \
+#+end_example
+
+Esta construcción se llama <<i55>> análisis de casos, y hay una forma especial en Lisp para anotar tal análisis de casos. Se llama ~cond~ (que significa "condicional"), y se usa de la siguiente manera:
+
+#+begin_src scheme
+(define (abs x)
+  (cond ((> x 0) x)
+        ((= x 0) 0)
+        ((< x 0) (- x))))
+#+end_src
+
+La forma general de una expresión condicional es
+
+#+begin_src scheme
+(cond (<P1> <E1>)
+      (<P2> <E2>)
+      ...
+      (<PN> <EN>))
+#+end_src
+
+que consta del símbolo ~cond~ seguido de pares de expresiones entre paréntesis
+
+#+begin_src scheme
+(<P> <E>)
+#+end_src
+
+llamadas <<i60>> cláusulas. La primera expresión en cada par es un <<i290>> predicado--es decir, una expresión cuyo valor se interpreta como verdadero o falso.[fn:17]
+
+Las expresiones condicionales se evalúan de la siguiente manera. Primero se evalúa el predicado <P1>. Si su valor es falso, entonces se evalúa <P2>. Si el valor de <P2> también es falso, entonces se evalúa <P3>. Este proceso continúa hasta que se encuentra un predicado cuyo valor es verdadero, en cuyo caso el intérprete devuelve el valor de la correspondiente <<i81>> expresión consecuente <E> de la cláusula como el valor de la expresión condicional. Si ninguno de los <P> resulta ser verdadero, el valor del ~cond~ es indefinido.
+
+La palabra <<i291>> predicado se usa para procedimientos que devuelven verdadero o falso, así como para expresiones que se evalúan como verdadero o falso. El procedimiento de valor absoluto ~abs~ hace uso de los predicados primitivos ~>~, ~<~ y ~=~.[fn:18] Estos toman dos números como argumentos y prueban si el primer número es, respectivamente, mayor que, menor que o igual al segundo número, devolviendo verdadero o falso según corresponda.
+
+Otra forma de escribir el procedimiento de valor absoluto es
+
+#+begin_src scheme
+(define (abs x)
+  (cond ((< x 0) (- x))
+        (else x)))
+#+end_src
+
+que podría expresarse en español como "Si x es menor que cero, devolver - x; de lo contrario, devolver x." ~else~ es un símbolo especial que puede usarse en lugar del <P> en la cláusula final de un ~cond~. Esto hace que el ~cond~ devuelva como su valor el valor del <E> correspondiente cada vez que se han omitido todas las cláusulas anteriores. De hecho, cualquier expresión que siempre se evalúe como un valor verdadero podría usarse como el <P> aquí.
+
+Aquí hay otra forma más de escribir el procedimiento de valor absoluto:
+
+#+begin_src scheme
+(define (abs x)
+  (if (< x 0)
+      (- x)
+      x))
+#+end_src
+
+Esto usa la forma especial ~if~, un tipo restringido de condicional que puede usarse cuando hay precisamente dos casos en el análisis de casos. La forma general de una expresión ~if~ es
+
+#+begin_src scheme
+(if <PREDICATE> <CONSEQUENT> <ALTERNATIVE>)
+#+end_src
+
+Para evaluar una expresión ~if~, el intérprete comienza evaluando la parte <PREDICATE> de la expresión. Si el <PREDICATE> se evalúa como un valor verdadero, el intérprete entonces evalúa el <CONSEQUENT> y devuelve su valor. De lo contrario, evalúa el <ALTERNATIVE> y devuelve su valor.[fn:19]
+
+Además de los predicados primitivos como ~<~, ~=~ y ~>~, existen operaciones de composición lógica que nos permiten construir predicados compuestos. Los tres más utilizados son estos:
+
+1. ~(and <E1> ... <EN>)~
+
+El intérprete evalúa las expresiones <E> una a la vez, en orden de izquierda a derecha. Si algún <E> se evalúa como falso, el valor de la expresión ~and~ es falso, y el resto de los <E> no se evalúan. Si todos los <E> se evalúan como valores verdaderos, el valor de la expresión ~and~ es el valor del último.
+
+2. ~(or <E1> ... <EN>)~
+
+
+El intérprete evalúa las expresiones <E> una a la vez, en orden de izquierda a derecha. Si algún <E> se evalúa como un valor verdadero, ese valor se devuelve como el valor de la expresión ~or~, y el resto de los <E> no se evalúan. Si todos los <E> se evalúan como falso, el valor de la expresión ~or~ es falso.
+
+3. ~(not <E>)~
+
+
+El valor de una expresión ~not~ es verdadero cuando la expresión <E> se evalúa como falso, y falso en caso contrario.
+
+Nótese que ~and~ y ~or~ son formas especiales, no procedimientos, porque las subexpresiones no necesariamente se evalúan todas. ~not~ es un procedimiento ordinario.
+
+Como ejemplo de cómo se usan estos, la condición de que un número x esté en el rango 5 < x < 10 puede expresarse como
+
+#+begin_src scheme
+(and (> x 5) (< x 10))
+#+end_src
+
+Como otro ejemplo, podemos definir un predicado para probar si un número es mayor que o igual a otro como
+
+#+begin_src scheme
+(define (>= x y)
+  (or (> x y) (= x y)))
+#+end_src
+
+o alternativamente como
+
+#+begin_src scheme
+(define (>= x y)
+  (not (< x y)))
+#+end_src
+
+**** Exercise 1.1
+:properties:
+:custom_id: exercise-1.1
+:end:
+
+A continuación se presenta una secuencia de expresiones. ¿Cuál es el resultado impreso por el intérprete en respuesta a cada expresión? Asuma que la secuencia debe evaluarse en el orden en que se presenta.
+
+#+begin_src scheme
+10
+
+(+ 5 3 4)
+
+(- 9 1)
+
+(/ 6 2)
+
+(+ (* 2 4) (- 4 6))
+
+(define a 3)
+
+(define b (+ a 1))
+
+(+ a b (* a b))
+
+(= a b)
+
+(if (and (> b a) (< b (* a b)))
+    b
+    a)
+
+(cond ((= a 4) 6)
+      ((= b 4) (+ 6 7 a))
+      (else 25))
+
+(+ 2 (if (> b a) b a))
+
+(* (cond ((> a b) a)
+         ((< a b) b)
+         (else -1))
+   (+ a 1))
+#+end_src
+
+**** Exercise 1.2
+:properties:
+:custom_id: exercise-1.2
+:end:
+
+Traduce la siguiente expresión a forma prefija.
+
+#+begin_example
+ 5 + 4 + (2 - (3 - (6 + 4/5)))
+ -----------------------------
+        3(6 - 2)(2 - 7)
+#+end_example
+
+**** Exercise 1.3
+:properties:
+:custom_id: exercise-1.3
+:end:
+
+Define un procedimiento que tome tres números como argumentos y devuelva la suma de los cuadrados de los dos números mayores.
+
+**** Exercise 1.4
+:properties:
+:custom_id: exercise-1.4
+:end:
+
+Observe que nuestro modelo de evaluación permite combinaciones cuyos operadores son expresiones compuestas. Use esta observación para describir el comportamiento del siguiente procedimiento:
+
+#+begin_src scheme
+(define (a-plus-abs-b a b)
+  ((if (> b 0) + -) a b))
+#+end_src
+
+**** Exercise 1.5
+:properties:
+:custom_id: exercise-1.5
+:end:
+
+Ben Bitdiddle ha inventado una prueba para determinar si el intérprete con el que se enfrenta está usando evaluación de orden aplicativo o evaluación de orden normal. Define los siguientes dos procedimientos:
+
+#+begin_src scheme
+(define (p) (p))
+
+(define (test x y)
+  (if (= x 0)
+      0
+      y))
+#+end_src
+
+Luego evalúa la expresión
+
+#+begin_src scheme
+(test 0 (p))
+#+end_src
+
+¿Qué comportamiento observará Ben con un intérprete que usa evaluación de orden aplicativo? ¿Qué comportamiento observará con un intérprete que usa evaluación de orden normal? Explique su respuesta. (Asuma que la regla de evaluación para la forma especial ~if~ es la misma independientemente de si el intérprete está usando orden normal o aplicativo: La expresión predicado se evalúa primero, y el resultado determina si se evalúa la expresión consecuente o la expresión alternativa.)
+
+*** 1.1.7 Ejemplo: Raíces Cuadradas por el Método de Newton
+:properties:
+:custom_id: section-1.1.7
+:end:
+
+Los procedimientos, como se han introducido anteriormente, son muy similares a las funciones matemáticas ordinarias. Especifican un valor que está determinado por uno o más parámetros. Pero hay una diferencia importante entre las funciones matemáticas y los procedimientos de computadora. Los procedimientos deben ser efectivos.
+
+Como ejemplo ilustrativo, considere el problema de calcular raíces cuadradas. Podemos definir la función de raíz cuadrada como
+
+#+begin_example
+ sqrt(x) = the y such that y >= 0 and y^2 = x
+#+end_example
+
+Esto describe una función matemática perfectamente legítima. Podríamos usarla para reconocer si un número es la raíz cuadrada de otro, o para derivar hechos sobre raíces cuadradas en general. Por otro lado, la definición no describe un procedimiento. De hecho, no nos dice casi nada sobre cómo encontrar realmente la raíz cuadrada de un número dado. No ayudará reformular esta definición en pseudo-Lisp:
+
+#+begin_src scheme
+(define (sqrt x)
+  (the y (and (>= y 0)
+              (= (square y) x))))
+#+end_src
+
+Esto solo elude la cuestión.
+
+El contraste entre función y procedimiento es un reflejo de la distinción general entre describir propiedades de las cosas y describir cómo hacer las cosas, o, como a veces se le denomina, la distinción entre conocimiento declarativo y conocimiento imperativo. En matemáticas normalmente nos ocupamos de descripciones declarativas (qué es), mientras que en ciencias de la computación normalmente nos ocupamos de descripciones imperativas (cómo hacer).[fn:20]
+
+¿Cómo se calculan raíces cuadradas? La forma más común es usar el método de aproximaciones sucesivas de Newton, que dice que siempre que tengamos una conjetura y para el valor de la raíz cuadrada de un número x, podemos realizar una manipulación simple para obtener una mejor conjetura (una más cercana a la raíz cuadrada real) promediando y con x/y.[fn:21] Por ejemplo, podemos calcular la raíz cuadrada de 2 de la siguiente manera. Suponga que nuestra conjetura inicial es 1:
+
+#+begin_example
+ Guess  Quotient             Average
+ 1      (2/1) = 2            ((2 + 1)/2) = 1.5
+ 1.5    (2/1.5) = 1.3333     ((1.3333 + 1.5)/2) = 1.4167
+ 1.4167 (2/1.4167) = 1.4118  ((1.4167 + 1.4118)/2) = 1.4142
+ 1.4142 ...                  ...
+#+end_example
+
+Continuando este proceso, obtenemos aproximaciones cada vez mejores a la raíz cuadrada.
+
+Ahora formalicemos el proceso en términos de procedimientos. Comenzamos con un valor para el radicando (el número cuya raíz cuadrada estamos tratando de calcular) y un valor para la conjetura. Si la conjetura es suficientemente buena para nuestros propósitos, hemos terminado; si no, debemos repetir el proceso con una conjetura mejorada. Escribimos esta estrategia básica como un procedimiento:
+
+#+begin_src scheme
+(define (sqrt-iter guess x)
+  (if (good-enough? guess x)
+      guess
+      (sqrt-iter (improve guess x)
+                 x)))
+#+end_src
+
+Una conjetura se mejora promediándola con el cociente del radicando y la conjetura anterior:
+
+#+begin_src scheme
+(define (improve guess x)
+  (average guess (/ x guess)))
+#+end_src
+
+donde
+
+#+begin_src scheme
+(define (average x y)
+  (/ (+ x y) 2))
+#+end_src
+
+También tenemos que decir qué queremos decir con "suficientemente bueno". Lo siguiente servirá para ilustración, pero realmente no es una prueba muy buena. (Ver ejercicio [[#exercise-1.7][Exercise 1.7]].) La idea es mejorar la respuesta hasta que esté lo suficientemente cerca de modo que su cuadrado difiera del radicando en menos de una tolerancia predeterminada (aquí 0.001):[fn:22]
+
+#+begin_src scheme
+(define (good-enough? guess x)
+  (< (abs (- (square guess) x)) 0.001))
+#+end_src
+
+Finalmente, necesitamos una forma de comenzar. Por ejemplo, siempre podemos conjeturar que la raíz cuadrada de cualquier número es 1:[fn:23]
+
+#+begin_src scheme
+(define (sqrt x)
+  (sqrt-iter 1.0 x))
+#+end_src
+
+Si tecleamos estas definiciones al intérprete, podemos usar ~sqrt~ tal como podemos usar cualquier procedimiento:
+
+#+begin_src scheme
+(sqrt 9)
+3.00009155413138
+
+(sqrt (+ 100 37))
+11.704699917758145
+
+(sqrt (+ (sqrt 2) (sqrt 3)))
+1.7739279023207892
+
+(square (sqrt 1000))
+1000.000369924366
+#+end_src
+
+El programa ~sqrt~ también ilustra que el lenguaje procedimental simple que hemos introducido hasta ahora es suficiente para escribir cualquier programa puramente numérico que uno podría escribir en, digamos, C o Pascal. Esto podría parecer sorprendente, ya que no hemos incluido en nuestro lenguaje ninguna construcción iterativa (bucles) que dirija a la computadora a hacer algo una y otra vez. ~sqrt-iter~, por otro lado, demuestra cómo se puede lograr la iteración sin usar ninguna construcción especial más que la capacidad ordinaria de llamar a un procedimiento.[fn:24]
+
+**** Exercise 1.6
+:properties:
+:custom_id: exercise-1.6
+:end:
+
+Alyssa P. Hacker no ve por qué ~if~ necesita proporcionarse como una forma especial. "¿Por qué no puedo simplemente definirlo como un procedimiento ordinario en términos de ~cond~?" pregunta ella. La amiga de Alyssa, Eva Lu Ator, afirma que esto puede hacerse de hecho, y define una nueva versión de ~if~:
+
+#+begin_src scheme
+(define (new-if predicate then-clause else-clause)
+  (cond (predicate then-clause)
+        (else else-clause)))
+#+end_src
+
+Eva demuestra el programa para Alyssa:
+
+#+begin_src scheme
+(new-if (= 2 3) 0 5)
+5
+
+(new-if (= 1 1) 0 5)
+0
+#+end_src
+
+Encantada, Alyssa usa ~new-if~ para reescribir el programa de raíz cuadrada:
+
+#+begin_src scheme
+(define (sqrt-iter guess x)
+  (new-if (good-enough? guess x)
+          guess
+          (sqrt-iter (improve guess x)
+                     x)))
+#+end_src
+
+¿Qué sucede cuando Alyssa intenta usar esto para calcular raíces cuadradas? Explique.
+
+**** Exercise 1.7
+:properties:
+:custom_id: exercise-1.7
+:end:
+
+La prueba ~good-enough?~ usada en el cálculo de raíces cuadradas no será muy efectiva para encontrar las raíces cuadradas de números muy pequeños. Además, en computadoras reales, las operaciones aritméticas casi siempre se realizan con precisión limitada. Esto hace que nuestra prueba sea inadecuada para números muy grandes. Explique estas afirmaciones, con ejemplos que muestren cómo falla la prueba para números pequeños y grandes. Una estrategia alternativa para implementar ~good-enough?~ es observar cómo cambia ~guess~ de una iteración a la siguiente y detenerse cuando el cambio es una fracción muy pequeña de la conjetura. Diseñe un procedimiento de raíz cuadrada que use este tipo de prueba final. ¿Funciona esto mejor para números pequeños y grandes?
+
+**** Exercise 1.8
+:properties:
+:custom_id: exercise-1.8
+:end:
+
+El método de Newton para raíces cúbicas se basa en el hecho de que si y es una aproximación a la raíz cúbica de x, entonces una mejor aproximación está dada por el valor
+
+#+begin_example
+ x/y^2 + 2y
+ ----------
+     3
+#+end_example
+
+Use esta fórmula para implementar un procedimiento de raíz cúbica análogo al procedimiento de raíz cuadrada. (En la sección [[#section-1.3.4][1.3.4]] veremos cómo implementar el método de Newton en general como una abstracción de estos procedimientos de raíz cuadrada y raíz cúbica.)
+
+*** 1.1.8 Procedimientos como Abstracciones de Caja Negra
+:properties:
+:custom_id: section-1.1.8
+:end:
+
+~sqrt~ es nuestro primer ejemplo de un proceso definido por un conjunto de procedimientos definidos mutuamente. Nótese que la definición de ~sqrt-iter~ es <<i326>> recursiva; es decir, el procedimiento se define en términos de sí mismo. La idea de poder definir un procedimiento en términos de sí mismo puede ser perturbadora; puede parecer poco claro cómo tal definición "circular" podría tener sentido en absoluto, mucho menos especificar un proceso bien definido para ser llevado a cabo por una computadora. Esto se abordará con más cuidado en la sección [[#section-1.2][1.2]]. Pero primero consideremos algunos otros puntos importantes ilustrados por el ejemplo de ~sqrt~.
+
+Observe que el problema de calcular raíces cuadradas se descompone naturalmente en varios subproblemas: cómo determinar si una conjetura es suficientemente buena, cómo mejorar una conjetura, etcétera. Cada una de estas tareas se logra mediante un procedimiento separado. El programa completo ~sqrt~ puede verse como un conjunto de procedimientos (mostrado en [[figure-1.2][Figure 1.2]]) que refleja la descomposición del problema en subproblemas.
+
+<<figure-1.2>> Descomposición procedimental del programa ~sqrt~.
+
+#+begin_example
+             sqrt
+              |
+          sqrt-iter
+          /       \
+  good-enough    improve
+    /    \          |
+ square  abs     average
+#+end_example
+
+La importancia de esta estrategia de descomposición no es simplemente que uno esté dividiendo el programa en partes. Después de todo, podríamos tomar cualquier programa grande y dividirlo en partes--las primeras diez líneas, las siguientes diez líneas, las siguientes diez líneas, etcétera. Más bien, es crucial que cada procedimiento logre una tarea identificable que pueda usarse como un módulo en la definición de otros procedimientos. Por ejemplo, cuando definimos el procedimiento ~good-enough?~ en términos de ~square~, podemos considerar el procedimiento ~square~ como una "caja negra". No nos preocupamos en ese momento de /cómo/ el procedimiento calcula su resultado, solo del hecho de que calcula el cuadrado. Los detalles de cómo se calcula el cuadrado pueden suprimirse, para ser considerados en un momento posterior. De hecho, en lo que respecta al procedimiento ~good-enough?~, ~square~ no es exactamente un procedimiento sino más bien una abstracción de un procedimiento, una llamada <<i299>> abstracción procedimental. En este nivel de abstracción, cualquier procedimiento que calcule el cuadrado es igualmente bueno.
+
+Por lo tanto, considerando solo los valores que devuelven, los siguientes dos procedimientos para elevar al cuadrado un número deberían ser indistinguibles. Cada uno toma un argumento numérico y produce el cuadrado de ese número como el valor.[fn:25]
+
+#+begin_src scheme
+(define (square x) (* x x))
+
+(define (square x)
+  (exp (double (log x))))
+
+(define (double x) (+ x x))
+#+end_src
+
+Así que una definición de procedimiento debe ser capaz de suprimir detalles. Los usuarios del procedimiento pueden no haber escrito el procedimiento ellos mismos, sino que pueden haberlo obtenido de otro programador como una caja negra. Un usuario no debería necesitar saber cómo está implementado el procedimiento para poder usarlo.
+
+*Nombres locales*
+
+Un detalle de la implementación de un procedimiento que no debería importarle al usuario del procedimiento es la elección del implementador de nombres para los parámetros formales del procedimiento. Por lo tanto, los siguientes procedimientos no deberían ser distinguibles:
+
+#+begin_src scheme
+(define (square x) (* x x))
+
+(define (square y) (* y y))
+#+end_src
+
+Este principio--que el significado de un procedimiento debe ser independiente de los nombres de parámetros usados por su autor--parece a primera vista ser evidente por sí mismo, pero sus consecuencias son profundas. La consecuencia más simple es que los nombres de parámetros de un procedimiento deben ser locales al cuerpo del procedimiento. Por ejemplo, usamos ~square~ en la definición de ~good-enough?~ en nuestro procedimiento de raíz cuadrada:
+
+#+begin_src scheme
+(define (good-enough? guess x)
+  (< (abs (- (square guess) x)) 0.001))
+#+end_src
+
+La intención del autor de ~good-enough?~ es determinar si el cuadrado del primer argumento está dentro de una tolerancia dada del segundo argumento. Vemos que el autor de ~good-enough?~ usó el nombre ~guess~ para referirse al primer argumento y ~x~ para referirse al segundo argumento. El argumento de ~square~ es ~guess~. Si el autor de ~square~ usó ~x~ (como arriba) para referirse a ese argumento, vemos que la ~x~ en ~good-enough?~ debe ser una ~x~ diferente de la que está en ~square~. Ejecutar el procedimiento ~square~ no debe afectar el valor de ~x~ que es usado por ~good-enough?~, porque ese valor de ~x~ puede ser necesitado por ~good-enough?~ después de que ~square~ termine de calcular.
+
+Si los parámetros no fueran locales a los cuerpos de sus respectivos procedimientos, entonces el parámetro ~x~ en ~square~ podría confundirse con el parámetro ~x~ en ~good-enough?~, y el comportamiento de ~good-enough?~ dependería de qué versión de ~square~ usáramos. Por lo tanto, ~square~ no sería la caja negra que deseamos.
+
+Un parámetro formal de un procedimiento tiene un rol muy especial en la definición del procedimiento, en que no importa qué nombre tenga el parámetro formal. Tal nombre se llama una <<i41>> variable ligada, y decimos que la definición del procedimiento <<i38>> liga sus parámetros formales. El significado de una definición de procedimiento no cambia si una variable ligada se renombra consistentemente a lo largo de la definición.[fn:26] Si una variable no está ligada, decimos que es <<i149>> libre. El conjunto de expresiones para las cuales una ligadura define un nombre se llama el <<i342>> ámbito de ese nombre. En una definición de procedimiento, las variables ligadas declaradas como los parámetros formales del procedimiento tienen el cuerpo del procedimiento como su ámbito.
+
+En la definición de ~good-enough?~ anterior, ~guess~ y ~x~ son variables ligadas pero ~<~, '-', ~abs~ y ~square~ son libres. El significado de ~good-enough?~ debe ser independiente de los nombres que elijamos para ~guess~ y ~x~ siempre que sean distintos y diferentes de ~<~, '-', ~abs~ y ~square~. (Si renombráramos ~guess~ a ~abs~ habríamos introducido un bug al <<i53>> capturar la variable ~abs~. Habría cambiado de libre a ligada.) Sin embargo, el significado de ~good-enough?~ no es independiente de los nombres de sus variables libres. Ciertamente depende del hecho (externo a esta definición) de que el símbolo ~abs~ nombra un procedimiento para calcular el valor absoluto de un número. ~good-enough?~ calculará una función diferente si sustituimos ~cos~ por ~abs~ en su definición.
+
+*Definiciones internas y estructura de bloques*
+
+Tenemos un tipo de aislamiento de nombres disponible hasta ahora: Los parámetros formales de un procedimiento son locales al cuerpo del procedimiento. El programa de raíz cuadrada ilustra otra forma en que nos gustaría controlar el uso de nombres. El programa existente consiste en procedimientos separados:
+
+#+begin_src scheme
+(define (sqrt x)
+  (sqrt-iter 1.0 x))
+
+(define (sqrt-iter guess x)
+  (if (good-enough? guess x)
+      guess
+      (sqrt-iter (improve guess x) x)))
+
+(define (good-enough? guess x)
+  (< (abs (- (square guess) x)) 0.001))
+
+(define (improve guess x)
+  (average guess (/ x guess)))
+#+end_src
+
+El problema con este programa es que el único procedimiento que es importante para los usuarios de ~sqrt~ es ~sqrt~. Los otros procedimientos (~sqrt-iter~, ~good-enough?~ e ~improve~) solo abarrotan sus mentes. No pueden definir ningún otro procedimiento llamado ~good-enough?~ como parte de otro programa para trabajar junto con el programa de raíz cuadrada, porque ~sqrt~ lo necesita. El problema es especialmente grave en la construcción de sistemas grandes por muchos programadores separados. Por ejemplo, en la construcción de una gran biblioteca de procedimientos numéricos, muchas funciones numéricas se calculan como aproximaciones sucesivas y por lo tanto podrían tener procedimientos llamados ~good-enough?~ e ~improve~ como procedimientos auxiliares. Nos gustaría localizar los subprocedimientos, ocultándolos dentro de ~sqrt~ para que ~sqrt~ pueda coexistir con otras aproximaciones sucesivas, cada una teniendo su propio procedimiento ~good-enough?~ privado. Para hacer esto posible, permitimos que un procedimiento tenga definiciones internas que son locales a ese procedimiento. Por ejemplo, en el problema de raíz cuadrada podemos escribir
+
+#+begin_src scheme
+(define (sqrt x)
+  (define (good-enough? guess x)
+    (< (abs (- (square guess) x)) 0.001))
+  (define (improve guess x)
+    (average guess (/ x guess)))
+  (define (sqrt-iter guess x)
+    (if (good-enough? guess x)
+        guess
+        (sqrt-iter (improve guess x) x)))
+  (sqrt-iter 1.0 x))
+#+end_src
+
+Tal anidamiento de definiciones, llamado <<i40>> estructura de bloques, es básicamente la solución correcta al problema más simple de empaquetamiento de nombres. Pero hay una idea mejor acechando aquí. Además de internalizar las definiciones de los procedimientos auxiliares, podemos simplificarlas. Dado que ~x~ está ligada en la definición de ~sqrt~, los procedimientos ~good-enough?~, ~improve~ y ~sqrt-iter~, que se definen internamente en ~sqrt~, están en el ámbito de ~x~. Por lo tanto, no es necesario pasar ~x~ explícitamente a cada uno de estos procedimientos. En su lugar, permitimos que ~x~ sea una variable libre en las definiciones internas, como se muestra a continuación. Entonces ~x~ obtiene su valor del argumento con el que se llama al procedimiento envolvente ~sqrt~. Esta disciplina se llama <<i206>> alcance léxico.[fn:27]
+
+#+begin_src scheme
+(define (sqrt x)
+  (define (good-enough? guess)
+    (< (abs (- (square guess) x)) 0.001))
+  (define (improve guess)
+    (average guess (/ x guess)))
+  (define (sqrt-iter guess)
+    (if (good-enough? guess)
+        guess
+        (sqrt-iter (improve guess))))
+  (sqrt-iter 1.0))
+#+end_src
+
+Usaremos la estructura de bloques extensivamente para ayudarnos a dividir programas grandes en piezas manejables.[fn:28] La idea de estructura de bloques se originó con el lenguaje de programación Algol 60. Aparece en la mayoría de los lenguajes de programación avanzados y es una herramienta importante para ayudar a organizar la construcción de programas grandes.
+
