@@ -1,4 +1,4 @@
-# Assembly Line (SICP Edition)
+# Assembly Line
 
 Temporary assembly line directory for SICP files being processed through skill pipelines.
 
@@ -26,13 +26,13 @@ Where:
 
 ## Processing Lifecycle
 
-1. **Source files**: Files to be processed live in `sicp-castilian/`
+1. **Source files**: Files to be processed live in `org-castilian/`
 2. **Start processing**: When processing begins, the file is **moved** (deleted from source) to `assembly-line/`
    - **IMPORTANT**: The original file is removed from the source directory
-   - Example: `sicp-castilian/Chapter-1.org` is **deleted** and split into `assembly-line/Chapter-1-part1.org`, `assembly-line/Chapter-1-part2.org`, etc.
+   - Example: `org-castilian/Chapter-1.org` is **deleted** and split into `assembly-line/Chapter-1-part1.org`, `assembly-line/Chapter-1-part2.org`, etc.
 3. **During processing**: Intermediate files are stored in `assembly-line/` with the naming convention above
-4. **After completion**: Final processed file is moved back to `sicp-castilian/` with a completion suffix
-   - Example: After merging all parts → `sicp-castilian/Chapter-1-castilian.org`
+4. **After completion**: Final processed file is moved back to `org-castilian/` with a completion suffix
+   - Example: After merging all parts → `org-castilian/Chapter-1-castilian.org`
    - The completion suffix (`-castilian`) indicates the file has been fully processed
    - Files without the completion suffix still need to be processed
 5. **Cleanup**: All intermediate files are deleted from `assembly-line/` after successful completion
@@ -49,3 +49,4 @@ When processing a file, the agent only needs access to:
 Translation skills are located in the `skills/` directory:
 - `skills/castilian-translation_OPTIMIZED.md`
 - `skills/translate-code-comments_OPTIMIZED.md`
+- 
