@@ -136,7 +136,7 @@ sicp-castilian/sicp0-castilian.org  (only this remains)
 ```
 Process the first org file that does NOT have `-castilian` in its filename from sicp-castilian/ through the trans-castilian assembly line.
 
-Follow the instructions in skill/trans-castilian.md.
+Follow the instructions in assembly-line/trans-castilian.md.
 ```
 
 ## Skills Location
