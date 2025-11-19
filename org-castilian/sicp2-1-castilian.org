@@ -1,0 +1,550 @@
+* 2 Construyendo Abstracciones con Datos
+:properties:
+:custom_id: section-2
+:end:
+** Introducción
+:properties:
+:VISIBILITY: notoc
+:end:
+
+#+begin_quote
+Ahora llegamos al paso decisivo de la abstracción matemática: olvidamos lo que representan los símbolos. ...[El matemático] no necesita estar ocioso; hay muchas operaciones que puede llevar a cabo con estos símbolos, sin tener que mirar nunca las cosas que representan.
+
+--Hermann Weyl, 'The Mathematical Way of Thinking'
+#+end_quote
+
+Nos concentramos en el [[#section-1][Capítulo 1]] en los procesos computacionales y en el rol de los procedimientos en el diseño de programas. Vimos cómo usar datos primitivos (números) y operaciones primitivas (operaciones aritméticas), cómo combinar procedimientos para formar procedimientos compuestos a través de la composición, condicionales y el uso de parámetros, y cómo abstraer procedimientos usando ~define~. Vimos que un procedimiento puede considerarse como un patrón para la evolución local de un proceso, y clasificamos, razonamos sobre, y realizamos análisis algorítmicos simples de algunos patrones comunes para procesos tal como están plasmados en procedimientos. También vimos que los procedimientos de orden superior mejoran el poder de nuestro lenguaje al permitirnos manipular, y por lo tanto razonar en términos de, métodos generales de computación. Esto es mucho de la esencia de la programación.
+
+En este capítulo vamos a ver datos más complejos. Todos los procedimientos en el [[#section-1][Capítulo 1]] operan sobre datos numéricos simples, y los datos simples no son suficientes para muchos de los problemas que deseamos abordar usando la computación. Los programas típicamente se diseñan para modelar fenómenos complejos, y las más de las veces uno debe construir objetos computacionales que tienen varias partes para modelar fenómenos del mundo real que tienen varios aspectos. Así, mientras que nuestro enfoque en el [[#section-1][Capítulo 1]] estaba en construir abstracciones combinando procedimientos para formar procedimientos compuestos, en este capítulo nos dirigimos a otro aspecto clave de cualquier lenguaje de programación: los medios que proporciona para construir abstracciones combinando objetos de datos para formar <<i73>> datos compuestos.
+
+¿Por qué queremos datos compuestos en un lenguaje de programación? Por las mismas razones por las que queremos procedimientos compuestos: para elevar el nivel conceptual en el que podemos diseñar nuestros programas, para aumentar la modularidad de nuestros diseños, y para mejorar el poder expresivo de nuestro lenguaje. Así como la capacidad de definir procedimientos nos permite tratar con procesos a un nivel conceptual más alto que el de las operaciones primitivas del lenguaje, la capacidad de construir objetos de datos compuestos nos permite tratar con datos a un nivel conceptual más alto que el de los objetos de datos primitivos del lenguaje.
+
+Consideremos la tarea de diseñar un sistema para realizar aritmética con números racionales. Podríamos imaginar una operación ~add-rat~ que tome dos números racionales y produzca su suma. En términos de datos simples, un número racional puede pensarse como dos enteros: un numerador y un denominador. Así, podríamos diseñar un programa en el cual cada número racional estaría representado por dos enteros (un numerador y un denominador) y donde ~add-rat~ estaría implementado por dos procedimientos (uno produciendo el numerador de la suma y otro produciendo el denominador). Pero esto sería incómodo, porque entonces necesitaríamos llevar un registro explícito de qué numeradores correspondían a qué denominadores. En un sistema destinado a realizar muchas operaciones sobre muchos números racionales, estos detalles contables ensuciarían los programas sustancialmente, por no hablar de lo que harían a nuestras mentes. Sería mucho mejor si pudiésemos "pegar" un numerador y un denominador para formar un par--un <<i74>> objeto de datos compuesto--que nuestros programas pudieran manipular de una manera que fuera consistente con considerar un número racional como una única unidad conceptual.
+
+El uso de datos compuestos también nos permite aumentar la modularidad de nuestros programas. Si podemos manipular números racionales directamente como objetos por derecho propio, entonces podemos separar la parte de nuestro programa que trata con números racionales per se de los detalles de cómo los números racionales pueden estar representados como pares de enteros. La técnica general de aislar las partes de un programa que tratan con cómo están representados los objetos de datos de las partes de un programa que tratan con cómo se usan los objetos de datos es una poderosa metodología de diseño llamada <<i93>> abstracción de datos. Veremos cómo la abstracción de datos hace que los programas sean mucho más fáciles de diseñar, mantener y modificar.
+
+El uso de datos compuestos conduce a un aumento real en el poder expresivo de nuestro lenguaje de programación. Consideremos la idea de formar una "combinación lineal" ax + by. Nos gustaría escribir un procedimiento que aceptara a, b, x, e y como argumentos y devolviera el valor de ax + by. Esto no presenta dificultad si los argumentos van a ser números, porque podemos definir fácilmente el procedimiento
+
+#+begin_src scheme
+(define (linear-combination a b x y)
+  (+ (* a x) (* b y)))
+#+end_src
+
+Pero supongamos que no nos preocupan solamente los números. Supongamos que nos gustaría expresar, en términos procedimentales, la idea de que uno puede formar combinaciones lineales siempre que estén definidas la adición y la multiplicación--para números racionales, números complejos, polinomios, o lo que sea. Podríamos expresar esto como un procedimiento de la forma
+
+#+begin_src scheme
+(define (linear-combination a b x y)
+  (add (mul a x) (mul b y)))
+#+end_src
+
+donde ~add~ y ~mul~ no son los procedimientos primitivos ~+~ y ~*~ sino cosas más complejas que realizarán las operaciones apropiadas para cualquier tipo de datos que pasemos como los argumentos ~a~, ~b~, ~x~, e ~y~. El punto clave es que lo único que ~linear-combination~ debería necesitar saber sobre ~a~, ~b~, ~x~, e ~y~ es que los procedimientos ~add~ y ~mul~ realizarán las manipulaciones apropiadas. Desde la perspectiva del procedimiento ~linear-combination~, es irrelevante qué son ~a~, ~b~, ~x~, e ~y~ y aún más irrelevante cómo podrían estar representados en términos de datos más primitivos. Este mismo ejemplo muestra por qué es importante que nuestro lenguaje de programación proporcione la capacidad de manipular objetos compuestos directamente: Sin esto, no hay forma de que un procedimiento como ~linear-combination~ pase sus argumentos a ~add~ y ~mul~ sin tener que conocer su estructura detallada.[fn:67]
+
+Comenzamos este capítulo implementando el sistema aritmético de números racionales mencionado arriba. Esto formará el trasfondo para nuestra discusión sobre datos compuestos y abstracción de datos. Como con los procedimientos compuestos, el tema principal a abordar es el de la abstracción como técnica para lidiar con la complejidad, y veremos cómo la abstracción de datos nos permite erigir <<i3>> barreras de abstracción adecuadas entre diferentes partes de un programa.
+
+Veremos que la clave para formar datos compuestos es que un lenguaje de programación debería proporcionar algún tipo de "pegamento" para que los objetos de datos puedan combinarse para formar objetos de datos más complejos. Hay muchos tipos posibles de pegamento. De hecho, descubriremos cómo formar datos compuestos sin usar operaciones especiales de "datos" en absoluto, solamente procedimientos. Esto difuminará aún más la distinción entre "procedimiento" y "datos", que ya se estaba volviendo tenue hacia el final del [[#section-1][Capítulo 1]]. También exploraremos algunas técnicas convencionales para representar secuencias y árboles. Una idea clave al tratar con datos compuestos es la noción de <<i62>> cerradura--que el pegamento que usamos para combinar objetos de datos debería permitirnos combinar no solo objetos de datos primitivos, sino también objetos de datos compuestos. Otra idea clave es que los objetos de datos compuestos pueden servir como <<i88>> interfaces convencionales para combinar módulos de programa de maneras mezcla-y-combina. Ilustramos algunas de estas ideas presentando un lenguaje gráfico simple que explota la cerradura.
+
+Entonces aumentaremos el poder representacional de nuestro lenguaje introduciendo <<i381>> expresiones simbólicas--datos cuyas partes elementales pueden ser símbolos arbitrarios en lugar de solo números. Exploramos varias alternativas para representar conjuntos de objetos. Descubriremos que, así como una función numérica dada puede ser calculada por muchos procesos computacionales diferentes, hay muchas formas en las que una estructura de datos dada puede ser representada en términos de objetos más simples, y la elección de la representación puede tener un impacto significativo en los requisitos de tiempo y espacio de los procesos que manipulan los datos. Investigaremos estas ideas en el contexto de la diferenciación simbólica, la representación de conjuntos y la codificación de información.
+
+A continuación abordaremos el problema de trabajar con datos que pueden ser representados de forma diferente por diferentes partes de un programa. Esto lleva a la necesidad de implementar <<i161>> operaciones genéricas, que deben manejar muchos tipos diferentes de datos. Mantener la modularidad en presencia de operaciones genéricas requiere barreras de abstracción más potentes de las que se pueden erigir con la simple abstracción de datos por sí sola. En particular, introducimos la <<i97>> programación dirigida por datos como una técnica que permite que representaciones de datos individuales sean diseñadas de forma aislada y luego combinadas <<i10>> de forma aditiva (es decir, sin modificación). Para ilustrar el poder de este enfoque al diseño de sistemas, cerramos el capítulo aplicando lo que hemos aprendido a la implementación de un paquete para realizar aritmética simbólica sobre polinomios, en el que los coeficientes de los polinomios pueden ser enteros, números racionales, números complejos e incluso otros polinomios.
+
+** 2.1 Introducción a la Abstracción de Datos
+:properties:
+:custom_id: section-2.1
+:end:
+
+En la sección [[#section-1.1.8][1.1.8]], notamos que un procedimiento usado como elemento en la creación de un procedimiento más complejo podía ser considerado no solo como una colección de operaciones particulares sino también como una abstracción procedimental. Es decir, los detalles de cómo fue implementado el procedimiento podían ser suprimidos, y el procedimiento particular en sí podía ser reemplazado por cualquier otro procedimiento con el mismo comportamiento general. En otras palabras, podíamos hacer una abstracción que separara la forma en que el procedimiento sería usado de los detalles de cómo el procedimiento sería implementado en términos de procedimientos más primitivos. La noción análoga para datos compuestos se llama <<i94>> abstracción de datos. La abstracción de datos es una metodología que nos permite aislar cómo se usa un objeto de datos compuesto de los detalles de cómo se construye a partir de objetos de datos más primitivos.
+
+La idea básica de la abstracción de datos es estructurar los programas que van a usar objetos de datos compuestos de modo que operen sobre "datos abstractos". Es decir, nuestros programas deberían usar datos de tal manera que no hagan suposiciones sobre los datos que no sean estrictamente necesarias para realizar la tarea en cuestión. Al mismo tiempo, una representación de datos "concreta" se define independientemente de los programas que usan los datos. La interfaz entre estas dos partes de nuestro sistema será un conjunto de procedimientos, llamados <<i343>> selectores y <<i83>> constructores, que implementan los datos abstractos en términos de la representación concreta. Para ilustrar esta técnica, consideraremos cómo diseñar un conjunto de procedimientos para manipular números racionales.
+
+*** 2.1.1 Ejemplo: Operaciones Aritméticas para Números Racionales
+:properties:
+:custom_id: section-2.1.1
+:end:
+
+Supongamos que queremos hacer aritmética con números racionales. Queremos poder sumarlos, restarlos, multiplicarlos y dividirlos, y probar si dos números racionales son iguales.
+
+Comencemos asumiendo que ya tenemos una forma de construir un número racional a partir de un numerador y un denominador. También asumimos que, dado un número racional, tenemos una forma de extraer (o seleccionar) su numerador y su denominador. Asumamos además que el constructor y los selectores están disponibles como procedimientos:
+
+- ~(make-rat <N> <D>)~ devuelve el número racional cuyo numerador es el entero ~<N>~ y cuyo denominador es el entero ~<D>~.
+
+- ~(numer <X>)~ devuelve el numerador del número racional ~<X>~.
+
+- ~(denom <X>)~ devuelve el denominador del número racional ~<X>~.
+
+
+Estamos usando aquí una poderosa estrategia de síntesis: <<i425>> pensamiento optimista. Aún no hemos dicho cómo se representa un número racional, o cómo los procedimientos ~numer~, ~denom~ y ~make-rat~ deberían ser implementados. Aun así, si tuviéramos estos tres procedimientos, entonces podríamos sumar, restar, multiplicar, dividir y probar la igualdad usando las siguientes relaciones:
+
+#+begin_example
+ n_1   n_2   n_1 d_2 + n_2 d_1
+ --- + --- = -----------------
+ d_1   d_2        d_1 d_2
+
+ n_1   n_2   n_1 d_2 - n_2 d_1
+ --- - --- = -----------------
+ d_1   d_2        d_1 d_2
+
+ n_1   n_2   n_1 n_2
+ --- * --- = -------
+ d_1   d_2   d_1 d_2
+
+ n_1 / d_1   n_1 d_2
+ --------- = -------
+ n_2 / d_2   d_1 n_2
+
+ n_1   n_2
+ --- = ---  if and only if n_1 d_2 = n_2 d_1
+ d_1   d_2
+#+end_example
+
+Podemos expresar estas reglas como procedimientos:
+
+#+begin_src scheme
+(define (add-rat x y)
+  (make-rat (+ (* (numer x) (denom y))
+               (* (numer y) (denom x)))
+            (* (denom x) (denom y))))
+
+(define (sub-rat x y)
+  (make-rat (- (* (numer x) (denom y))
+               (* (numer y) (denom x)))
+            (* (denom x) (denom y))))
+
+(define (mul-rat x y)
+  (make-rat (* (numer x) (numer y))
+            (* (denom x) (denom y))))
+
+(define (div-rat x y)
+  (make-rat (* (numer x) (denom y))
+            (* (denom x) (numer y))))
+
+(define (equal-rat? x y)
+  (= (* (numer x) (denom y))
+     (* (numer y) (denom x))))
+#+end_src
+
+Ahora tenemos las operaciones sobre números racionales definidas en términos de los procedimientos selector y constructor ~numer~, ~denom~ y ~make-rat~. Pero aún no hemos definido estos. Lo que necesitamos es alguna forma de unir un numerador y un denominador para formar un número racional.
+
+*Pares*
+
+Para permitirnos implementar el nivel concreto de nuestra abstracción de datos, nuestro lenguaje proporciona una estructura compuesta llamada un <<i278>> par, que puede ser construido con el procedimiento primitivo ~cons~. Este procedimiento toma dos argumentos y devuelve un objeto de datos compuesto que contiene los dos argumentos como partes. Dado un par, podemos extraer las partes usando los procedimientos primitivos ~car~ y ~cdr~.[fn:68] Así, podemos usar ~cons~, ~car~ y ~cdr~ de la siguiente manera:
+
+#+begin_src scheme
+(define x (cons 1 2))
+
+(car x)
+1
+
+(cdr x)
+2
+#+end_src
+
+Nótese que un par es un objeto de datos al que se le puede dar un nombre y manipular, igual que un objeto de datos primitivo. Además, ~cons~ puede ser usado para formar pares cuyos elementos son pares, y así sucesivamente:
+
+#+begin_src scheme
+(define x (cons 1 2))
+
+(define y (cons 3 4))
+
+(define z (cons x y))
+
+(car (car z))
+1
+
+(car (cdr z))
+3
+#+end_src
+
+En la sección [[#section-2.2][2.2]] veremos cómo esta capacidad de combinar pares significa que los pares pueden ser usados como bloques de construcción de propósito general para crear todo tipo de estructuras de datos complejas. El único primitivo de datos compuestos <<i279>> par, implementado por los procedimientos ~cons~, ~car~ y ~cdr~, es la única unión que necesitamos. Los objetos de datos construidos a partir de pares se llaman <<i214>> datos con estructura de lista.
+
+*Representación de números racionales*
+
+Los pares ofrecen una forma natural de completar el sistema de números racionales. Simplemente representa un número racional como un par de dos enteros: un numerador y un denominador. Entonces ~make-rat~, ~numer~ y ~denom~ se implementan fácilmente de la siguiente manera:[fn:69]
+
+#+begin_src scheme
+(define (make-rat n d) (cons n d))
+
+(define (numer x) (car x))
+
+(define (denom x) (cdr x))
+#+end_src
+
+Además, para mostrar los resultados de nuestros cálculos, podemos imprimir números racionales imprimiendo el numerador, una barra diagonal y el denominador:[fn:70]
+
+#+begin_src scheme
+(define (print-rat x)
+  (newline)
+  (display (numer x))
+  (display "/")
+  (display (denom x)))
+#+end_src
+
+Ahora podemos probar nuestros procedimientos de números racionales:
+
+#+begin_src scheme
+(define one-half (make-rat 1 2))
+
+(print-rat one-half)
+1/2
+
+(define one-third (make-rat 1 3))
+
+(print-rat (add-rat one-half one-third))
+5/6
+
+(print-rat (mul-rat one-half one-third))
+1/6
+
+(print-rat (add-rat one-third one-third))
+6/9
+#+end_src
+
+Como muestra el ejemplo final, nuestra implementación de números racionales no reduce los números racionales a sus términos más simples. Podemos remediar esto cambiando ~make-rat~. Si tenemos un procedimiento ~gcd~ como el de la sección [[#section-1.2.5][1.2.5]] que produce el máximo común divisor de dos enteros, podemos usar ~gcd~ para reducir el numerador y el denominador a sus términos más simples antes de construir el par:
+
+#+begin_src scheme
+(define (make-rat n d)
+  (let ((g (gcd n d)))
+    (cons (/ n g) (/ d g))))
+#+end_src
+
+Ahora tenemos
+
+#+begin_src scheme
+(print-rat (add-rat one-third one-third))
+2/3
+#+end_src
+
+como se desea. Esta modificación se logró cambiando el constructor ~make-rat~ sin cambiar ninguno de los procedimientos (como ~add-rat~ y ~mul-rat~) que implementan las operaciones reales.
+
+**** Exercise 2.1
+:properties:
+:custom_id: exercise-2.1
+:end:
+
+Define una mejor versión de ~make-rat~ que maneje argumentos tanto positivos como negativos. ~make-rat~ debería normalizar el signo de modo que si el número racional es positivo, tanto el numerador como el denominador sean positivos, y si el número racional es negativo, solo el numerador sea negativo.
+
+*** 2.1.2 Barreras de Abstracción
+:properties:
+:custom_id: section-2.1.2
+:end:
+
+Antes de continuar con más ejemplos de datos compuestos y abstracción de datos, consideremos algunos de los problemas planteados por el ejemplo de números racionales. Definimos las operaciones de números racionales en términos de un constructor ~make-rat~ y selectores ~numer~ y ~denom~. En general, la idea subyacente de la abstracción de datos es identificar para cada tipo de objeto de datos un conjunto básico de operaciones en términos de las cuales se expresarán todas las manipulaciones de objetos de datos de ese tipo, y luego usar solo esas operaciones para manipular los datos.
+
+Podemos imaginar la estructura del sistema de números racionales como se muestra en la figura [[figure-2.1][Figura 2.1]]. Las líneas horizontales representan <<i4>> barreras de abstracción que aíslan diferentes "niveles" del sistema. En cada nivel, la barrera separa los programas (arriba) que usan la abstracción de datos de los programas (abajo) que implementan la abstracción de datos. Los programas que usan números racionales los manipulan únicamente en términos de los procedimientos suministrados "para uso público" por el paquete de números racionales: ~add-rat~, ~sub-rat~, ~mul-rat~, ~div-rat~ y ~equal-rat?~. Estos, a su vez, se implementan únicamente en términos del constructor y los selectores ~make-rat~, ~numer~ y ~denom~, que a su vez se implementan en términos de pares. Los detalles de cómo se implementan los pares son irrelevantes para el resto del paquete de números racionales siempre que los pares puedan ser manipulados mediante el uso de ~cons~, ~car~ y ~cdr~. En efecto, los procedimientos en cada nivel son las interfaces que definen las barreras de abstracción y conectan los diferentes niveles.
+
+<<figure-2.1>> Barreras de abstracción de datos en el paquete de números racionales.
+
+#+begin_example
+         +---------------------------------------+
+ --------| Programas que usan números racionales |--------
+         +---------------------------------------+
+        Números racionales en el dominio del problema
+             +---------------------------+
+ ------------|   add-rat  sub-rat  ...   |-------------
+             +---------------------------+
+   Números racionales como numeradores y denominadores
+               +------------------------+
+ --------------| make-rat  numer  denom |--------------
+               +------------------------+
+            Números racionales como pares
+                   +----------------+
+ ------------------| cons  car  cdr |------------------
+                   +----------------+
+       Como sea que se implementen los pares
+#+end_example
+
+Esta simple idea tiene muchas ventajas. Una ventaja es que hace que los programas sean mucho más fáciles de mantener y modificar. Cualquier estructura de datos compleja puede ser representada de diversas formas con las estructuras de datos primitivas proporcionadas por un lenguaje de programación. Por supuesto, la elección de la representación influye en los programas que operan sobre ella; por lo tanto, si la representación fuera cambiada en algún momento posterior, todos esos programas podrían tener que ser modificados en consecuencia. Esta tarea podría consumir tiempo y ser costosa en el caso de programas grandes a menos que la dependencia de la representación fuera confinada por diseño a muy pocos módulos del programa.
+
+Por ejemplo, una forma alternativa de abordar el problema de reducir números racionales a sus términos más simples es realizar la reducción cada vez que accedemos a las partes de un número racional, en lugar de cuando lo construimos. Esto lleva a diferentes procedimientos constructor y selector:
+
+#+begin_src scheme
+(define (make-rat n d)
+  (cons n d))
+
+(define (numer x)
+  (let ((g (gcd (car x) (cdr x))))
+    (/ (car x) g)))
+
+(define (denom x)
+  (let ((g (gcd (car x) (cdr x))))
+    (/ (cdr x) g)))
+#+end_src
+
+La diferencia entre esta implementación y la anterior radica en cuándo calculamos el ~gcd~. Si en nuestro uso típico de números racionales accedemos a los numeradores y denominadores de los mismos números racionales muchas veces, sería preferible calcular el ~gcd~ cuando se construyen los números racionales. Si no, podríamos estar mejor esperando hasta el momento de acceso para calcular el ~gcd~. En cualquier caso, cuando cambiamos de una representación a la otra, los procedimientos ~add-rat~, ~sub-rat~, etc., no tienen que ser modificados en absoluto.
+
+Limitar la dependencia de la representación a unos pocos procedimientos de interfaz nos ayuda a diseñar programas así como a modificarlos, porque nos permite mantener la flexibilidad para considerar implementaciones alternativas. Para continuar con nuestro ejemplo simple, supongamos que estamos diseñando un paquete de números racionales y no podemos decidir inicialmente si realizar el ~gcd~ en el momento de construcción o en el momento de selección. La metodología de abstracción de datos nos da una forma de diferir esa decisión sin perder la capacidad de progresar en el resto del sistema.
+
+**** Exercise 2.2
+:properties:
+:custom_id: exercise-2.2
+:end:
+
+Considera el problema de representar segmentos de línea en un plano. Cada segmento se representa como un par de puntos: un punto inicial y un punto final. Define un constructor ~make-segment~ y selectores ~start-segment~ y ~end-segment~ que definen la representación de segmentos en términos de puntos. Además, un punto puede ser representado como un par de números: la coordenada x y la coordenada y. En consecuencia, especifica un constructor ~make-point~ y selectores ~x-point~ e ~y-point~ que definen esta representación. Finalmente, usando tus selectores y constructores, define un procedimiento ~midpoint-segment~ que toma un segmento de línea como argumento y devuelve su punto medio (el punto cuyas coordenadas son el promedio de las coordenadas de los extremos). Para probar tus procedimientos, necesitarás una forma de imprimir puntos:
+
+#+begin_src scheme
+(define (print-point p)
+  (newline)
+  (display "(")
+  (display (x-point p))
+  (display ",")
+  (display (y-point p))
+  (display ")"))
+#+end_src
+
+**** Exercise 2.3
+:properties:
+:custom_id: exercise-2.3
+:end:
+
+Implementa una representación para rectángulos en un plano. (Pista: Quizás quieras hacer uso del [[#exercise-2.2][Ejercicio 2.2]].) En términos de tus constructores y selectores, crea procedimientos que calculen el perímetro y el área de un rectángulo dado. Ahora implementa una representación diferente para rectángulos. ¿Puedes diseñar tu sistema con barreras de abstracción adecuadas, de modo que los mismos procedimientos de perímetro y área funcionen usando cualquiera de las dos representaciones?
+
+*** 2.1.3 ¿Qué se Entiende por Datos?
+:properties:
+:custom_id: section-2.1.3
+:end:
+
+Comenzamos la implementación de números racionales en la sección [[#section-2.1.1][2.1.1]] implementando las operaciones de números racionales ~add-rat~, ~sub-rat~, etc., en términos de tres procedimientos no especificados: ~make-rat~, ~numer~ y ~denom~. En ese punto, podíamos pensar en las operaciones como definidas en términos de objetos de datos--numeradores, denominadores y números racionales--cuyo comportamiento fue especificado por estos últimos tres procedimientos.
+
+¿Pero qué se entiende exactamente por <<i92>> datos? No es suficiente decir "lo que sea que esté implementado por los selectores y constructores dados". Claramente, no cualquier conjunto arbitrario de tres procedimientos puede servir como base apropiada para la implementación de números racionales. Necesitamos garantizar que, si construimos un número racional ~x~ a partir de un par de enteros ~n~ y ~d~, entonces extraer el ~numer~ y el ~denom~ de ~x~ y dividirlos debería producir el mismo resultado que dividir ~n~ entre ~d~. En otras palabras, ~make-rat~, ~numer~ y ~denom~ deben satisfacer la condición de que, para cualquier entero ~n~ y cualquier entero no cero ~d~, si ~x~ es (~make-rat n d~), entonces
+
+#+begin_example
+(numer x)    n
+------ = --
+(denom x)    d
+#+end_example
+
+De hecho, esta es la única condición que ~make-rat~, ~numer~ y ~denom~ deben cumplir para formar una base adecuada para una representación de números racionales. En general, podemos pensar en los datos como definidos por alguna colección de selectores y constructores, junto con condiciones especificadas que estos procedimientos deben cumplir para ser una representación válida.[fn:71]
+
+Este punto de vista puede servir para definir no solo objetos de datos de "alto nivel", como números racionales, sino también objetos de nivel más bajo. Considera la noción de un par, que usamos para definir nuestros números racionales. Nunca dijimos realmente qué era un par, solo que el lenguaje proporcionaba procedimientos ~cons~, ~car~ y ~cdr~ para operar sobre pares. Pero lo único que necesitamos saber sobre estas tres operaciones es que si unimos dos objetos usando ~cons~ podemos recuperar los objetos usando ~car~ y ~cdr~. Es decir, las operaciones satisfacen la condición de que, para cualesquiera objetos ~x~ e ~y~, si ~z~ es ~(cons x y)~ entonces ~(car z)~ es ~x~ y ~(cdr z)~ es ~y~. De hecho, mencionamos que estos tres procedimientos se incluyen como primitivos en nuestro lenguaje. Sin embargo, cualquier tripleta de procedimientos que satisfaga la condición anterior puede usarse como base para implementar pares. Este punto se ilustra llamativamente por el hecho de que podríamos implementar ~cons~, ~car~ y ~cdr~ sin usar ninguna estructura de datos en absoluto sino solo usando procedimientos. Aquí están las definiciones:
+
+#+begin_src scheme
+(define (cons x y)
+  (define (dispatch m)
+    (cond ((= m 0) x)
+          ((= m 1) y)
+          (else (error "Argument not 0 or 1 - CONS" m))))
+  dispatch)
+
+(define (car z) (z 0))
+
+(define (cdr z) (z 1))
+#+end_src
+
+Este uso de procedimientos no corresponde en nada a nuestra noción intuitiva de lo que deberían ser los datos. Sin embargo, todo lo que necesitamos hacer para mostrar que esta es una forma válida de representar pares es verificar que estos procedimientos satisfagan la condición dada anteriormente.
+
+El punto sutil a notar es que el valor devuelto por ~(cons x y)~ es un procedimiento--a saber, el procedimiento definido internamente ~dispatch~, que toma un argumento y devuelve ~x~ o ~y~ dependiendo de si el argumento es 0 o 1. Correspondientemente, ~(car z)~ se define para aplicar ~z~ a 0. Por lo tanto, si ~z~ es el procedimiento formado por ~(cons x y)~, entonces ~z~ aplicado a 0 producirá ~x~. Así, hemos mostrado que ~(car (cons x y))~ produce ~x~, como se desea. De manera similar, ~(cdr (cons x y))~ aplica el procedimiento devuelto por ~(cons x y)~ a 1, lo que devuelve ~y~. Por lo tanto, esta implementación procedimental de pares es una implementación válida, y si accedemos a pares usando solo ~cons~, ~car~ y ~cdr~ no podemos distinguir esta implementación de una que use estructuras de datos "reales".
+
+El punto de exhibir la representación procedimental de pares no es que nuestro lenguaje funcione de esta manera (Scheme, y los sistemas Lisp en general, implementan pares directamente, por razones de eficiencia) sino que podría funcionar de esta manera. La representación procedimental, aunque oscura, es una forma perfectamente adecuada de representar pares, ya que cumple las únicas condiciones que los pares necesitan cumplir. Este ejemplo también demuestra que la capacidad de manipular procedimientos como objetos automáticamente proporciona la capacidad de representar datos compuestos. Esto puede parecer una curiosidad ahora, pero las representaciones procedimentales de datos desempeñarán un papel central en nuestro repertorio de programación. Este estilo de programación se llama a menudo <<i233>> paso de mensajes, y lo usaremos como una herramienta básica en el [[#section-3][Capítulo 3]] cuando abordemos los problemas de modelado y simulación.
+
+**** Exercise 2.4
+:properties:
+:custom_id: exercise-2.4
+:end:
+
+Aquí hay una representación procedimental alternativa de pares. Para esta representación, verifica que ~(car (cons x y))~ produce ~x~ para cualesquiera objetos ~x~ e ~y~.
+
+#+begin_src scheme
+(define (cons x y)
+  (lambda (m) (m x y)))
+
+(define (car z)
+  (z (lambda (p q) p)))
+#+end_src
+
+¿Cuál es la definición correspondiente de ~cdr~? (Pista: Para verificar que esto funciona, haz uso del modelo de sustitución de la sección [[#section-1.1.5][1.1.5]].)
+
+**** Exercise 2.5
+:properties:
+:custom_id: exercise-2.5
+:end:
+
+Muestra que podemos representar pares de enteros no negativos usando solo números y operaciones aritméticas si representamos el par a y b como el entero que es el producto 2^a 3^b. Da las definiciones correspondientes de los procedimientos ~cons~, ~car~ y ~cdr~.
+
+**** Exercise 2.6
+:properties:
+:custom_id: exercise-2.6
+:end:
+
+En caso de que representar pares como procedimientos no fuera suficientemente alucinante, considera que, en un lenguaje que puede manipular procedimientos, podemos arreglárnoslas sin números (al menos en lo que respecta a enteros no negativos) implementando 0 y la operación de sumar 1 como
+
+#+begin_src scheme
+(define zero (lambda (f) (lambda (x) x)))
+
+(define (add-1 n)
+  (lambda (f) (lambda (x) (f ((n f) x)))))
+#+end_src
+
+Esta representación se conoce como <<i58>> numerales de Church, en honor a su inventor, Alonzo Church, el lógico que inventó el cálculo [lambda].
+
+Define ~one~ y ~two~ directamente (no en términos de ~zero~ y ~add-1~). (Pista: Usa la sustitución para evaluar ~(add-1 zero)~). Da una definición directa del procedimiento de adición ~+~ (no en términos de aplicación repetida de ~add-1~).
+
+*** 2.1.4 Ejercicio Extendido: Aritmética de Intervalos
+:properties:
+:custom_id: section-2.1.4
+:end:
+
+Alyssa P. Hacker está diseñando un sistema para ayudar a las personas a resolver problemas de ingeniería. Una característica que quiere proporcionar en su sistema es la capacidad de manipular cantidades inexactas (como parámetros medidos de dispositivos físicos) con precisión conocida, de modo que cuando se realicen cálculos con tales cantidades aproximadas los resultados sean números de precisión conocida.
+
+Los ingenieros eléctricos usarán el sistema de Alyssa para calcular cantidades eléctricas. A veces es necesario que calculen el valor de una resistencia equivalente en paralelo R_p de dos resistencias R_1 y R_2 usando la fórmula
+
+#+begin_example
+             1
+ R_p = -------------
+       1/R_1 + 1/R_2
+#+end_example
+
+Los valores de resistencia generalmente solo se conocen hasta cierta tolerancia garantizada por el fabricante de la resistencia. Por ejemplo, si compras una resistencia etiquetada como "6.8 ohmios con 10% de tolerancia" solo puedes estar seguro de que la resistencia tiene una resistencia entre 6.8 - 0.68 = 6.12 y 6.8 + 0.68 = 7.48 ohmios. Por lo tanto, si tienes una resistencia de 6.8 ohmios al 10% en paralelo con una resistencia de 4.7 ohmios al 5%, la resistencia de la combinación puede variar desde aproximadamente 2.58 ohmios (si las dos resistencias están en los límites inferiores) hasta aproximadamente 2.97 ohmios (si las dos resistencias están en los límites superiores).
+
+La idea de Alyssa es implementar "aritmética de intervalos" como un conjunto de operaciones aritméticas para combinar "intervalos" (objetos que representan el rango de valores posibles de una cantidad inexacta). El resultado de sumar, restar, multiplicar o dividir dos intervalos es en sí mismo un intervalo, que representa el rango del resultado.
+
+Alyssa postula la existencia de un objeto abstracto llamado "intervalo" que tiene dos extremos: un límite inferior y un límite superior. También presume que, dados los extremos de un intervalo, puede construir el intervalo usando el constructor de datos ~make-interval~. Alyssa primero escribe un procedimiento para sumar dos intervalos. Razona que el valor mínimo que podría tener la suma es la suma de los dos límites inferiores y el valor máximo que podría tener es la suma de los dos límites superiores:
+
+#+begin_src scheme
+(define (add-interval x y)
+  (make-interval (+ (lower-bound x) (lower-bound y))
+                 (+ (upper-bound x) (upper-bound y))))
+#+end_src
+
+Alyssa también calcula el producto de dos intervalos encontrando el mínimo y el máximo de los productos de los límites y usándolos como los límites del intervalo resultante. (~min~ y ~max~ son primitivos que encuentran el mínimo o máximo de cualquier número de argumentos.)
+
+#+begin_src scheme
+(define (mul-interval x y)
+  (let ((p1 (* (lower-bound x) (lower-bound y)))
+        (p2 (* (lower-bound x) (upper-bound y)))
+        (p3 (* (upper-bound x) (lower-bound y)))
+        (p4 (* (upper-bound x) (upper-bound y))))
+    (make-interval (min p1 p2 p3 p4)
+                   (max p1 p2 p3 p4))))
+#+end_src
+
+Para dividir dos intervalos, Alyssa multiplica el primero por el recíproco del segundo. Nótese que los límites del intervalo recíproco son el recíproco del límite superior y el recíproco del límite inferior, en ese orden.
+
+#+begin_src scheme
+(define (div-interval x y)
+  (mul-interval x
+                (make-interval (/ 1.0 (upper-bound y))
+                               (/ 1.0 (lower-bound y)))))
+#+end_src
+
+**** Exercise 2.7
+:properties:
+:custom_id: exercise-2.7
+:end:
+
+El programa de Alyssa está incompleto porque no ha especificado la implementación de la abstracción de intervalos. Aquí hay una definición del constructor de intervalos:
+
+#+begin_src scheme
+(define (make-interval a b) (cons a b))
+#+end_src
+
+Define selectores ~upper-bound~ y ~lower-bound~ para completar la implementación.
+
+**** Exercise 2.8
+:properties:
+:custom_id: exercise-2.8
+:end:
+
+Usando un razonamiento análogo al de Alyssa, describe cómo puede calcularse la diferencia de dos intervalos. Define un procedimiento de resta correspondiente, llamado ~sub-interval~.
+
+**** Exercise 2.9
+:properties:
+:custom_id: exercise-2.9
+:end:
+
+La <<i423>> anchura de un intervalo es la mitad de la diferencia entre sus límites superior e inferior. La anchura es una medida de la incertidumbre del número especificado por el intervalo. Para algunas operaciones aritméticas la anchura del resultado de combinar dos intervalos es una función solo de las anchuras de los intervalos argumento, mientras que para otras la anchura de la combinación no es una función de las anchuras de los intervalos argumento. Muestra que la anchura de la suma (o diferencia) de dos intervalos es una función solo de las anchuras de los intervalos que se suman (o restan). Da ejemplos para mostrar que esto no es cierto para la multiplicación o división.
+
+**** Exercise 2.10
+:properties:
+:custom_id: exercise-2.10
+:end:
+
+Ben Bitdiddle, un programador experto en sistemas, mira por encima del hombro de Alyssa y comenta que no está claro qué significa dividir por un intervalo que abarca cero. Modifica el código de Alyssa para verificar esta condición y señalar un error si ocurre.
+
+**** Exercise 2.11
+:properties:
+:custom_id: exercise-2.11
+:end:
+
+De paso, Ben también comenta crípiticamente: "Probando los signos de los extremos de los intervalos, es posible dividir ~mul-interval~ en nueve casos, solo uno de los cuales requiere más de dos multiplicaciones". Reescribe este procedimiento usando la sugerencia de Ben.
+
+Después de depurar su programa, Alyssa se lo muestra a un usuario potencial, quien se queja de que su programa resuelve el problema equivocado. Él quiere un programa que pueda tratar con números representados como un valor central y una tolerancia aditiva; por ejemplo, quiere trabajar con intervalos como 3.5 +/- 0.15 en lugar de [3.35, 3.65]. Alyssa regresa a su escritorio y soluciona este problema proporcionando un constructor alternativo y selectores alternativos:
+
+#+begin_src scheme
+(define (make-center-width c w)
+  (make-interval (- c w) (+ c w)))
+
+(define (center i)
+  (/ (+ (lower-bound i) (upper-bound i)) 2))
+
+(define (width i)
+  (/ (- (upper-bound i) (lower-bound i)) 2))
+#+end_src
+
+Desafortunadamente, la mayoría de los usuarios de Alyssa son ingenieros. Las situaciones de ingeniería reales generalmente involucran mediciones con solo una pequeña incertidumbre, medida como la razón de la anchura del intervalo al punto medio del intervalo. Los ingenieros generalmente especifican tolerancias porcentuales en los parámetros de dispositivos, como en las especificaciones de resistencias dadas anteriormente.
+
+**** Exercise 2.12
+:properties:
+:custom_id: exercise-2.12
+:end:
+
+Define un constructor ~make-center-percent~ que toma un centro y una tolerancia porcentual y produce el intervalo deseado. También debes definir un selector ~percent~ que produzca la tolerancia porcentual para un intervalo dado. El selector ~center~ es el mismo que el mostrado arriba.
+
+**** Exercise 2.13
+:properties:
+:custom_id: exercise-2.13
+:end:
+
+Muestra que bajo la suposición de tolerancias porcentuales pequeñas hay una fórmula simple para la tolerancia porcentual aproximada del producto de dos intervalos en términos de las tolerancias de los factores. Puedes simplificar el problema asumiendo que todos los números son positivos.
+
+Después de un trabajo considerable, Alyssa P. Hacker entrega su sistema terminado. Varios años después, después de que ha olvidado todo al respecto, recibe una llamada frenética de un usuario iracundo, Lem E. Tweakit. Parece que Lem ha notado que la fórmula para resistencias en paralelo puede escribirse de dos formas algebraicamente equivalentes:
+
+#+begin_example
+  R_1 R_2
+ ---------
+ R_1 + R_2
+#+end_example
+
+y
+
+#+begin_example
+       1
+ -------------
+ 1/R_1 + 1/R_2
+#+end_example
+
+Ha escrito los siguientes dos programas, cada uno de los cuales calcula la fórmula de resistencias en paralelo de manera diferente:
+
+#+begin_src scheme
+(define (par1 r1 r2)
+  (div-interval (mul-interval r1 r2)
+                (add-interval r1 r2)))
+
+(define (par2 r1 r2)
+  (let ((one (make-interval 1 1)))
+    (div-interval one
+                  (add-interval (div-interval one r1)
+                                (div-interval one r2)))))
+#+end_src
+
+Lem se queja de que el programa de Alyssa da respuestas diferentes para las dos formas de calcular. Esta es una queja seria.
+
+**** Exercise 2.14
+:properties:
+:custom_id: exercise-2.14
+:end:
+
+Demuestra que Lem tiene razón. Investiga el comportamiento del sistema en una variedad de expresiones aritméticas. Haz algunos intervalos A y B, y úsalos para calcular las expresiones A/A y A/B. Obtendrás la mayor información usando intervalos cuya anchura sea un pequeño porcentaje del valor central. Examina los resultados del cálculo en forma centro-porcentaje (ver [[#exercise-2.12][Ejercicio 2.12]]).
+
+**** Exercise 2.15
+:properties:
+:custom_id: exercise-2.15
+:end:
+
+Eva Lu Ator, otra usuaria, también ha notado los diferentes intervalos calculados por expresiones diferentes pero algebraicamente equivalentes. Ella dice que una fórmula para calcular con intervalos usando el sistema de Alyssa producirá límites de error más ajustados si puede escribirse de tal forma que ninguna variable que represente un número incierto se repita. Así, dice, ~par2~ es un programa "mejor" para resistencias en paralelo que ~par1~. ¿Tiene razón? ¿Por qué?
+
+**** Exercise 2.16
+:properties:
+:custom_id: exercise-2.16
+:end:
+
+Explica, en general, por qué expresiones algebraicas equivalentes pueden llevar a respuestas diferentes. ¿Puedes idear un paquete de aritmética de intervalos que no tenga esta deficiencia, o esta tarea es imposible? (Advertencia: Este problema es muy difícil.)
+
