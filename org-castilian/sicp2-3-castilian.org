@@ -1,0 +1,793 @@
+** 2.3 Datos simbólicos
+:properties:
+:custom_id: section-2.3
+:end:
+Todos los objetos de datos compuestos que hemos usado hasta ahora fueron construidos en última instancia a partir de números. En esta sección extendemos la capacidad de representación de nuestro lenguaje al introducir la capacidad de trabajar con símbolos arbitrarios como datos.
+*** 2.3.1 Citación
+:properties:
+:custom_id: section-2.3.1
+:end:
+
+Si podemos formar datos compuestos usando símbolos, podemos tener listas como
+#+begin_src scheme
+(a b c d)
+(23 45 17)
+((Norah 12) (Molly 9) (Anna 7) (Lauren 6) (Charlotte 4))
+#+end_src
+Las listas que contienen símbolos pueden verse igual que las expresiones de nuestro lenguaje:
+
+#+begin_src scheme
+(* (+ 23 45) (+ x 9))
+
+(define (fact n) (if (= n 1) 1 (* n (fact (- n 1)))))
+#+end_src
+Para poder manipular símbolos necesitamos un nuevo elemento en nuestro lenguaje: la capacidad de <<i315>> citar un objeto de datos. Supongamos que queremos construir la lista ~(a b)~. No podemos lograr esto con ~(list a b)~, porque esta expresión construye una lista de los <<i419>> valores de ~a~ y ~b~ en lugar de los símbolos mismos. Este problema es bien conocido en el contexto de los lenguajes naturales, donde las palabras y oraciones pueden considerarse como entidades semánticas o como cadenas de caracteres (entidades sintácticas). La práctica común en los lenguajes naturales es usar comillas para indicar que una palabra u oración debe tratarse literalmente como una cadena de caracteres. Por ejemplo, la primera letra de "John" es claramente "J." Si le decimos a alguien "di tu nombre en voz alta", esperamos escuchar el nombre de esa persona. Sin embargo, si le decimos a alguien "di 'tu nombre' en voz alta", esperamos escuchar las palabras "tu nombre". Nótese que nos vemos obligados a anidar comillas para describir lo que alguien más podría decir.[fn:98]
+Podemos seguir esta misma práctica para identificar listas y símbolos que deben tratarse como objetos de datos en lugar de como expresiones a evaluar. Sin embargo, nuestro formato para citar difiere del de los lenguajes naturales en que colocamos una comilla (tradicionalmente, el símbolo de comilla simple ~'~) solo al principio del objeto a citar. Podemos salir airosos con esto en la sintaxis de Scheme porque nos basamos en espacios en blanco y paréntesis para delimitar objetos. Así, el significado del carácter de comilla simple es citar el siguiente objeto.[fn:99]
+
+Ahora podemos distinguir entre símbolos y sus valores:
+#+begin_src scheme
+(define a 1)
+
+(define b 2)
+
+(list a b)
+(1 2)
+
+(list 'a 'b)
+(a b)
+
+(list 'a b)
+(a 2)
+#+end_src
+La citación también nos permite escribir objetos compuestos, usando la representación impresa convencional para listas:[fn:100]
+
+#+begin_src scheme
+(car '(a b c))
+a
+
+(cdr '(a b c))
+(b c)
+#+end_src
+En consonancia con esto, podemos obtener la lista vacía evaluando ~'()~, y así prescindir de la variable ~nil~.
+Una primitiva adicional usada para manipular símbolos es ~eq?~, que toma dos símbolos como argumentos y comprueba si son iguales.[fn:101] Usando ~eq?~, podemos implementar un procedimiento útil llamado ~memq~. Este toma dos argumentos, un símbolo y una lista. Si el símbolo no está contenido en la lista (es decir, no es ~eq?~ a ningún elemento de la lista), entonces ~memq~ devuelve falso. De lo contrario, devuelve la sublista de la lista comenzando con la primera aparición del símbolo:
+
+#+begin_src scheme
+(define (memq item x)
+  (cond ((null? x) false)
+        ((eq? item (car x)) x)
+        (else (memq item (cdr x)))))
+#+end_src
+Por ejemplo, el valor de
+#+begin_src scheme
+(memq 'apple '(pear banana prune))
+#+end_src
+
+es falso, mientras que el valor de
+#+begin_src scheme
+(memq 'apple '(x (apple sauce) y apple pear))
+#+end_src
+es ~(apple pear)~.
+
+**** Ejercicio 2.53
+:properties:
+:custom_id: exercise-2.53
+:end:
+¿Qué imprimiría el intérprete en respuesta a evaluar cada una de las siguientes expresiones?
+#+begin_src scheme
+(list 'a 'b 'c)
+
+(list (list 'george))
+
+(cdr '((x1 x2) (y1 y2)))
+
+(cadr '((x1 x2) (y1 y2)))
+
+(pair? (car '(a short list)))
+
+(memq 'red '((red shoes) (blue socks)))
+
+(memq 'red '(red shoes blue socks))
+#+end_src
+
+**** Ejercicio 2.54
+:properties:
+:custom_id: exercise-2.54
+:end:
+Se dice que dos listas son ~equal?~ si contienen elementos iguales dispuestos en el mismo orden. Por ejemplo,
+#+begin_src scheme
+(equal? '(this is a list) '(this is a list))
+#+end_src
+
+es verdadero, pero
+#+begin_src scheme
+(equal? '(this is a list) '(this (is a) list))
+#+end_src
+es falso. Para ser más precisos, podemos definir ~equal?~ recursivamente en términos de la igualdad básica ~eq?~ de símbolos diciendo que ~a~ y ~b~ son ~equal?~ si ambos son símbolos y los símbolos son ~eq?~, o si ambos son listas tales que ~(car a)~ es ~equal?~ a ~(car b)~ y ~(cdr a)~ es ~equal?~ a ~(cdr b)~. Usando esta idea, implementa ~equal?~ como un procedimiento.[fn:102]
+
+**** Ejercicio 2.55
+:properties:
+:custom_id: exercise-2.55
+:end:
+Eva Lu Ator escribe en el intérprete la expresión
+#+begin_src scheme
+(car "abracadabra)
+#+end_src
+
+Para su sorpresa, el intérprete imprime ~quote~. Explica por qué.
+*** 2.3.2 Ejemplo: Diferenciación simbólica
+:properties:
+:custom_id: section-2.3.2
+:end:
+Como una ilustración de manipulación de símbolos y una ilustración adicional de abstracción de datos, considera el diseño de un procedimiento que realiza diferenciación simbólica de expresiones algebraicas. Nos gustaría que el procedimiento tome como argumentos una expresión algebraica y una variable y devuelva la derivada de la expresión con respecto a la variable. Por ejemplo, si los argumentos del procedimiento son ax^2 + bx + c y x, el procedimiento debería devolver 2ax + b. La diferenciación simbólica tiene una importancia histórica especial en Lisp. Fue uno de los ejemplos motivadores detrás del desarrollo de un lenguaje de computadora para manipulación de símbolos. Además, marcó el comienzo de la línea de investigación que llevó al desarrollo de sistemas poderosos para trabajo matemático simbólico, que actualmente están siendo usados por un número creciente de matemáticos aplicados y físicos.
+
+Al desarrollar el programa de diferenciación simbólica, seguiremos la misma estrategia de abstracción de datos que seguimos al desarrollar el sistema de números racionales de la sección [[#section-2.1.1][2.1.1]]. Es decir, primero definiremos un algoritmo de diferenciación que opera sobre objetos abstractos como "sumas", "productos" y "variables" sin preocuparnos por cómo se representarán. Solo después abordaremos el problema de representación.
+*El programa de diferenciación con datos abstractos*
+Para mantener las cosas simples, consideraremos un programa de diferenciación simbólica muy simple que maneja expresiones que se construyen usando solo las operaciones de adición y multiplicación con dos argumentos. La diferenciación de cualquiera de estas expresiones puede llevarse a cabo aplicando las siguientes reglas de reducción:
+
+#+begin_example
+ dc
+ -- = 0  para c una constante, o una variable distinta de x
+ dx
+
+ dx
+ -- = 1
+ dx
+
+ d(u + v)   du   dv
+ -------- = -- + --
+    dx      dx   dx
+
+ d(uv)     / dv \     / du \
+ ----- = u | -- | + v | -- |
+  dx       \ dx /     \ dx /
+#+end_example
+Observa que las dos últimas reglas son de naturaleza recursiva. Es decir, para obtener la derivada de una suma primero encontramos las derivadas de los términos y las sumamos. Cada uno de los términos puede a su vez ser una expresión que necesita ser descompuesta. Descomponer en piezas cada vez más pequeñas eventualmente producirá piezas que son constantes o variables, cuyas derivadas serán 0 o 1.
+Para plasmar estas reglas en un procedimiento nos entregamos a un poco de pensamiento ilusorio, como hicimos al diseñar la implementación de números racionales. Si tuviéramos un medio para representar expresiones algebraicas, deberíamos poder determinar si una expresión es una suma, un producto, una constante o una variable. Deberíamos poder extraer las partes de una expresión. Para una suma, por ejemplo, queremos poder extraer el sumando (primer término) y el augendo (segundo término). También deberíamos poder construir expresiones a partir de partes. Asumamos que ya tenemos procedimientos para implementar los siguientes selectores, constructores y predicados:
+
+#+begin_example
+ (variable? e)          ¿Es `e' una variable?
+ (same-variable? v1 v2) ¿Son `v1' y `v2' la misma variable?
+ (sum? e)               ¿Es `e' una suma?
+ (addend e)             Sumando de la suma `e'.
+ (augend e)             Augendo de la suma `e'.
+ (make-sum a1 a2)       Construye la suma de `a1' y `a2'.
+ (product? e)           ¿Es `e' un producto?
+ (multiplier e)         Multiplicador del producto `e'.
+ (multiplicand e)       Multiplicando del producto `e'.
+ (make-product m1 m2)   Construye el producto de `m1' y `m2'.
+#+end_example
+Usando estos, y el predicado primitivo ~number?~, que identifica números, podemos expresar las reglas de diferenciación como el siguiente procedimiento:
+#+begin_src scheme
+(define (deriv exp var)
+  (cond ((number? exp) 0)
+        ((variable? exp)
+         (if (same-variable? exp var) 1 0))
+        ((sum? exp)
+         (make-sum (deriv (addend exp) var)
+                   (deriv (augend exp) var)))
+        ((product? exp)
+         (make-sum
+          (make-product (multiplier exp)
+                        (deriv (multiplicand exp) var))
+          (make-product (deriv (multiplier exp) var)
+                        (multiplicand exp))))
+        (else
+         (error "unknown expression type - DERIV" exp))))
+#+end_src
+
+Este procedimiento ~deriv~ incorpora el algoritmo completo de diferenciación. Dado que está expresado en términos de datos abstractos, funcionará sin importar cómo elijamos representar las expresiones algebraicas, siempre que diseñemos un conjunto adecuado de selectores y constructores. Este es el problema que debemos abordar a continuación.
+*Representando expresiones algebraicas*
+Podemos imaginar muchas formas de usar la estructura de listas para representar expresiones algebraicas. Por ejemplo, podríamos usar listas de símbolos que reflejen la notación algebraica habitual, representando ax + b como la lista ~(a * x + b)~. Sin embargo, una elección especialmente directa es usar la misma notación prefija entre paréntesis que Lisp usa para combinaciones; es decir, representar ax + b como ~(+ (* a x) b)~. Entonces nuestra representación de datos para el problema de diferenciación es la siguiente:
+
+a. Las variables son símbolos. Se identifican mediante el predicado primitivo ~symbol?~:
+#+begin_src scheme
+(define (variable? x) (symbol? x))
+#+end_src
+b. Dos variables son iguales si los símbolos que las representan son ~eq?~:
+
+#+begin_src scheme
+(define (same-variable? v1 v2)
+  (and (variable? v1) (variable? v2) (eq? v1 v2)))
+#+end_src
+c. Las sumas y productos se construyen como listas:
+#+begin_src scheme
+(define (make-sum a1 a2) (list '+ a1 a2))
+
+(define (make-product m1 m2) (list '* m1 m2))
+#+end_src
+
+d. Una suma es una lista cuyo primer elemento es el símbolo ~+~:
+#+begin_src scheme
+(define (sum? x)
+  (and (pair? x) (eq? (car x) '+)))
+#+end_src
+e. El sumando es el segundo elemento de la lista de suma:
+
+#+begin_src scheme
+(define (addend s) (cadr s))
+#+end_src
+f. El augendo es el tercer elemento de la lista de suma:
+#+begin_src scheme
+(define (augend s) (caddr s))
+#+end_src
+
+g. Un producto es una lista cuyo primer elemento es el símbolo ~*~:
+#+begin_src scheme
+(define (product? x)
+  (and (pair? x) (eq? (car x) '*)))
+#+end_src
+h. El multiplicador es el segundo elemento de la lista de producto:
+
+#+begin_src scheme
+(define (multiplier p) (cadr p))
+#+end_src
+i. El multiplicando es el tercer elemento de la lista de producto:
+#+begin_src scheme
+(define (multiplicand p) (caddr p))
+#+end_src
+
+Por lo tanto, solo necesitamos combinar estos con el algoritmo plasmado en ~deriv~ para tener un programa de diferenciación simbólica funcional. Veamos algunos ejemplos de su comportamiento:
+#+begin_src scheme
+(deriv '(+ x 3) 'x)
+(+ 1 0)
+
+(deriv '(* x y) 'x)
+(+ (* x 0) (* 1 y))
+
+(deriv '(* (* x y) (+ x 3)) 'x)
+   (+ (* (* x y) (+ 1 0))
+   (* (+ (* x 0) (* 1 y))
+      (+  x 3)))
+#+end_src
+El programa produce respuestas que son correctas; sin embargo, no están simplificadas. Es verdad que
+
+#+begin_example
+ d(xy)
+ ----- = x * 0 + 1 * y
+  dx
+#+end_example
+pero nos gustaría que el programa supiera que x * 0 = 0, 1 * y = y, y 0 + y = y. La respuesta para el segundo ejemplo debería haber sido simplemente ~y~. Como muestra el tercer ejemplo, esto se convierte en un problema serio cuando las expresiones son complejas.
+Nuestra dificultad es muy parecida a la que encontramos con la implementación de números racionales: no hemos reducido las respuestas a su forma más simple. Para lograr la reducción de números racionales, necesitábamos cambiar solo los constructores y los selectores de la implementación. Podemos adoptar una estrategia similar aquí. No cambiaremos ~deriv~ en absoluto. En su lugar, cambiaremos ~make-sum~ para que si ambos sumandos son números, ~make-sum~ los sume y devuelva su suma. Además, si uno de los sumandos es 0, entonces ~make-sum~ devolverá el otro sumando.
+
+#+begin_src scheme
+(define (make-sum a1 a2)
+  (cond ((=number? a1 0) a2)
+        ((=number? a2 0) a1)
+        ((and (number? a1) (number? a2)) (+ a1 a2))
+        (else (list '+ a1 a2))))
+#+end_src
+Esto usa el procedimiento ~=number?~, que comprueba si una expresión es igual a un número dado:
+#+begin_src scheme
+(define (=number? exp num)
+  (and (number? exp) (= exp num)))
+#+end_src
+
+De manera similar, cambiaremos ~make-product~ para incorporar las reglas de que 0 por cualquier cosa es 0 y 1 por cualquier cosa es la cosa misma:
+#+begin_src scheme
+(define (make-product m1 m2)
+  (cond ((or (=number? m1 0) (=number? m2 0)) 0)
+        ((=number? m1 1) m2)
+        ((=number? m2 1) m1)
+        ((and (number? m1) (number? m2)) (* m1 m2))
+        (else (list '* m1 m2))))
+#+end_src
+Así es como funciona esta versión en nuestros tres ejemplos:
+
+#+begin_src scheme
+(deriv '(+ x 3) 'x)
+1
+
+(deriv '(* x y) 'x)
+y
+
+(deriv '(* (* x y) (+ x 3)) 'x)
+(+ (* x y) (* y (+ x 3)))
+#+end_src
+Aunque esto es una mejora considerable, el tercer ejemplo muestra que todavía queda un largo camino por recorrer antes de obtener un programa que ponga las expresiones en una forma que podríamos considerar "más simple". El problema de la simplificación algebraica es complejo porque, entre otras razones, una forma que puede ser la más simple para un propósito puede no serlo para otro.
+**** Ejercicio 2.56
+:properties:
+:custom_id: exercise-2.56
+:end:
+
+Muestra cómo extender el diferenciador básico para manejar más tipos de expresiones. Por ejemplo, implementa la regla de diferenciación
+#+begin_example
+ d(u^n)             / du \
+ ------ = n u^(n-1) | -- |
+   dx               \ dx /
+#+end_example
+añadiendo una nueva cláusula al programa ~deriv~ y definiendo los procedimientos apropiados ~exponentiation?~, ~base~, ~exponent~ y ~make-exponentiation~. (Puedes usar el símbolo ~**~ para denotar exponenciación.) Incorpora las reglas de que cualquier cosa elevada a la potencia 0 es 1 y cualquier cosa elevada a la potencia 1 es la cosa misma.
+
+**** Ejercicio 2.57
+:properties:
+:custom_id: exercise-2.57
+:end:
+Extiende el programa de diferenciación para manejar sumas y productos de un número arbitrario de (dos o más) términos. Entonces el último ejemplo anterior podría expresarse como
+#+begin_src scheme
+(deriv '(* x y (+ x 3)) 'x)
+#+end_src
+
+Intenta hacer esto cambiando solo la representación de sumas y productos, sin cambiar el procedimiento ~deriv~ en absoluto. Por ejemplo, el ~addend~ de una suma sería el primer término, y el ~augend~ sería la suma del resto de los términos.
+**** Ejercicio 2.58
+:properties:
+:custom_id: exercise-2.58
+:end:
+Supongamos que queremos modificar el programa de diferenciación para que funcione con notación matemática ordinaria, en la que ~+~ y ~*~ son operadores infijos en lugar de prefijos. Dado que el programa de diferenciación está definido en términos de datos abstractos, podemos modificarlo para que funcione con diferentes representaciones de expresiones solo cambiando los predicados, selectores y constructores que definen la representación de las expresiones algebraicas sobre las que operará el diferenciador.
+
+a. Muestra cómo hacer esto para diferenciar expresiones algebraicas presentadas en forma infija, como ~(x + (3 * (x + (y + 2))))~. Para simplificar la tarea, asume que ~+~ y ~*~ siempre toman dos argumentos y que las expresiones están completamente entre paréntesis.
+b. El problema se vuelve sustancialmente más difícil si permitimos notación algebraica estándar, como ~(x + 3 * (x + y + 2))~, que omite paréntesis innecesarios y asume que la multiplicación se hace antes que la adición. ¿Puedes diseñar predicados, selectores y constructores apropiados para esta notación de modo que nuestro programa derivador siga funcionando?
+*** 2.3.3 Ejemplo: Representando conjuntos
+:properties:
+:custom_id: section-2.3.3
+:end:
+
+En los ejemplos anteriores construimos representaciones para dos tipos de objetos de datos compuestos: números racionales y expresiones algebraicas. En uno de estos ejemplos teníamos la opción de simplificar (reducir) las expresiones ya sea en el momento de construcción o en el momento de selección, pero aparte de eso la elección de una representación para estas estructuras en términos de listas fue directa. Cuando nos dirigimos a la representación de conjuntos, la elección de una representación no es tan obvia. De hecho, hay varias representaciones posibles, y difieren significativamente entre sí de varias maneras.
+Informalmente, un conjunto es simplemente una colección de objetos distintos. Para dar una definición más precisa podemos emplear el método de abstracción de datos. Es decir, definimos "conjunto" especificando las operaciones que se usarán sobre conjuntos. Estas son ~union-set~, ~intersection-set~, ~element-of-set?~ y ~adjoin-set~. ~element-of-set?~ es un predicado que determina si un elemento dado es miembro de un conjunto. ~adjoin-set~ toma un objeto y un conjunto como argumentos y devuelve un conjunto que contiene los elementos del conjunto original y también el elemento adjuntado. ~Union-set~ calcula la unión de dos conjuntos, que es el conjunto que contiene cada elemento que aparece en cualquiera de los argumentos. ~Intersection-set~ calcula la intersección de dos conjuntos, que es el conjunto que contiene solo los elementos que aparecen en ambos argumentos. Desde el punto de vista de la abstracción de datos, somos libres de diseñar cualquier representación que implemente estas operaciones de manera consistente con las interpretaciones dadas anteriormente.[fn:103]
+*Conjuntos como listas desordenadas*
+
+Una forma de representar un conjunto es como una lista de sus elementos en la que ningún elemento aparece más de una vez. El conjunto vacío se representa mediante la lista vacía. En esta representación, ~element-of-set?~ es similar al procedimiento ~memq~ de la sección [[#section-2.3.1][2.3.1]]. Usa ~equal?~ en lugar de ~eq?~ para que los elementos del conjunto no necesiten ser símbolos:
+#+begin_src scheme
+(define (element-of-set? x set)
+  (cond ((null? set) false)
+        ((equal? x (car set)) true)
+        (else (element-of-set? x (cdr set)))))
+#+end_src
+Usando esto, podemos escribir ~adjoin-set~. Si el objeto a adjuntar ya está en el conjunto, simplemente devolvemos el conjunto. De lo contrario, usamos ~cons~ para añadir el objeto a la lista que representa el conjunto:
+
+#+begin_src scheme
+(define (adjoin-set x set)
+  (if (element-of-set? x set)
+      set
+      (cons x set)))
+#+end_src
+Para ~intersection-set~ podemos usar una estrategia recursiva. Si sabemos cómo formar la intersección de ~set2~ y el ~cdr~ de ~set1~, solo necesitamos decidir si incluir el ~car~ de ~set1~ en esto. Pero esto depende de si ~(car set1)~ también está en ~set2~. Aquí está el procedimiento resultante:
+#+begin_src scheme
+(define (intersection-set set1 set2)
+  (cond ((or (null? set1) (null? set2)) '())
+        ((element-of-set? (car set1) set2)
+         (cons (car set1)
+               (intersection-set (cdr set1) set2)))
+        (else (intersection-set (cdr set1) set2))))
+#+end_src
+
+Al diseñar una representación, una de las cuestiones de las que deberíamos preocuparnos es la eficiencia. Considera el número de pasos requeridos por nuestras operaciones de conjuntos. Dado que todas usan ~element-of-set?~, la velocidad de esta operación tiene un impacto importante en la eficiencia de la implementación de conjuntos en su totalidad. Ahora, para verificar si un objeto es miembro de un conjunto, ~element-of-set?~ puede tener que recorrer todo el conjunto. (En el peor caso, el objeto resulta no estar en el conjunto.) Por lo tanto, si el conjunto tiene n elementos, ~element-of-set?~ puede tomar hasta n pasos. Así, el número de pasos requeridos crece como \theta(n). El número de pasos requeridos por ~adjoin-set~, que usa esta operación, también crece como \theta(n). Para ~intersection-set~, que realiza una comprobación ~element-of-set?~ para cada elemento de ~set1~, el número de pasos requeridos crece como el producto de los tamaños de los conjuntos involucrados, o \theta(n^2) para dos conjuntos de tamaño n. Lo mismo será cierto para ~union-set~.
+**** Ejercicio 2.59
+:properties:
+:custom_id: exercise-2.59
+:end:
+Implementa la operación ~union-set~ para la representación de listas desordenadas de conjuntos.
+
+**** Ejercicio 2.60
+:properties:
+:custom_id: exercise-2.60
+:end:
+Especificamos que un conjunto se representaría como una lista sin duplicados. Ahora supón que permitimos duplicados. Por ejemplo, el conjunto {1,2,3} podría representarse como la lista ~(2 3 2 1 3 2 2)~. Diseña procedimientos ~element-of-set?~, ~adjoin-set~, ~union-set~ e ~intersection-set~ que operen sobre esta representación. ¿Cómo se compara la eficiencia de cada uno con el procedimiento correspondiente para la representación sin duplicados? ¿Hay aplicaciones para las cuales usarías esta representación con preferencia a la que no tiene duplicados?
+*Conjuntos como listas ordenadas*
+
+Una forma de acelerar nuestras operaciones de conjuntos es cambiar la representación para que los elementos del conjunto se listen en orden creciente. Para hacer esto, necesitamos alguna forma de comparar dos objetos para poder decir cuál es más grande. Por ejemplo, podríamos comparar símbolos lexicográficamente, o podríamos acordar algún método para asignar un número único a un objeto y luego comparar los elementos comparando los números correspondientes. Para mantener nuestra discusión simple, consideraremos solo el caso donde los elementos del conjunto son números, para que podamos comparar elementos usando ~>~ y ~<~. Representaremos un conjunto de números listando sus elementos en orden creciente. Mientras que nuestra primera representación anterior nos permitía representar el conjunto {1,3,6,10} listando los elementos en cualquier orden, nuestra nueva representación permite solo la lista ~(1 3 6 10)~.
+Una ventaja del ordenamiento se muestra en ~element-of-set?~: Al verificar la presencia de un elemento, ya no tenemos que recorrer todo el conjunto. Si llegamos a un elemento del conjunto que es mayor que el elemento que estamos buscando, entonces sabemos que el elemento no está en el conjunto:
+#+begin_src scheme
+(define (element-of-set? x set)
+  (cond ((null? set) false)
+        ((= x (car set)) true)
+        ((< x (car set)) false)
+        (else (element-of-set? x (cdr set)))))
+#+end_src
+
+¿Cuántos pasos ahorra esto? En el peor caso, el elemento que estamos buscando puede ser el más grande en el conjunto, por lo que el número de pasos es el mismo que para la representación desordenada. Por otro lado, si buscamos elementos de muchos tamaños diferentes podemos esperar que a veces podremos detener la búsqueda en un punto cerca del comienzo de la lista y que otras veces todavía necesitaremos examinar la mayor parte de la lista. En promedio deberíamos esperar tener que examinar aproximadamente la mitad de los elementos del conjunto. Así, el número promedio de pasos requeridos será aproximadamente n/2. Esto sigue siendo crecimiento \theta(n), pero nos ahorra, en promedio, un factor de 2 en el número de pasos sobre la implementación anterior.
+Obtenemos una aceleración más impresionante con ~intersection-set~. En la representación desordenada esta operación requería \theta(n^2) pasos, porque realizábamos un escaneo completo de ~set2~ para cada elemento de ~set1~. Pero con la representación ordenada, podemos usar un método más inteligente. Comenzamos comparando los elementos iniciales, ~x1~ y ~x2~, de los dos conjuntos. Si ~x1~ es igual a ~x2~, entonces eso da un elemento de la intersección, y el resto de la intersección es la intersección de los 'cdr's de los dos conjuntos. Supón, sin embargo, que ~x1~ es menor que ~x2~. Dado que ~x2~ es el elemento más pequeño en ~set2~, podemos concluir inmediatamente que ~x1~ no puede aparecer en ninguna parte de ~set2~ y por lo tanto no está en la intersección. Por lo tanto, la intersección es igual a la intersección de ~set2~ con el ~cdr~ de ~set1~. De manera similar, si ~x2~ es menor que ~x1~, entonces la intersección está dada por la intersección de ~set1~ con el ~cdr~ de ~set2~. Aquí está el procedimiento:
+#+begin_src scheme
+(define (intersection-set set1 set2)
+  (if (or (null? set1) (null? set2))
+      '()
+      (let ((x1 (car set1)) (x2 (car set2)))
+        (cond ((= x1 x2)
+               (cons x1
+                     (intersection-set (cdr set1)
+                                       (cdr set2))))
+              ((< x1 x2)
+               (intersection-set (cdr set1) set2))
+              ((< x2 x1)
+               (intersection-set set1 (cdr set2)))))))
+#+end_src
+
+Para estimar el número de pasos requeridos por este proceso, observa que en cada paso reducimos el problema de intersección a calcular intersecciones de conjuntos más pequeños: eliminando el primer elemento de ~set1~ o ~set2~ o ambos. Así, el número de pasos requeridos es como máximo la suma de los tamaños de ~set1~ y ~set2~, en lugar del producto de los tamaños como con la representación desordenada. Esto es crecimiento \theta(n) en lugar de \theta(n^2): una aceleración considerable, incluso para conjuntos de tamaño moderado.
+**** Ejercicio 2.61
+:properties:
+:custom_id: exercise-2.61
+:end:
+Da una implementación de ~adjoin-set~ usando la representación ordenada. Por analogía con ~element-of-set?~ muestra cómo aprovechar el ordenamiento para producir un procedimiento que requiera en promedio aproximadamente la mitad de pasos que con la representación desordenada.
+
+**** Ejercicio 2.62
+:properties:
+:custom_id: exercise-2.62
+:end:
+Da una implementación \theta(n) de ~union-set~ para conjuntos representados como listas ordenadas.
+*Conjuntos como árboles binarios*
+
+Podemos hacerlo mejor que la representación de listas ordenadas organizando los elementos del conjunto en forma de árbol. Cada nodo del árbol contiene un elemento del conjunto, llamado "entrada" en ese nodo, y un enlace a cada uno de otros dos nodos (posiblemente vacíos). El enlace "izquierdo" apunta a elementos más pequeños que el del nodo, y el enlace "derecho" a elementos más grandes que el del nodo. La [[figure-2.16][Figura 2.16]] muestra algunos árboles que representan el conjunto {1,3,5,7,9,11}. El mismo conjunto puede representarse mediante un árbol de varias formas diferentes. Lo único que requerimos para una representación válida es que todos los elementos del subárbol izquierdo sean más pequeños que la entrada del nodo y que todos los elementos del subárbol derecho sean más grandes.
+<<figure-2.16>> Varios árboles binarios que representan el conjunto {1,3,5,7,9,11}.
+#+begin_example
+    7          3             5
+    /\         /\            /\
+   3  9       1  7          3  9
+  /\   \         /\        /   /\
+ 1  5  11       5  9      1   7  11
+                    \
+                    11
+#+end_example
+
+La ventaja de la representación en árbol es esta: Supón que queremos verificar si un número x está contenido en un conjunto. Comenzamos comparando x con la entrada en el nodo superior. Si x es menor que esto, sabemos que solo necesitamos buscar en el subárbol izquierdo; si x es mayor, solo necesitamos buscar en el subárbol derecho. Ahora, si el árbol está "balanceado", cada uno de estos subárboles tendrá aproximadamente la mitad del tamaño del original. Así, en un paso hemos reducido el problema de buscar en un árbol de tamaño n a buscar en un árbol de tamaño n/2. Dado que el tamaño del árbol se reduce a la mitad en cada paso, deberíamos esperar que el número de pasos necesarios para buscar en un árbol de tamaño n crezca como \theta(log n).[fn:104] Para conjuntos grandes, esto será una aceleración significativa sobre las representaciones anteriores.
+Podemos representar árboles usando listas. Cada nodo será una lista de tres elementos: la entrada en el nodo, el subárbol izquierdo y el subárbol derecho. Un subárbol izquierdo o derecho de la lista vacía indicará que no hay un subárbol conectado allí. Podemos describir esta representación mediante los siguientes procedimientos:[fn:105]
+#+begin_src scheme
+(define (entry tree) (car tree))
+
+(define (left-branch tree) (cadr tree))
+
+(define (right-branch tree) (caddr tree))
+
+(define (make-tree entry left right)
+  (list entry left right))
+#+end_src
+
+Ahora podemos escribir el procedimiento ~element-of-set?~ usando la estrategia descrita anteriormente:
+#+begin_src scheme
+(define (element-of-set? x set)
+  (cond ((null? set) false)
+        ((= x (entry set)) true)
+        ((< x (entry set))
+         (element-of-set? x (left-branch set)))
+        ((> x (entry set))
+         (element-of-set? x (right-branch set)))))
+#+end_src
+Adjuntar un elemento a un conjunto se implementa de manera similar y también requiere \theta(log n) pasos. Para adjuntar un elemento ~x~, comparamos ~x~ con la entrada del nodo para determinar si ~x~ debería añadirse a la rama derecha o a la izquierda, y habiendo adjuntado ~x~ a la rama apropiada unimos esta rama recién construida junto con la entrada original y la otra rama. Si ~x~ es igual a la entrada, simplemente devolvemos el nodo. Si se nos pide adjuntar ~x~ a un árbol vacío, generamos un árbol que tiene ~x~ como entrada y ramas derecha e izquierda vacías. Aquí está el procedimiento:
+
+#+begin_src scheme
+(define (adjoin-set x set)
+  (cond ((null? set) (make-tree x '() '()))
+        ((= x (entry set)) set)
+        ((< x (entry set))
+         (make-tree (entry set)
+                    (adjoin-set x (left-branch set))
+                    (right-branch set)))
+        ((> x (entry set))
+         (make-tree (entry set)
+                    (left-branch set)
+                    (adjoin-set x (right-branch set))))))
+#+end_src
+La afirmación anterior de que buscar en el árbol puede realizarse en un número logarítmico de pasos se basa en el supuesto de que el árbol está "balanceado", es decir, que el subárbol izquierdo y el derecho de cada árbol tienen aproximadamente el mismo número de elementos, de modo que cada subárbol contiene aproximadamente la mitad de los elementos de su padre. ¿Pero cómo podemos estar seguros de que los árboles que construimos estarán balanceados? Incluso si comenzamos con un árbol balanceado, añadir elementos con ~adjoin-set~ puede producir un resultado desbalanceado. Dado que la posición de un elemento recién adjuntado depende de cómo se compara el elemento con los elementos ya en el conjunto, podemos esperar que si añadimos elementos "aleatoriamente" el árbol tenderá a estar balanceado en promedio. Pero esto no es una garantía. Por ejemplo, si comenzamos con un conjunto vacío y adjuntamos los números del 1 al 7 en secuencia, terminamos con el árbol altamente desbalanceado que se muestra en la [[figure-2.17][Figura 2.17]]. En este árbol todos los subárboles izquierdos están vacíos, por lo que no tiene ventaja sobre una simple lista ordenada. Una forma de resolver este problema es definir una operación que transforme un árbol arbitrario en un árbol balanceado con los mismos elementos. Entonces podemos realizar esta transformación después de cada pocas operaciones ~adjoin-set~ para mantener nuestro conjunto en balance. También hay otras formas de resolver este problema, la mayoría de las cuales implican diseñar nuevas estructuras de datos para las cuales tanto la búsqueda como la inserción pueden hacerse en \theta(log n) pasos.[fn:106]
+<<figure-2.17>> Árbol desbalanceado producido al adjuntar del 1 al 7 en secuencia.
+
+#+begin_example
+ 1
+  \
+   2
+    \
+     4
+      \
+       5
+        \
+         6
+          \
+           7
+#+end_example
+**** Ejercicio 2.63
+:properties:
+:custom_id: exercise-2.63
+:end:
+Cada uno de los siguientes dos procedimientos convierte un árbol binario en una lista.
+
+#+begin_src scheme
+(define (tree->list-1 tree)
+  (if (null? tree)
+      '()
+      (append (tree->list-1 (left-branch tree))
+              (cons (entry tree)
+                    (tree->list-1 (right-branch tree))))))
+
+(define (tree->list-2 tree)
+  (define (copy-to-list tree result-list)
+    (if (null? tree)
+        result-list
+        (copy-to-list (left-branch tree)
+                      (cons (entry tree)
+                            (copy-to-list (right-branch tree)
+                                          result-list)))))
+  (copy-to-list tree '()))
+#+end_src
+a. ¿Producen los dos procedimientos el mismo resultado para cada árbol? Si no, ¿en qué difieren los resultados? ¿Qué listas producen los dos procedimientos para los árboles de la [[figure-2.16][Figura 2.16]]?
+b. ¿Tienen los dos procedimientos el mismo orden de crecimiento en el número de pasos requeridos para convertir un árbol balanceado con n elementos en una lista? Si no, ¿cuál crece más lentamente?
+
+**** Ejercicio 2.64
+:properties:
+:custom_id: exercise-2.64
+:end:
+El siguiente procedimiento ~list->tree~ convierte una lista ordenada en un árbol binario balanceado. El procedimiento auxiliar ~partial-tree~ toma como argumentos un número entero n y una lista de al menos n elementos y construye un árbol balanceado que contiene los primeros n elementos de la lista. El resultado devuelto por ~partial-tree~ es un par (formado con ~cons~) cuyo ~car~ es el árbol construido y cuyo ~cdr~ es la lista de elementos no incluidos en el árbol.
+#+begin_src scheme
+(define (list->tree elements)
+  (car (partial-tree elements (length elements))))
+
+(define (partial-tree elts n)
+  (if (= n 0)
+      (cons '() elts)
+      (let ((left-size (quotient (- n 1) 2)))
+        (let ((left-result (partial-tree elts left-size)))
+          (let ((left-tree (car left-result))
+                (non-left-elts (cdr left-result))
+                (right-size (- n (+ left-size 1))))
+            (let ((this-entry (car non-left-elts))
+                  (right-result (partial-tree (cdr non-left-elts)
+                                              right-size)))
+              (let ((right-tree (car right-result))
+                    (remaining-elts (cdr right-result)))
+                (cons (make-tree this-entry left-tree right-tree)
+                      remaining-elts))))))))
+#+end_src
+
+a. Escribe un párrafo breve explicando tan claramente como puedas cómo funciona ~partial-tree~. Dibuja el árbol producido por ~list->tree~ para la lista ~(1 3 5 7 9 11)~.
+b. ¿Cuál es el orden de crecimiento en el número de pasos requeridos por ~list->tree~ para convertir una lista de n elementos?
+**** Ejercicio 2.65
+:properties:
+:custom_id: exercise-2.65
+:end:
+
+Usa los resultados del [[#exercise-2.63][Ejercicio 2.63]] y del [[#exercise-2.64][Ejercicio 2.64]] para dar implementaciones \theta(n) de ~union-set~ e ~intersection-set~ para conjuntos implementados como árboles binarios (balanceados).[fn:107]
+*Conjuntos y recuperación de información*
+Hemos examinado opciones para usar listas para representar conjuntos y hemos visto cómo la elección de representación para un objeto de datos puede tener un gran impacto en el rendimiento de los programas que usan los datos. Otra razón para concentrarse en conjuntos es que las técnicas discutidas aquí aparecen una y otra vez en aplicaciones que involucran recuperación de información.
+
+Considera una base de datos que contiene un gran número de registros individuales, como los archivos de personal de una empresa o las transacciones en un sistema de contabilidad. Un sistema típico de gestión de datos pasa una gran cantidad de tiempo accediendo o modificando los datos en los registros y por lo tanto requiere un método eficiente para acceder a los registros. Esto se hace identificando una parte de cada registro para que sirva como <<i201>> clave identificadora. Una clave puede ser cualquier cosa que identifique únicamente el registro. Para un archivo de personal, podría ser el número de identificación de un empleado. Para un sistema de contabilidad, podría ser un número de transacción. Sea cual sea la clave, cuando definimos el registro como una estructura de datos deberíamos incluir un procedimiento selector ~key~ que recupere la clave asociada con un registro dado.
+Ahora representamos la base de datos como un conjunto de registros. Para localizar el registro con una clave dada usamos un procedimiento ~lookup~, que toma como argumentos una clave y una base de datos y que devuelve el registro que tiene esa clave, o falso si no existe tal registro. ~lookup~ se implementa casi de la misma manera que ~element-of-set?~. Por ejemplo, si el conjunto de registros se implementa como una lista desordenada, podríamos usar
+#+begin_src scheme
+(define (lookup given-key set-of-records)
+  (cond ((null? set-of-records) false)
+        ((equal? given-key (key (car set-of-records)))
+         (car set-of-records))
+        (else (lookup given-key (cdr set-of-records)))))
+#+end_src
+
+Por supuesto, hay mejores formas de representar conjuntos grandes que como listas desordenadas. Los sistemas de recuperación de información en los que los registros tienen que ser "accedidos aleatoriamente" típicamente se implementan mediante un método basado en árboles, como la representación de árbol binario discutida anteriormente. Al diseñar tal sistema, la metodología de abstracción de datos puede ser de gran ayuda. El diseñador puede crear una implementación inicial usando una representación simple y directa como listas desordenadas. Esto no será adecuado para el sistema final, pero puede ser útil para proporcionar una base de datos "rápida y sucia" con la cual probar el resto del sistema. Más adelante, la representación de datos puede modificarse para ser más sofisticada. Si se accede a la base de datos en términos de selectores y constructores abstractos, este cambio en la representación no requerirá ningún cambio en el resto del sistema.
+**** Ejercicio 2.66
+:properties:
+:custom_id: exercise-2.66
+:end:
+Implementa el procedimiento ~lookup~ para el caso donde el conjunto de registros está estructurado como un árbol binario, ordenado por los valores numéricos de las claves.
+
+*** 2.3.4 Ejemplo: Árboles de codificación Huffman
+:properties:
+:custom_id: section-2.3.4
+:end:
+Esta sección proporciona práctica en el uso de estructura de listas y abstracción de datos para manipular conjuntos y árboles. La aplicación es a métodos para representar datos como secuencias de unos y ceros (bits). Por ejemplo, el código estándar ASCII usado para representar texto en computadoras codifica cada carácter como una secuencia de siete bits. Usar siete bits nos permite distinguir 2^(7), o 128, caracteres diferentes posibles. En general, si queremos distinguir n símbolos diferentes, necesitaremos usar log_2 n bits por símbolo. Si todos nuestros mensajes están compuestos de los ocho símbolos A, B, C, D, E, F, G y H, podemos elegir un código con tres bits por carácter, por ejemplo
+#+begin_example
+ A 000 C 010 E 100 G 110
+ B 001 D 011 F 101 H 111
+#+end_example
+
+Con este código, el mensaje
+#+begin_example
+ BACADAEAFABBAAAGAH
+#+end_example
+se codifica como la cadena de 54 bits
+
+#+begin_example
+ 001000010000011000100000101000001001000000000110000111
+#+end_example
+Códigos como ASCII y el código de A a H anterior se conocen como <<i141>> códigos de longitud fija, porque representan cada símbolo en el mensaje con el mismo número de bits. A veces es ventajoso usar <<i421>> códigos de longitud variable, en los que diferentes símbolos pueden representarse mediante diferentes números de bits. Por ejemplo, el código Morse no usa el mismo número de puntos y rayas para cada letra del alfabeto. En particular, E, la letra más frecuente, se representa mediante un solo punto. En general, si nuestros mensajes son tales que algunos símbolos aparecen muy frecuentemente y algunos muy raramente, podemos codificar datos más eficientemente (es decir, usando menos bits por mensaje) si asignamos códigos más cortos a los símbolos frecuentes. Considera el siguiente código alternativo para las letras de A a H:
+#+begin_example
+ A 0   C 1010  E 1100  G 1110
+ B 100 D 1011  F 1101  H 1111
+#+end_example
+
+Con este código, el mismo mensaje anterior se codifica como la cadena
+#+begin_example
+ 100010100101101100011010100100000111001111
+#+end_example
+Esta cadena contiene 42 bits, por lo que ahorra más del 20% en espacio en comparación con el código de longitud fija mostrado anteriormente.
+
+Una de las dificultades de usar un código de longitud variable es saber cuándo se ha llegado al final de un símbolo al leer una secuencia de ceros y unos. El código Morse resuelve este problema usando un código <<i345>> separador especial (en este caso, una pausa) después de la secuencia de puntos y rayas para cada letra. Otra solución es diseñar el código de tal manera que ningún código completo para ningún símbolo sea el comienzo (o <<i292>> prefijo) del código de otro símbolo. Tal código se llama <<i293>> código prefijo. En el ejemplo anterior, A se codifica con 0 y B se codifica con 100, por lo que ningún otro símbolo puede tener un código que comience con 0 o con 100.
+En general, podemos lograr ahorros significativos si usamos códigos prefijos de longitud variable que aprovechen las frecuencias relativas de los símbolos en los mensajes a codificar. Un esquema particular para hacer esto se llama método de codificación Huffman, en honor a su descubridor, David Huffman. Un código Huffman puede representarse como un árbol binario cuyas hojas son los símbolos que se codifican. En cada nodo no hoja del árbol hay un conjunto que contiene todos los símbolos en las hojas que están debajo del nodo. Además, a cada símbolo en una hoja se le asigna un peso (que es su frecuencia relativa), y cada nodo no hoja contiene un peso que es la suma de todos los pesos de las hojas que están debajo de él. Los pesos no se usan en el proceso de codificación o decodificación. Veremos más adelante cómo se usan para ayudar a construir el árbol.
+<<figure-2.18>> Un árbol de codificación Huffman.
+
+#+begin_example
+            {A B C D E F G H} 17
+                     *
+                    / \
+                   /   \
+                 A 8    * {B C D E F G H} 9
+             __________/ \_____________
+            /                          \
+ {B C D} 5 *                            * {E F G H} 4
+          / \                       ___/ \___
+         /   \                     /         \
+       B 3    * {C D} 2   {E F} 2 *           * {G H} 2
+             / \                 / \         / \
+            /   \               /   \       /   \
+          C 1   D 1           E 1   F 1   G 1   H 1
+#+end_example
+La [[figure-2.18][Figura 2.18]] muestra el árbol Huffman para el código de A a H dado anteriormente. Los pesos en las hojas indican que el árbol fue diseñado para mensajes en los que A aparece con frecuencia relativa 8, B con frecuencia relativa 3, y las demás letras cada una con frecuencia relativa 1.
+Dado un árbol Huffman, podemos encontrar la codificación de cualquier símbolo comenzando en la raíz y moviéndonos hacia abajo hasta que lleguemos a la hoja que contiene el símbolo. Cada vez que nos movemos por una rama izquierda añadimos un 0 al código, y cada vez que nos movemos por una rama derecha añadimos un 1. (Decidimos qué rama seguir probando para ver qué rama es el nodo hoja para el símbolo o contiene el símbolo en su conjunto.) Por ejemplo, comenzando desde la raíz del árbol en la [[figure-2.18][Figura 2.18]], llegamos a la hoja para D siguiendo una rama derecha, luego una rama izquierda, luego una rama derecha, luego una rama derecha; por lo tanto, el código para D es 1011.
+
+Para decodificar una secuencia de bits usando un árbol Huffman, comenzamos en la raíz y usamos los ceros y unos sucesivos de la secuencia de bits para determinar si movernos por la rama izquierda o la derecha. Cada vez que llegamos a una hoja, hemos generado un nuevo símbolo en el mensaje, momento en el cual comenzamos de nuevo desde la raíz del árbol para encontrar el siguiente símbolo. Por ejemplo, supongamos que se nos da el árbol anterior y la secuencia 10001010. Comenzando en la raíz, nos movemos por la rama derecha (ya que el primer bit de la cadena es 1), luego por la rama izquierda (ya que el segundo bit es 0), luego por la rama izquierda (ya que el tercer bit también es 0). Esto nos lleva a la hoja para B, por lo que el primer símbolo del mensaje decodificado es B. Ahora comenzamos de nuevo en la raíz, y hacemos un movimiento izquierdo porque el siguiente bit en la cadena es 0. Esto nos lleva a la hoja para A. Luego comenzamos de nuevo en la raíz con el resto de la cadena 1010, por lo que nos movemos derecha, izquierda, derecha, izquierda y llegamos a C. Así, el mensaje completo es BAC.
+*Generando árboles Huffman*
+Dado un "alfabeto" de símbolos y sus frecuencias relativas, ¿cómo construimos el "mejor" código? (En otras palabras, ¿qué árbol codificará mensajes con la menor cantidad de bits?) Huffman dio un algoritmo para hacer esto y demostró que el código resultante es efectivamente el mejor código de longitud variable para mensajes donde la frecuencia relativa de los símbolos coincide con las frecuencias con las que se construyó el código. No probaremos aquí esta optimalidad de los códigos Huffman, pero mostraremos cómo se construyen los árboles Huffman.[fn:108]
+
+El algoritmo para generar un árbol Huffman es muy simple. La idea es organizar el árbol de modo que los símbolos con la frecuencia más baja aparezcan más lejos de la raíz. Comienza con el conjunto de nodos hoja, que contienen símbolos y sus frecuencias, según lo determinado por los datos iniciales a partir de los cuales se construirá el código. Ahora encuentra dos hojas con los pesos más bajos y únelas para producir un nodo que tenga estos dos nodos como sus ramas izquierda y derecha. El peso del nuevo nodo es la suma de los dos pesos. Elimina las dos hojas del conjunto original y reemplázalas con este nuevo nodo. Ahora continúa este proceso. En cada paso, une dos nodos con los pesos más pequeños, eliminándolos del conjunto y reemplazándolos con un nodo que tenga estos dos como sus ramas izquierda y derecha. El proceso se detiene cuando solo queda un nodo, que es la raíz de todo el árbol. Así es como se generó el árbol Huffman de la [[figure-2.18][Figura 2.18]]:
+#+begin_example
+ Initial leaves {(A 8) (B 3) (C 1) (D 1) (E 1) (F 1) (G 1) (H 1)}
+ Merge          {(A 8) (B 3) ({C D} 2) (E 1) (F 1) (G 1) (H 1)}
+ Merge          {(A 8) (B 3) ({C D} 2) ({E F} 2) (G 1) (H 1)}
+ Merge          {(A 8) (B 3) ({C D} 2) ({E F} 2) ({G H} 2)}
+ Merge          {(A 8) (B 3) ({C D} 2) ({E F G H} 4)}
+ Merge          {(A 8) ({B C D} 5) ({E F G H} 4)}
+ Merge          {(A 8) ({B C D E F G H} 9)}
+ Final merge    {({A B C D E F G H} 17)}
+#+end_example
+El algoritmo no siempre especifica un árbol único, porque puede no haber nodos de peso más pequeño únicos en cada paso. Además, la elección del orden en el que se unen los dos nodos (es decir, cuál será la rama derecha y cuál será la rama izquierda) es arbitrario.
+
+*Representando árboles Huffman*
+En los ejercicios siguientes trabajaremos con un sistema que usa árboles Huffman para codificar y decodificar mensajes y genera árboles Huffman según el algoritmo descrito anteriormente. Comenzaremos discutiendo cómo se representan los árboles.
+Las hojas del árbol se representan mediante una lista que consiste del símbolo ~leaf~, el símbolo en la hoja y el peso:
+
+#+begin_src scheme
+(define (make-leaf symbol weight)
+  (list 'leaf symbol weight))
+
+(define (leaf? object)
+  (eq? (car object) 'leaf))
+
+(define (symbol-leaf x) (cadr x))
+
+(define (weight-leaf x) (caddr x))
+#+end_src
+Un árbol general será una lista de una rama izquierda, una rama derecha, un conjunto de símbolos y un peso. El conjunto de símbolos será simplemente una lista de los símbolos, en lugar de alguna representación de conjunto más sofisticada. Cuando creamos un árbol uniendo dos nodos, obtenemos el peso del árbol como la suma de los pesos de los nodos, y el conjunto de símbolos como la unión de los conjuntos de símbolos de los nodos. Dado que nuestros conjuntos de símbolos se representan como listas, podemos formar la unión usando el procedimiento ~append~ que definimos en la sección [[#section-2.2.1][2.2.1]]:
+#+begin_src scheme
+(define (make-code-tree left right)
+  (list left
+        right
+        (append (symbols left) (symbols right))
+        (+ (weight left) (weight right))))
+#+end_src
+
+Si creamos un árbol de esta manera, tenemos los siguientes selectores:
+#+begin_src scheme
+(define (left-branch tree) (car tree))
+
+(define (right-branch tree) (cadr tree))
+
+(define (symbols tree)
+  (if (leaf? tree)
+      (list (symbol-leaf tree))
+      (caddr tree)))
+
+(define (weight tree)
+  (if (leaf? tree)
+      (weight-leaf tree)
+      (cadddr tree)))
+#+end_src
+Los procedimientos ~symbols~ y ~weight~ deben hacer algo ligeramente diferente dependiendo de si se llaman con una hoja o un árbol general. Estos son ejemplos simples de <<i162>> procedimientos genéricos (procedimientos que pueden manejar más de un tipo de datos), de los que tendremos mucho más que decir en las secciones [[#section-2.4][2.4]] y [[#section-2.5][2.5]].
+
+*El procedimiento de decodificación*
+El siguiente procedimiento implementa el algoritmo de decodificación. Toma como argumentos una lista de ceros y unos, junto con un árbol Huffman.
+#+begin_src scheme
+(define (decode bits tree)
+  (define (decode-1 bits current-branch)
+    (if (null? bits)
+        '()
+        (let ((next-branch
+               (choose-branch (car bits) current-branch)))
+          (if (leaf? next-branch)
+              (cons (symbol-leaf next-branch)
+                    (decode-1 (cdr bits) tree))
+              (decode-1 (cdr bits) next-branch)))))
+  (decode-1 bits tree))
+
+(define (choose-branch bit branch)
+  (cond ((= bit 0) (left-branch branch))
+        ((= bit 1) (right-branch branch))
+        (else (error "bad bit - CHOOSE-BRANCH" bit))))
+#+end_src
+
+El procedimiento ~decode-1~ toma dos argumentos: la lista de bits restantes y la posición actual en el árbol. Sigue moviéndose "hacia abajo" en el árbol, eligiendo una rama izquierda o derecha según si el siguiente bit en la lista es un cero o un uno. (Esto se hace con el procedimiento ~choose-branch~.) Cuando llega a una hoja, devuelve el símbolo en esa hoja como el siguiente símbolo en el mensaje haciendo 'cons' con él sobre el resultado de decodificar el resto del mensaje, comenzando en la raíz del árbol. Nota la verificación de error en la cláusula final de ~choose-branch~, que se queja si el procedimiento encuentra algo que no sea un cero o un uno en los datos de entrada.
+*Conjuntos de elementos ponderados*
+En nuestra representación de árboles, cada nodo no hoja contiene un conjunto de símbolos, que hemos representado como una lista simple. Sin embargo, el algoritmo de generación de árboles discutido anteriormente requiere que también trabajemos con conjuntos de hojas y árboles, uniendo sucesivamente los dos elementos más pequeños. Dado que se nos requerirá encontrar repetidamente el elemento más pequeño en un conjunto, es conveniente usar una representación ordenada para este tipo de conjunto.
+
+Representaremos un conjunto de hojas y árboles como una lista de elementos, dispuestos en orden creciente de peso. El siguiente procedimiento ~adjoin-set~ para construir conjuntos es similar al descrito en el [[#exercise-2.61][Ejercicio 2.61]]; sin embargo, los elementos se comparan por sus pesos, y el elemento que se añade al conjunto nunca está ya en él.
+#+begin_src scheme
+(define (adjoin-set x set)
+  (cond ((null? set) (list x))
+        ((< (weight x) (weight (car set))) (cons x set))
+        (else (cons (car set)
+                    (adjoin-set x (cdr set))))))
+#+end_src
+El siguiente procedimiento toma una lista de pares símbolo-frecuencia como ~((A 4) (B 2) (C 1) (D 1))~ y construye un conjunto ordenado inicial de hojas, listo para ser unido según el algoritmo Huffman:
+
+#+begin_src scheme
+(define (make-leaf-set pairs)
+  (if (null? pairs)
+      '()
+      (let ((pair (car pairs)))
+        (adjoin-set (make-leaf (car pair)   ; símbolo
+                               (cadr pair)) ; frecuencia
+                    (make-leaf-set (cdr pairs))))))
+#+end_src
+**** Ejercicio 2.67
+:properties:
+:custom_id: exercise-2.67
+:end:
+Define un árbol de codificación y un mensaje de muestra:
+
+#+begin_src scheme
+(define sample-tree
+  (make-code-tree (make-leaf 'A 4)
+                  (make-code-tree
+                   (make-leaf 'B 2)
+                   (make-code-tree (make-leaf 'D 1)
+                                   (make-leaf 'C 1)))))
+
+(define sample-message '(0 1 1 0 0 1 0 1 0 1 1 1 0))
+#+end_src
+Usa el procedimiento ~decode~ para decodificar el mensaje, y da el resultado.
+**** Ejercicio 2.68
+:properties:
+:custom_id: exercise-2.68
+:end:
+
+El procedimiento ~encode~ toma como argumentos un mensaje y un árbol y produce la lista de bits que da el mensaje codificado.
+#+begin_src scheme
+(define (encode message tree)
+  (if (null? message)
+      '()
+      (append (encode-symbol (car message) tree)
+              (encode (cdr message) tree))))
+#+end_src
+~encode-symbol~ es un procedimiento, que debes escribir, que devuelve la lista de bits que codifica un símbolo dado según un árbol dado. Debes diseñar ~encode-symbol~ para que señale un error si el símbolo no está en el árbol en absoluto. Prueba tu procedimiento codificando el resultado que obtuviste en el [[#exercise-2.67][Ejercicio 2.67]] con el árbol de muestra y viendo si es el mismo que el mensaje de muestra original.
+
+**** Ejercicio 2.69
+:properties:
+:custom_id: exercise-2.69
+:end:
+El siguiente procedimiento toma como argumento una lista de pares símbolo-frecuencia (donde ningún símbolo aparece en más de un par) y genera un árbol de codificación Huffman según el algoritmo Huffman.
+#+begin_src scheme
+(define (generate-huffman-tree pairs)
+  (successive-merge (make-leaf-set pairs)))
+#+end_src
+
+~make-leaf-set~ es el procedimiento dado anteriormente que transforma la lista de pares en un conjunto ordenado de hojas. ~successive-merge~ es el procedimiento que debes escribir, usando ~make-code-tree~ para unir sucesivamente los elementos de menor peso del conjunto hasta que solo quede un elemento, que es el árbol Huffman deseado. (Este procedimiento es ligeramente complicado, pero no realmente complejo. Si te encuentras diseñando un procedimiento complejo, entonces es casi seguro que estás haciendo algo mal. Puedes aprovechar significativamente el hecho de que estamos usando una representación de conjunto ordenado.)
+**** Ejercicio 2.70
+:properties:
+:custom_id: exercise-2.70
+:end:
+El siguiente alfabeto de ocho símbolos con frecuencias relativas asociadas fue diseñado para codificar eficientemente las letras de canciones de rock de los años 1950. (Nota que los "símbolos" de un "alfabeto" no necesitan ser letras individuales.)
+
+#+begin_example
+ A     2 NA   16
+ BOOM  1 SHA  3
+ GET   2 YIP  9
+ JOB   2 WAH  1
+#+end_example
+Usa ~generate-huffman-tree~ ([[#exercise-2.69][Ejercicio 2.69]]) para generar un árbol Huffman correspondiente, y usa ~encode~ ([[#exercise-2.68][Ejercicio 2.68]]) para codificar el siguiente mensaje:
+#+begin_example
+ Get a job
+
+ Sha na na na na na na na na
+
+ Get a job
+
+ Sha na na na na na na na na
+
+ Wah yip yip yip yip yip yip yip yip yip
+
+ Sha boom
+#+end_example
+
+¿Cuántos bits se requieren para la codificación? ¿Cuál es el número más pequeño de bits que se necesitaría para codificar esta canción si usáramos un código de longitud fija para el alfabeto de ocho símbolos?
+**** Ejercicio 2.71
+:properties:
+:custom_id: exercise-2.71
+:end:
+Supón que tenemos un árbol Huffman para un alfabeto de n símbolos, y que las frecuencias relativas de los símbolos son 1, 2, 4, ..., 2^(n-1). Esboza el árbol para n=5; para n=10. En tal árbol (para n general) ¿cuántos bits se requieren para codificar el símbolo más frecuente? ¿el símbolo menos frecuente?
+
+**** Ejercicio 2.72
+:properties:
+:custom_id: exercise-2.72
+:end:
+Considera el procedimiento de codificación que diseñaste en el [[#exercise-2.68][Ejercicio 2.68]]. ¿Cuál es el orden de crecimiento en el número de pasos necesarios para codificar un símbolo? Asegúrate de incluir el número de pasos necesarios para buscar en la lista de símbolos en cada nodo encontrado. Responder esta pregunta en general es difícil. Considera el caso especial donde las frecuencias relativas de los n símbolos son como se describe en el [[#exercise-2.71][Ejercicio 2.71]], y da el orden de crecimiento (como función de n) del número de pasos necesarios para codificar los símbolos más frecuentes y menos frecuentes en el alfabeto.
+
