@@ -1,0 +1,1682 @@
+** 2.2 Datos Jerárquicos y la Propiedad de Clausura
+:properties:
+:custom_id: section-2.2
+:end:
+
+Como hemos visto, los pares proporcionan un "pegamento" primitivo que podemos usar para construir objetos de datos compuestos. [[figure-2.2][Figure 2.2]] muestra una forma estándar de visualizar un par--en este caso, el par formado por ~(cons 1 2)~. En esta representación, que se llama <<i42>> notación de caja y puntero, cada objeto se muestra como un <<i287>> puntero a una caja. La caja para un objeto primitivo contiene una representación del objeto. Por ejemplo, la caja para un número contiene un numeral. La caja para un par es en realidad una caja doble, la parte izquierda contiene (un puntero a) el ~car~ del par y la parte derecha contiene el ~cdr~.
+
+<<figure-2.2>> Representación de caja y puntero de ~(cons 1 2)~.
+
+#+begin_example
+      +---+---+     +---+
+ ---->| * | *-+---->| 2 |
+      +-|-+---+     +---+
+        |
+        V
+      +---+
+      | 1 |
+      +---+
+#+end_example
+
+Ya hemos visto que ~cons~ puede usarse para combinar no solo números sino también pares. (Hiciste uso de este hecho, o deberías haberlo hecho, al hacer [[#exercise-2.2][Exercise 2.2]] y [[#exercise-2.3][Exercise 2.3]].) Como consecuencia, los pares proporcionan un bloque de construcción universal a partir del cual podemos construir todo tipo de estructuras de datos. [[figure-2.3][Figure 2.3]] muestra dos formas de usar pares para combinar los números 1, 2, 3 y 4.
+
+<<figure-2.3>> Dos formas de combinar 1, 2, 3 y 4 usando pares.
+
+#+begin_example
+      +---+---+     +---+---+         +---+---+     +---+
+ ---->| * | *-+---->| * | * |    ---->| * | *-+---->| 4 |
+      +-|-+---+     +-|-+-|-+         +-|-+---+     +---+
+        |             |   |             |
+        V             V   V             V
+    +---+---+      +---+ +---+      +---+---+     +---+---+
+    | * | * |      | 3 | | 4 |      | * | *-+---->| * | * |
+    +-|-+-|-+      +---+ +---+      +-|-+---+     +-|-+-|-+
+      |   |                           |             |   |
+      V   V                           V             V   V
+   +---+ +---+                      +---+        +---+ +---+
+   | 1 | | 2 |                      | 1 |        | 2 | | 3 |
+   +---+ +---+                      +---+        +---+ +---+
+
+   (cons (cons 1 2)                 (cons (cons 1
+         (cons 3 4))                            (cons 2 3))
+                                          4)
+#+end_example
+
+La capacidad de crear pares cuyos elementos son pares es la esencia de la importancia de la estructura de lista como herramienta de representación. Nos referimos a esta capacidad como la <<i63>> propiedad de clausura de ~cons~. En general, una operación para combinar objetos de datos satisface la propiedad de clausura si los resultados de combinar cosas con esa operación pueden a su vez combinarse usando la misma operación.[fn:72] La clausura es la clave del poder en cualquier medio de combinación porque nos permite crear <<i175>> estructuras jerárquicas--estructuras compuestas de partes, que a su vez están compuestas de partes, y así sucesivamente.
+
+Desde el principio de [[#section-1][Chapter 1]], hemos hecho uso esencial de la clausura al tratar con procedimientos, porque todos los programas excepto los más simples dependen del hecho de que los elementos de una combinación pueden ser ellos mismos combinaciones. En esta sección, abordamos las consecuencias de la clausura para los datos compuestos. Describimos algunas técnicas convencionales para usar pares para representar secuencias y árboles, y exhibimos un lenguaje gráfico que ilustra la clausura de manera vívida.[fn:73]
+
+*** 2.2.1 Representación de Secuencias
+:properties:
+:custom_id: section-2.2.1
+:end:
+
+<<figure-2.4>> La secuencia 1, 2, 3, 4 representada como una cadena de pares.
+
+#+begin_example
+      +---+---+     +---+---+     +---+---+     +---+---+
+ ---->| * | *-+---->| * | *-+---->| * | *-+---->| * | / |
+      +-|-+---+     +-|-+---+     +-|-+---+     +-|-+---+
+        |             |             |             |
+        V             V             V             V
+      +---+         +---+         +---+         +---+
+      | 1 |         | 2 |         | 3 |         | 4 |
+      +---+         +---+         +---+         +---+
+#+end_example
+
+Una de las estructuras útiles que podemos construir con pares es una <<i346>> secuencia--una colección ordenada de objetos de datos. Hay, por supuesto, muchas formas de representar secuencias en términos de pares. Una representación particularmente directa se ilustra en [[figure-2.4][Figure 2.4]], donde la secuencia 1, 2, 3, 4 se representa como una cadena de pares. El ~car~ de cada par es el elemento correspondiente en la cadena, y el ~cdr~ del par es el siguiente par en la cadena. El ~cdr~ del par final señala el final de la secuencia apuntando a un valor distinguido que no es un par, representado en los diagramas de caja y puntero como una línea diagonal y en los programas como el valor de la variable ~nil~. La secuencia completa se construye mediante operaciones ~cons~ anidadas:
+
+#+begin_src scheme
+(cons 1
+      (cons 2
+            (cons 3
+                  (cons 4 nil))))
+#+end_src
+
+Tal secuencia de pares, formada por 'cons'es anidados, se llama una <<i210>> lista, y Scheme proporciona una primitiva llamada ~list~ para ayudar en la construcción de listas.[fn:74] La secuencia anterior podría producirse mediante ~(list 1 2 3 4)~. En general,
+
+#+begin_src scheme
+(list <A_1> <A_2> ... <A_N>)
+#+end_src
+
+es equivalente a
+
+#+begin_src scheme
+(cons <A_1>
+      (cons <A_2>
+            (cons ...
+                  (cons <A_N>
+                        nil)
+                  ...)))
+#+end_src
+
+Los sistemas Lisp imprimen convencionalmente las listas imprimiendo la secuencia de elementos, encerrados entre paréntesis. Así, el objeto de datos en [[figure-2.4][Figure 2.4]] se imprime como ~(1 2 3 4)~:
+
+#+begin_src scheme
+(define one-through-four (list 1 2 3 4))
+
+one-through-four
+(1 2 3 4)
+#+end_src
+
+Ten cuidado de no confundir la expresión ~(list 1 2 3 4)~ con la lista ~(1 2 3 4)~, que es el resultado obtenido cuando se evalúa la expresión. Intentar evaluar la expresión ~(1 2 3 4)~ señalará un error cuando el intérprete intente aplicar el procedimiento ~1~ a los argumentos ~2~, ~3~ y ~4~.
+
+Podemos pensar en ~car~ como seleccionando el primer elemento de la lista, y en ~cdr~ como seleccionando la sublista que consiste en todos los elementos excepto el primero. Las aplicaciones anidadas de ~car~ y ~cdr~ pueden usarse para extraer el segundo, tercer y subsiguientes elementos de la lista.[fn:75] El constructor ~cons~ crea una lista como la original, pero con un elemento adicional al principio.
+
+#+begin_src scheme
+(car one-through-four)
+1
+
+(cdr one-through-four)
+(2 3 4)
+
+(car (cdr one-through-four))
+2
+
+(cons 10 one-through-four)
+(10 1 2 3 4)
+
+(cons 5 one-through-four)
+(5 1 2 3 4)
+#+end_src
+
+El valor de ~nil~, usado para terminar la cadena de pares, puede pensarse como una secuencia sin elementos, la <<i118>> lista vacía. La palabra <<i255>> nil es una contracción de la palabra latina _nihil_, que significa "nada".[fn:76]
+
+*Operaciones con listas*
+
+El uso de pares para representar secuencias de elementos como listas está acompañado de técnicas convencionales de programación para manipular listas mediante 'cdr'ing sucesivo por las listas. Por ejemplo, el procedimiento ~list-ref~ toma como argumentos una lista y un número n y devuelve el n-ésimo elemento de la lista. Es costumbre numerar los elementos de la lista comenzando con 0. El método para calcular ~list-ref~ es el siguiente:
+
+- Para n = 0, ~list-ref~ debe devolver el ~car~ de la lista.
+- En caso contrario, ~list-ref~ debe devolver el (n - 1)-ésimo elemento del ~cdr~ de la lista.
+
+#+begin_src scheme
+(define (list-ref items n)
+  (if (= n 0)
+      (car items)
+      (list-ref (cdr items) (- n 1))))
+
+(define squares (list 1 4 9 16 25))
+
+(list-ref squares 3)
+16
+#+end_src
+
+A menudo hacemos ~cdr~ por toda la lista. Para ayudar en esto, Scheme incluye un predicado primitivo ~null?~, que prueba si su argumento es la lista vacía. El procedimiento ~length~, que devuelve el número de elementos en una lista, ilustra este patrón típico de uso:
+
+#+begin_src scheme
+(define (length items)
+  (if (null? items)
+      0
+      (+ 1 (length (cdr items)))))
+
+(define odds (list 1 3 5 7))
+
+(length odds)
+4
+#+end_src
+
+El procedimiento ~length~ implementa un plan recursivo simple. El paso de reducción es:
+
+1. La ~length~ de cualquier lista es 1 más la ~length~ del ~cdr~ de la lista.
+
+Esto se aplica sucesivamente hasta que alcanzamos el caso base:
+
+2. La ~length~ de la lista vacía es 0.
+
+También podríamos calcular ~length~ en un estilo iterativo:
+
+#+begin_src scheme
+(define (length items)
+  (define (length-iter a count)
+    (if (null? a)
+        count
+        (length-iter (cdr a) (+ 1 count))))
+  (length-iter items 0))
+#+end_src
+
+Otra técnica de programación convencional es "hacer ~cons~" de una lista de respuesta mientras hacemos 'cdr' hacia abajo en una lista, como en el procedimiento ~append~, que toma dos listas como argumentos y combina sus elementos para hacer una nueva lista:
+
+#+begin_src scheme
+(append squares odds)
+(1 4 9 16 25 1 3 5 7)
+
+(append odds squares)
+(1 3 5 7 1 4 9 16 25)
+#+end_src
+
+~append~ también se implementa usando un plan recursivo. Para hacer ~append~ de las listas ~list1~ y ~list2~, haz lo siguiente:
+
+- Si ~list1~ es la lista vacía, entonces el resultado es simplemente ~list2~.
+- De lo contrario, haz ~append~ del ~cdr~ de ~list1~ y ~list2~, y haz ~cons~ del ~car~ de ~list1~ sobre el resultado:
+
+#+begin_src scheme
+(define (append list1 list2)
+  (if (null? list1)
+      list2
+      (cons (car list1) (append (cdr list1) list2))))
+#+end_src
+
+**** Ejercicio 2.17
+:properties:
+:custom_id: exercise-2.17
+:end:
+
+Define un procedimiento ~last-pair~ que devuelva la lista que contiene solamente el último elemento de una lista dada (no vacía):
+
+#+begin_src scheme
+(last-pair (list 23 72 149 34))
+(34)
+#+end_src
+
+**** Ejercicio 2.18
+:properties:
+:custom_id: exercise-2.18
+:end:
+
+Define un procedimiento ~reverse~ que tome una lista como argumento y devuelva una lista de los mismos elementos en orden inverso:
+
+#+begin_src scheme
+(reverse (list 1 4 9 16 25))
+(25 16 9 4 1)
+#+end_src
+
+**** Ejercicio 2.19
+:properties:
+:custom_id: exercise-2.19
+:end:
+
+Considera el programa de conteo de cambio de la sección [[#section-1.2.2][1.2.2]]. Sería bueno poder cambiar fácilmente la moneda utilizada por el programa, de modo que pudiéramos calcular el número de maneras de cambiar una libra británica, por ejemplo. Tal como está escrito el programa, el conocimiento de la moneda está distribuido en parte en el procedimiento ~first-denomination~ y en parte en el procedimiento ~count-change~ (que sabe que hay cinco tipos de monedas estadounidenses). Sería mejor poder proporcionar una lista de monedas para usar al hacer cambio.
+
+Queremos reescribir el procedimiento ~cc~ de modo que su segundo argumento sea una lista de los valores de las monedas a usar en lugar de un entero que especifica qué monedas usar. Podríamos entonces tener listas que definan cada tipo de moneda:
+
+#+begin_src scheme
+(define us-coins (list 50 25 10 5 1))
+
+(define uk-coins (list 100 50 20 10 5 2 1 0.5))
+#+end_src
+
+Podríamos entonces llamar a ~cc~ de la siguiente manera:
+
+#+begin_src scheme
+(cc 100 us-coins)
+292
+#+end_src
+
+Para hacer esto será necesario cambiar el programa ~cc~ un poco. Seguirá teniendo la misma forma, pero accederá a su segundo argumento de manera diferente, de la siguiente manera:
+
+#+begin_src scheme
+(define (cc amount coin-values)
+  (cond ((= amount 0) 1)
+        ((or (< amount 0) (no-more? coin-values)) 0)
+        (else
+         (+ (cc amount
+                (except-first-denomination coin-values))
+            (cc (- amount
+                   (first-denomination coin-values))
+                coin-values)))))
+#+end_src
+
+Define los procedimientos ~first-denomination~, ~except-first-denomination~ y ~no-more?~ en términos de operaciones primitivas sobre estructuras de listas. ¿Afecta el orden de la lista ~coin-values~ la respuesta producida por ~cc~? ¿Por qué sí o por qué no?
+
+**** Ejercicio 2.20
+:properties:
+:custom_id: exercise-2.20
+:end:
+
+Los procedimientos ~+~, ~*~ y ~list~ toman números arbitrarios de argumentos. Una manera de definir tales procedimientos es usar ~define~ con <<i116>> notación de cola con punto. En una definición de procedimiento, una lista de parámetros que tiene un punto antes del último nombre de parámetro indica que, cuando se llama al procedimiento, los parámetros iniciales (si los hay) tendrán como valores los argumentos iniciales, como es habitual, pero el valor del parámetro final será una <<i211>> lista de cualquier argumento restante. Por ejemplo, dada la definición
+
+#+begin_src scheme
+(define (f x y . z) <BODY>)
+#+end_src
+
+el procedimiento ~f~ puede ser llamado con dos o más argumentos. Si evaluamos
+
+#+begin_src scheme
+(f 1 2 3 4 5 6)
+#+end_src
+
+entonces en el cuerpo de ~f~, ~x~ será 1, ~y~ será 2, y ~z~ será la lista ~(3 4 5 6)~. Dada la definición
+
+#+begin_src scheme
+(define (g . w) <BODY>)
+#+end_src
+
+el procedimiento ~g~ puede ser llamado con cero o más argumentos. Si evaluamos
+
+#+begin_src scheme
+(g 1 2 3 4 5 6)
+#+end_src
+
+entonces en el cuerpo de ~g~, ~w~ será la lista ~(1 2 3 4 5 6)~.[fn:77]
+
+Usa esta notación para escribir un procedimiento ~same-parity~ que tome uno o más enteros y devuelva una lista de todos los argumentos que tengan la misma paridad par-impar que el primer argumento. Por ejemplo,
+
+#+begin_src scheme
+(same-parity 1 2 3 4 5 6 7)
+(1 3 5 7)
+
+(same-parity 2 3 4 5 6 7)
+(2 4 6)
+#+end_src
+
+*Mapeo sobre listas*
+
+Una operación extremadamente útil es aplicar alguna transformación a cada elemento en una lista y generar la lista de resultados. Por ejemplo, el siguiente procedimiento escala cada número en una lista por un factor dado:
+
+#+begin_src scheme
+(define (scale-list items factor)
+  (if (null? items)
+      nil
+      (cons (* (car items) factor)
+            (scale-list (cdr items) factor))))
+
+(scale-list (list 1 2 3 4 5) 10)
+(10 20 30 40 50)
+#+end_src
+
+Podemos abstraer esta idea general y capturarla como un patrón común expresado como un procedimiento de orden superior, tal como en la sección [[#section-1.3][1.3]]. El procedimiento de orden superior aquí se llama ~map~. ~map~ toma como argumentos un procedimiento de un argumento y una lista, y devuelve una lista de los resultados producidos al aplicar el procedimiento a cada elemento en la lista:[fn:78]
+
+#+begin_src scheme
+(define (map proc items)
+  (if (null? items)
+      nil
+      (cons (proc (car items))
+            (map proc (cdr items)))))
+
+(map abs (list -10 2.5 -11.6 17))
+(10 2.5 11.6 17)
+
+(map (lambda (x) (* x x))
+     (list 1 2 3 4))
+(1 4 9 16)
+#+end_src
+
+Ahora podemos dar una nueva definición de ~scale-list~ en términos de ~map~:
+
+#+begin_src scheme
+(define (scale-list items factor)
+  (map (lambda (x) (* x factor))
+       items))
+#+end_src
+
+~map~ es una construcción importante, no solo porque captura un patrón común, sino porque establece un nivel más alto de abstracción al trabajar con listas. En la definición original de ~scale-list~, la estructura recursiva del programa llama la atención sobre el procesamiento elemento por elemento de la lista. Definir ~scale-list~ en términos de ~map~ suprime ese nivel de detalle y enfatiza que escalar transforma una lista de elementos en una lista de resultados. La diferencia entre las dos definiciones no es que el ordenador esté realizando un proceso diferente (no lo está) sino que pensamos sobre el proceso de manera diferente. En efecto, ~map~ ayuda a establecer una barrera de abstracción que aísla la implementación de procedimientos que transforman listas de los detalles de cómo se extraen y combinan los elementos de la lista. Al igual que las barreras mostradas en la [[figure-2.1][Figura 2.1]], esta abstracción nos da la flexibilidad para cambiar los detalles de bajo nivel de cómo se implementan las secuencias, mientras preservamos el marco conceptual de operaciones que transforman secuencias en secuencias. La Sección [[#section-2.2.3][2.2.3]] amplía este uso de secuencias como marco para organizar programas.
+
+**** Ejercicio 2.21
+:properties:
+:custom_id: exercise-2.21
+:end:
+
+El procedimiento ~square-list~ toma una lista de números como argumento y devuelve una lista de los cuadrados de esos números.
+
+#+begin_src scheme
+(square-list (list 1 2 3 4))
+(1 4 9 16)
+#+end_src
+
+Aquí hay dos definiciones diferentes de ~square-list~. Completa ambas llenando las expresiones faltantes:
+
+#+begin_src scheme
+(define (square-list items)
+  (if (null? items)
+      nil
+      (cons <??> <??>)))
+
+(define (square-list items)
+  (map <??> <??>))
+#+end_src
+
+**** Ejercicio 2.22
+:properties:
+:custom_id: exercise-2.22
+:end:
+
+Louis Reasoner intenta reescribir el primer procedimiento ~square-list~ del [[#exercise-2.21][Ejercicio 2.21]] para que evolucione como un proceso iterativo:
+
+#+begin_src scheme
+(define (square-list items)
+  (define (iter things answer)
+    (if (null? things)
+        answer
+        (iter (cdr things)
+              (cons (square (car things))
+                    answer))))
+  (iter items nil))
+#+end_src
+
+Desafortunadamente, definir ~square-list~ de esta manera produce la lista de respuesta en el orden inverso al deseado. ¿Por qué?
+
+Louis entonces intenta arreglar su error intercambiando los argumentos a ~cons~:
+
+#+begin_src scheme
+(define (square-list items)
+  (define (iter things answer)
+    (if (null? things)
+        answer
+        (iter (cdr things)
+              (cons answer
+                    (square (car things))))))
+  (iter items nil))
+#+end_src
+
+Esto tampoco funciona. Explica por qué.
+
+**** Ejercicio 2.23
+:properties:
+:custom_id: exercise-2.23
+:end:
+
+El procedimiento ~for-each~ es similar a ~map~. Toma como argumentos un procedimiento y una lista de elementos. Sin embargo, en lugar de formar una lista de los resultados, ~for-each~ simplemente aplica el procedimiento a cada uno de los elementos por turno, de izquierda a derecha. Los valores devueltos al aplicar el procedimiento a los elementos no se usan en absoluto--~for-each~ se usa con procedimientos que realizan una acción, como imprimir. Por ejemplo,
+
+#+begin_src scheme
+(for-each (lambda (x) (newline) (display x))
+          (list 57 321 88))
+57
+321
+88
+#+end_src
+
+El valor devuelto por la llamada a ~for-each~ (no ilustrado arriba) puede ser algo arbitrario, como true.  Da una implementación de ~for-each~.
+
+*** 2.2.2 Estructuras Jerárquicas
+:properties:
+:custom_id: section-2.2.2
+:end:
+
+La representación de secuencias en términos de listas se generaliza naturalmente para representar secuencias cuyos elementos pueden ser a su vez secuencias.  Por ejemplo, podemos considerar el objeto ~((1 2) 3 4)~ construido por
+
+#+begin_src scheme
+(cons (list 1 2) (list 3 4))
+#+end_src
+
+como una lista de tres elementos, el primero de los cuales es en sí mismo una lista, ~(1 2)~.  De hecho, esto lo sugiere la forma en que el intérprete imprime el resultado.  [[figure-2.5][La Figura 2.5]] muestra la representación de esta estructura en términos de pares.
+
+<<figure-2.5>> Estructura formada por ~(cons (list 1 2) (list 3 4))~.
+
+TODO
+
+#+begin_example
+                                                    (3 4)
+                                                      |
+                                                      V
+          ((1 2) 3 4)  +---+---+                  +---+---+     +---+---+
+                  ---->| * | *-+----------------->| * | *-+---->| * | / |
+                       +-|-+---+                  +-|-+---+     +-|-+---+
+                         |                          |             |
+                         V                          V             V
+                (1 2)  +---+---+     +---+---+    +---+         +---+
+                  ---->| * | *-+---->| * | / |    | 3 |         | 4 |
+                       +-|-+---+     +-|-+---+    +---+         +---+
+                         |             |
+                         V             V
+                       +---+         +---+
+                       | 1 |         | 2 |
+                       +---+         +---+
+#+end_example
+
+Otra forma de pensar en secuencias cuyos elementos son secuencias es como <<i401>> árboles.  Los elementos de la secuencia son las ramas del árbol, y los elementos que son a su vez secuencias son subárboles.  [[figure-2.6][La Figura 2.6]] muestra la estructura en [[figure-2.5][la Figura 2.5]] vista como un árbol.
+
+<<figure-2.6>> La estructura de lista en [[figure-2.5][la Figura 2.5]] vista como un árbol.
+
+#+begin_example
+  ((1 2) 3 4)
+      /\\
+     /  | \
+ (1 2)  3 4
+  / \
+  1 2
+#+end_example
+
+La recursión es una herramienta natural para trabajar con estructuras de árbol, ya que a menudo podemos reducir operaciones sobre árboles a operaciones sobre sus ramas, que se reducen a su vez a operaciones sobre las ramas de las ramas, y así sucesivamente, hasta que alcanzamos las hojas del árbol.  Como ejemplo, compara el procedimiento ~length~ de la sección [[#section-2.2.1][2.2.1]] con el procedimiento ~count-leaves~, que devuelve el número total de hojas de un árbol:
+
+#+begin_src scheme
+(define x (cons (list 1 2) (list 3 4)))
+
+(length x)
+3
+
+(count-leaves x)
+4
+
+(list x x)
+(((1 2) 3 4) ((1 2) 3 4))
+
+(length (list x x))
+2
+
+(count-leaves (list x x))
+8
+#+end_src
+
+Para implementar ~count-leaves~, recuerda el plan recursivo para calcular ~length~:
+
+- ~Length~ de una lista ~x~ es 1 más ~length~ del ~cdr~ de ~x~.
+
+- ~Length~ de la lista vacía es 0.
+
+~count-leaves~ es similar.  El valor para la lista vacía es el mismo:
+
+- ~Count-leaves~ de la lista vacía es 0.
+
+Pero en el paso de reducción, donde quitamos el ~car~ de la lista, debemos tener en cuenta que el ~car~ puede ser en sí mismo un árbol cuyas hojas necesitamos contar.  Por lo tanto, el paso de reducción apropiado es
+
+- ~Count-leaves~ de un árbol ~x~ es ~count-leaves~ del ~car~ de ~x~ más ~count-leaves~ del ~cdr~ de ~x~.
+
+Finalmente, al tomar 'car's alcanzamos las hojas reales, así que necesitamos otro caso base:
+
+- ~Count-leaves~ de una hoja es 1.
+
+Para ayudar a escribir procedimientos recursivos sobre árboles, Scheme proporciona el predicado primitivo ~pair?~, que comprueba si su argumento es un par.  Aquí está el procedimiento completo:[fn:79]
+
+#+begin_src scheme
+(define (count-leaves x)
+  (cond ((null? x) 0)
+        ((not (pair? x)) 1)
+        (else (+ (count-leaves (car x))
+                 (count-leaves (cdr x))))))
+#+end_src
+
+**** Ejercicio 2.24
+:properties:
+:custom_id: exercise-2.24
+:end:
+
+Supón que evaluamos la expresión ~(list 1 (list 2 (list 3 4)))~.  Da el resultado impreso por el intérprete, la estructura de cajas y punteros correspondiente, y la interpretación de esto como un árbol (como en [[figure-2.6][la Figura 2.6]]).
+
+**** Ejercicio 2.25
+:properties:
+:custom_id: exercise-2.25
+:end:
+
+Da combinaciones de 'car's y 'cdr's que obtendrán 7 de cada una de las siguientes listas:
+
+#+begin_src scheme
+(1 3 (5 7) 9)
+
+((7))
+
+(1 (2 (3 (4 (5 (6 7))))))
+#+end_src
+
+**** Ejercicio 2.26
+:properties:
+:custom_id: exercise-2.26
+:end:
+
+Supongamos que definimos ~x~ e ~y~ como dos listas:
+
+#+begin_src scheme
+(define x (list 1 2 3))
+
+(define y (list 4 5 6))
+#+end_src
+
+¿Qué resultado imprime el intérprete al evaluar cada una de las siguientes expresiones:
+
+#+begin_src scheme
+(append x y)
+
+(cons x y)
+
+(list x y)
+#+end_src
+
+**** Ejercicio 2.27
+:properties:
+:custom_id: exercise-2.27
+:end:
+
+Modifica tu procedimiento ~reverse~ del [[#exercise-2.18][Ejercicio 2.18]] para producir un procedimiento ~deep-reverse~ que tome una lista como argumento y devuelva como valor la lista con sus elementos invertidos y con todas las sublistas también invertidas profundamente. Por ejemplo,
+
+#+begin_src scheme
+(define x (list (list 1 2) (list 3 4)))
+
+x
+((1 2) (3 4))
+
+(reverse x)
+((3 4) (1 2))
+
+(deep-reverse x)
+((4 3) (2 1))
+#+end_src
+
+**** Ejercicio 2.28
+:properties:
+:custom_id: exercise-2.28
+:end:
+
+Escribe un procedimiento ~fringe~ que tome como argumento un árbol (representado como una lista) y devuelva una lista cuyos elementos sean todas las hojas del árbol ordenadas de izquierda a derecha. Por ejemplo,
+
+#+begin_src scheme
+(define x (list (list 1 2) (list 3 4)))
+
+(fringe x)
+(1 2 3 4)
+
+(fringe (list x x))
+(1 2 3 4 1 2 3 4)
+#+end_src
+
+**** Ejercicio 2.29
+:properties:
+:custom_id: exercise-2.29
+:end:
+
+Un móvil binario consiste en dos ramas, una rama izquierda y una rama derecha. Cada rama es una varilla de cierta longitud, de la cual cuelga ya sea un peso u otro móvil binario. Podemos representar un móvil binario usando datos compuestos construyéndolo a partir de dos ramas (por ejemplo, usando ~list~):
+
+#+begin_src scheme
+(define (make-mobile left right)
+  (list left right))
+#+end_src
+
+Una rama se construye a partir de un ~length~ (que debe ser un número) junto con un ~structure~, que puede ser ya sea un número (que representa un peso simple) u otro móvil:
+
+#+begin_src scheme
+(define (make-branch length structure)
+  (list length structure))
+#+end_src
+
+a. Escribe los selectores correspondientes ~left-branch~ y ~right-branch~, que devuelven las ramas de un móvil, y ~branch-length~ y ~branch-structure~, que devuelven los componentes de una rama.
+
+b. Usando tus selectores, define un procedimiento ~total-weight~ que devuelva el peso total de un móvil.
+
+c. Se dice que un móvil está <<i32>> equilibrado si el torque aplicado por su rama superior izquierda es igual al aplicado por su rama superior derecha (es decir, si la longitud de la varilla izquierda multiplicada por el peso que cuelga de esa varilla es igual al producto correspondiente del lado derecho) y si cada uno de los submóviles que cuelgan de sus ramas está equilibrado. Diseña un predicado que compruebe si un móvil binario está equilibrado.
+
+d. Supongamos que cambiamos la representación de los móviles de modo que los constructores sean
+
+#+begin_src scheme
+(define (make-mobile left right)
+  (cons left right))
+
+(define (make-branch length structure)
+  (cons length structure))
+#+end_src
+
+¿Cuánto necesitas cambiar tus programas para convertirlos a la nueva representación?
+
+*Mapeo sobre árboles*
+
+Así como ~map~ es una abstracción poderosa para trabajar con secuencias, ~map~ junto con la recursión es una abstracción poderosa para trabajar con árboles. Por ejemplo, el procedimiento ~scale-tree~, análogo a ~scale-list~ de la sección [[#section-2.2.1][2.2.1]], toma como argumentos un factor numérico y un árbol cuyas hojas son números. Devuelve un árbol de la misma forma, donde cada número se multiplica por el factor. El plan recursivo para ~scale-tree~ es similar al de ~count-leaves~:
+
+#+begin_src scheme
+(define (scale-tree tree factor)
+  (cond ((null? tree) nil)
+        ((not (pair? tree)) (* tree factor))
+        (else (cons (scale-tree (car tree) factor)
+                    (scale-tree (cdr tree) factor)))))
+
+(scale-tree (list 1 (list 2 (list 3 4) 5) (list 6 7))
+            10)
+(10 (20 (30 40) 50) (60 70))
+#+end_src
+
+Otra forma de implementar ~scale-tree~ es considerar el árbol como una secuencia de subárboles y usar ~map~. Mapeamos sobre la secuencia, escalando cada subárbol a su vez, y devolvemos la lista de resultados. En el caso base, donde el árbol es una hoja, simplemente multiplicamos por el factor:
+
+#+begin_src scheme
+(define (scale-tree tree factor)
+  (map (lambda (sub-tree)
+         (if (pair? sub-tree)
+             (scale-tree sub-tree factor)
+             (* sub-tree factor)))
+       tree))
+#+end_src
+
+Muchas operaciones sobre árboles pueden implementarse mediante combinaciones similares de operaciones de secuencias y recursión.
+
+**** Ejercicio 2.30
+:properties:
+:custom_id: exercise-2.30
+:end:
+
+Define un procedimiento ~square-tree~ análogo al procedimiento ~square-list~ del [[#exercise-2.21][Ejercicio 2.21]]. Es decir, ~square-list~ debe comportarse de la siguiente manera:
+
+#+begin_src scheme
+(square-tree
+ (list 1
+       (list 2 (list 3 4) 5)
+       (list 6 7)))
+(1 (4 (9 16) 25) (36 49))
+#+end_src
+
+Define ~square-tree~ tanto directamente (es decir, sin usar ningún procedimiento de orden superior) como también usando ~map~ y recursión.
+
+**** Ejercicio 2.31
+:properties:
+:custom_id: exercise-2.31
+:end:
+
+Abstrae tu respuesta al [[#exercise-2.30][Ejercicio 2.30]] para producir un procedimiento ~tree-map~ con la propiedad de que ~square-tree~ podría definirse como
+
+#+begin_src scheme
+(define (square-tree tree) (tree-map square tree))
+#+end_src
+
+**** Ejercicio 2.32
+:properties:
+:custom_id: exercise-2.32
+:end:
+
+Podemos representar un conjunto como una lista de elementos distintos, y podemos representar el conjunto de todos los subconjuntos del conjunto como una lista de listas. Por ejemplo, si el conjunto es ~(1 2 3)~, entonces el conjunto de todos los subconjuntos es ~(() (3) (2) (2 3) (1) (1 3) (1 2) (1 2 3))~. Completa la siguiente definición de un procedimiento que genera el conjunto de subconjuntos de un conjunto y proporciona una explicación clara de por qué funciona:
+
+#+begin_src scheme
+(define (subsets s)
+  (if (null? s)
+      (list nil)
+      (let ((rest (subsets (cdr s))))
+        (append rest (map <??> rest)))))
+#+end_src
+
+*** 2.2.3 Secuencias como Interfaces Convencionales
+:properties:
+:custom_id: section-2.2.3
+:end:
+
+Al trabajar con datos compuestos, hemos enfatizado cómo la abstracción de datos nos permite diseñar programas sin enredarnos en los detalles de las representaciones de datos, y cómo la abstracción nos preserva la flexibilidad para experimentar con representaciones alternativas. En esta sección, introducimos otro poderoso principio de diseño para trabajar con estructuras de datos: el uso de <<i89>> interfaces convencionales.
+
+En la sección [[#section-1.3][1.3]] vimos cómo las abstracciones de programa, implementadas como procedimientos de orden superior, pueden capturar patrones comunes en programas que tratan con datos numéricos. Nuestra capacidad para formular operaciones análogas para trabajar con datos compuestos depende de manera crucial del estilo en que manipulamos nuestras estructuras de datos. Considera, por ejemplo, el siguiente procedimiento, análogo al procedimiento ~count-leaves~ de la sección [[#section-2.2.2][2.2.2]], que toma un árbol como argumento y calcula la suma de los cuadrados de las hojas que son impares:
+
+#+begin_src scheme
+(define (sum-odd-squares tree)
+  (cond ((null? tree) 0)
+        ((not (pair? tree))
+         (if (odd? tree) (square tree) 0))
+        (else (+ (sum-odd-squares (car tree))
+                 (sum-odd-squares (cdr tree))))))
+#+end_src
+
+En la superficie, este procedimiento es muy diferente del siguiente, que construye una lista de todos los números pares de Fibonacci Fib(k), donde k es menor o igual que un entero dado n:
+
+#+begin_src scheme
+(define (even-fibs n)
+  (define (next k)
+    (if (> k n)
+        nil
+        (let ((f (fib k)))
+          (if (even? f)
+              (cons f (next (+ k 1)))
+              (next (+ k 1))))))
+  (next 0))
+#+end_src
+
+A pesar del hecho de que estos dos procedimientos son estructuralmente muy diferentes, una descripción más abstracta de las dos computaciones revela una gran cantidad de similitudes. El primer programa
+
+- enumera las hojas de un árbol;
+- las filtra, seleccionando las impares;
+- eleva al cuadrado cada una de las seleccionadas; y
+- acumula los resultados usando ~+~, comenzando con 0.
+
+El segundo programa
+
+- enumera los enteros de 0 a n;
+- calcula el número de Fibonacci para cada entero;
+- los filtra, seleccionando los pares; y
+- acumula los resultados usando ~cons~, comenzando con la lista vacía.
+
+Un ingeniero de procesamiento de señales encontraría natural conceptualizar estos procesos en términos de señales que fluyen a través de una cascada de etapas, cada una de las cuales implementa parte del plan del programa, como se muestra en la [[figure-2.7][Figura 2.7]]. En ~sum-odd-squares~, comenzamos con un <<i122>> enumerador, que genera una "señal" que consiste en las hojas de un árbol dado. Esta señal pasa a través de un <<i138>> filtro, que elimina todos los elementos excepto los impares. La señal resultante pasa a su vez a través de un <<i225>> map, que es un "transductor" que aplica el procedimiento ~square~ a cada elemento. La salida del map se alimenta entonces a un <<i5>> acumulador, que combina los elementos usando ~+~, comenzando desde un 0 inicial. El plan para ~even-fibs~ es análogo.
+
+<<figure-2.7>> Los planes de flujo de señales para los procedimientos ~sum-odd-squares~ (arriba) y ~even-fibs~ (abajo) revelan la similitud entre los dos programas.
+
+#+begin_example
+ +-------------+   +-------------+   +-------------+   +-------------+
+ | enumerate:  |-->| filter:     |-->| map:        |-->| accumulate: |
+ | tree leaves |   | odd?        |   | square      |   | +, 0        |
+ +-------------+   +-------------+   +-------------+   +-------------+
+
+ +-------------+   +-------------+   +-------------+   +-------------+
+ | enumerate:  |-->| map:        |-->| filter:     |-->| accumulate: |
+ | integers    |   | fib         |   | even?       |   | cons, ()    |
+ +-------------+   +-------------+   +-------------+   +-------------+
+#+end_example
+
+Desafortunadamente, las dos definiciones de procedimientos anteriores no exhiben esta estructura de flujo de señales. Por ejemplo, si examinamos el procedimiento ~sum-odd-squares~, encontramos que la enumeración se implementa en parte mediante las pruebas ~null?~ y ~pair?~ y en parte mediante la estructura recursiva de árbol del procedimiento. De manera similar, la acumulación se encuentra en parte en las pruebas y en parte en la adición utilizada en la recursión. En general, no hay partes distintas de ninguno de los dos procedimientos que correspondan a los elementos en la descripción del flujo de señales. Nuestros dos procedimientos descomponen las computaciones de una manera diferente, dispersando la enumeración a través del programa y mezclándola con el map, el filtro y la acumulación. Si pudiéramos organizar nuestros programas para hacer que la estructura del flujo de señales se manifieste en los procedimientos que escribimos, esto aumentaría la claridad conceptual del código resultante.
+
+*Operaciones de Secuencia*
+
+La clave para organizar programas de modo que reflejen más claramente la estructura de flujo de señales es concentrarse en las "señales" que fluyen de una etapa en el proceso a la siguiente. Si representamos estas señales como listas, entonces podemos usar operaciones de listas para implementar el procesamiento en cada una de las etapas. Por ejemplo, podemos implementar las etapas de mapeo de los diagramas de flujo de señales usando el procedimiento ~map~ de la sección [[#section-2.2.1][2.2.1]]:
+
+#+begin_src scheme
+(map square (list 1 2 3 4 5))
+(1 4 9 16 25)
+#+end_src
+
+Filtrar una secuencia para seleccionar solo aquellos elementos que satisfacen un predicado dado se logra mediante
+
+#+begin_src scheme
+(define (filter predicate sequence)
+  (cond ((null? sequence) nil)
+        ((predicate (car sequence))
+         (cons (car sequence)
+               (filter predicate (cdr sequence))))
+        (else (filter predicate (cdr sequence)))))
+#+end_src
+
+Por ejemplo,
+
+#+begin_src scheme
+(filter odd? (list 1 2 3 4 5))
+(1 3 5)
+#+end_src
+
+Las acumulaciones pueden implementarse mediante
+
+#+begin_src scheme
+(define (accumulate op initial sequence)
+  (if (null? sequence)
+      initial
+      (op (car sequence)
+          (accumulate op initial (cdr sequence)))))
+
+(accumulate + 0 (list 1 2 3 4 5))
+15
+
+(accumulate * 1 (list 1 2 3 4 5))
+120
+
+(accumulate cons nil (list 1 2 3 4 5))
+(1 2 3 4 5)
+#+end_src
+
+Todo lo que queda para implementar diagramas de flujo de señales es enumerar la secuencia de elementos a procesar. Para ~even-fibs~, necesitamos generar la secuencia de enteros en un rango dado, lo cual podemos hacer de la siguiente manera:
+
+#+begin_src scheme
+(define (enumerate-interval low high)
+  (if (> low high)
+      nil
+      (cons low (enumerate-interval (+ low 1) high))))
+
+(enumerate-interval 2 7)
+(2 3 4 5 6 7)
+#+end_src
+
+Para enumerar las hojas de un árbol, podemos usar[fn:80]
+
+#+begin_src scheme
+(define (enumerate-tree tree)
+  (cond ((null? tree) nil)
+        ((not (pair? tree)) (list tree))
+        (else (append (enumerate-tree (car tree))
+                      (enumerate-tree (cdr tree))))))
+
+(enumerate-tree (list 1 (list 2 (list 3 4)) 5))
+(1 2 3 4 5)
+#+end_src
+
+Ahora podemos reformular ~sum-odd-squares~ y ~even-fibs~ como en los diagramas de flujo de señal. Para ~sum-odd-squares~, enumeramos la secuencia de hojas del árbol, filtramos esto para mantener solo los números impares en la secuencia, elevamos al cuadrado cada elemento, y sumamos los resultados:
+
+#+begin_src scheme
+(define (sum-odd-squares tree)
+  (accumulate +
+              0
+              (map square
+                   (filter odd?
+                           (enumerate-tree tree)))))
+#+end_src
+
+Para ~even-fibs~, enumeramos los enteros de 0 a n, generamos el número de Fibonacci para cada uno de estos enteros, filtramos la secuencia resultante para mantener solo los elementos pares, y acumulamos los resultados en una lista:
+
+#+begin_src scheme
+(define (even-fibs n)
+  (accumulate cons
+              nil
+              (filter even?
+                      (map fib
+                           (enumerate-interval 0 n)))))
+#+end_src
+
+El valor de expresar programas como operaciones de secuencia es que esto nos ayuda a crear diseños de programas que son modulares, es decir, diseños que se construyen combinando piezas relativamente independientes. Podemos fomentar el diseño modular proporcionando una biblioteca de componentes estándar junto con una interfaz convencional para conectar los componentes de formas flexibles.
+
+La construcción modular es una estrategia poderosa para controlar la complejidad en el diseño de ingeniería. En aplicaciones reales de procesamiento de señales, por ejemplo, los diseñadores regularmente construyen sistemas encadenando elementos seleccionados de familias estandarizadas de filtros y transductores. De manera similar, las operaciones de secuencia proporcionan una biblioteca de elementos de programa estándar que podemos mezclar y combinar. Por ejemplo, podemos reutilizar piezas de los procedimientos ~sum-odd-squares~ y ~even-fibs~ en un programa que construye una lista de los cuadrados de los primeros n + 1 números de Fibonacci:
+
+#+begin_src scheme
+(define (list-fib-squares n)
+  (accumulate cons
+              nil
+              (map square
+                   (map fib
+                        (enumerate-interval 0 n)))))
+
+(list-fib-squares 10)
+(0 1 1 4 9 25 64 169 441 1156 3025)
+#+end_src
+
+Podemos reorganizar las piezas y usarlas para calcular el producto de los enteros impares en una secuencia:
+
+#+begin_src scheme
+(define (product-of-squares-of-odd-elements sequence)
+  (accumulate *
+              1
+              (map square
+                   (filter odd? sequence))))
+
+(product-of-squares-of-odd-elements (list 1 2 3 4 5))
+225
+#+end_src
+
+También podemos formular aplicaciones convencionales de procesamiento de datos en términos de operaciones de secuencia. Supongamos que tenemos una secuencia de registros de personal y queremos encontrar el salario del programador mejor pagado. Asumamos que tenemos un selector ~salary~ que devuelve el salario de un registro, y un predicado ~programmer?~ que prueba si un registro es para un programador. Entonces podemos escribir
+
+#+begin_src scheme
+(define (salary-of-highest-paid-programmer records)
+  (accumulate max
+              0
+              (map salary
+                   (filter programmer? records))))
+#+end_src
+
+Estos ejemplos dan solo una idea del vasto rango de operaciones que se pueden expresar como operaciones de secuencia.[fn:81]
+
+Las secuencias, implementadas aquí como listas, sirven como una interfaz convencional que nos permite combinar módulos de procesamiento. Además, cuando representamos uniformemente las estructuras como secuencias, hemos localizado las dependencias de la estructura de datos en nuestros programas a un pequeño número de operaciones de secuencia. Al cambiar estas, podemos experimentar con representaciones alternativas de secuencias, mientras dejamos intacto el diseño general de nuestros programas. Explotaremos esta capacidad en la sección [[#section-3.5][3.5]], cuando generalicemos el paradigma de procesamiento de secuencias para admitir secuencias infinitas.
+
+**** Exercise 2.33
+:properties:
+:custom_id: exercise-2.33
+:end:
+
+Completa las expresiones faltantes para completar las siguientes definiciones de algunas operaciones básicas de manipulación de listas como acumulaciones:
+
+#+begin_src scheme
+(define (map p sequence)
+  (accumulate (lambda (x y) <??>) nil sequence))
+
+(define (append seq1 seq2)
+  (accumulate cons <??> <??>))
+
+(define (length sequence)
+  (accumulate <??> 0 sequence))
+#+end_src
+
+**** Exercise 2.34
+:properties:
+:custom_id: exercise-2.34
+:end:
+
+Evaluar un polinomio en x en un valor dado de x puede formularse como una acumulación. Evaluamos el polinomio
+
+#+begin_example
+ a_n r^n | a_(n-1) r^(n-1) + ... + a_1 r + a_0
+#+end_example
+
+usando un algoritmo bien conocido llamado <<i178>> regla de Horner, que estructura el cálculo como
+
+#+begin_example
+ (... (a_n r + a_(n-1)) r + ... + a_1) r + a_0
+#+end_example
+
+En otras palabras, empezamos con a_n, multiplicamos por x, sumamos a_(n-1), multiplicamos por x, y así sucesivamente, hasta que alcanzamos a_0.[fn:82]
+
+Completa la siguiente plantilla para producir un procedimiento que evalúa un polinomio usando la regla de Horner. Asume que los coeficientes del polinomio están organizados en una secuencia, desde a_0 hasta a_n.
+
+#+begin_src scheme
+(define (horner-eval x coefficient-sequence)
+  (accumulate (lambda (this-coeff higher-terms) <??>)
+              0
+              coefficient-sequence))
+#+end_src
+
+Por ejemplo, para calcular 1 + 3x + 5x^3 + x^(5) en x = 2 evaluarías
+
+#+begin_src scheme
+(horner-eval 2 (list 1 3 0 5 0 1))
+#+end_src
+
+**** Exercise 2.35
+:properties:
+:custom_id: exercise-2.35
+:end:
+
+Redefine ~count-leaves~ de la sección [[#section-2.2.2][2.2.2]] como una acumulación:
+
+#+begin_src scheme
+(define (count-leaves t)
+  (accumulate <??> <??> (map <??> <??>)))
+#+end_src
+
+**** Ejercicio 2.36
+:properties:
+:custom_id: exercise-2.36
+:end:
+
+El procedimiento ~accumulate-n~ es similar a ~accumulate~ excepto que toma como tercer argumento una secuencia de secuencias, de las cuales se asume que todas tienen el mismo número de elementos. Aplica el procedimiento de acumulación designado para combinar todos los primeros elementos de las secuencias, todos los segundos elementos de las secuencias, y así sucesivamente, y devuelve una secuencia de los resultados. Por ejemplo, si ~s~ es una secuencia que contiene cuatro secuencias, ~((1 2 3) (4 5 6) (7 8 9) (10 11 12)),~ entonces el valor de ~(accumulate-n + 0 s)~ debería ser la secuencia ~(22 26 30)~. Rellena las expresiones faltantes en la siguiente definición de ~accumulate-n~:
+
+#+begin_src scheme
+(define (accumulate-n op init seqs)
+  (if (null? (car seqs))
+      nil
+      (cons (accumulate op init <??>)
+            (accumulate-n op init <??>))))
+#+end_src
+
+**** Ejercicio 2.37
+:properties:
+:custom_id: exercise-2.37
+:end:
+
+Supongamos que representamos vectores v = (v_i) como secuencias de números, y matrices m = (m_(ij)) como secuencias de vectores (las filas de la matriz). Por ejemplo, la matriz
+
+#+begin_example
+ +-         -+
+ |  1 2 3 4  |
+ |  4 5 6 6  |
+ |  6 7 8 9  |
+ +-         -+
+#+end_example
+
+se representa como la secuencia ~((1 2 3 4) (4 5 6 6) (6 7 8 9))~. Con esta representación, podemos usar operaciones de secuencia para expresar de manera concisa las operaciones básicas de matrices y vectores. Estas operaciones (que se describen en cualquier libro de álgebra de matrices) son las siguientes:
+
+#+begin_example
+                                        __
+ (dot-product v w)      devuelve la suma >_i v_i w_i
+
+ (matrix-*-vector m v)  devuelve el vector t,
+                                    __
+                        donde t_i = >_j m_(ij) v_j
+
+ (matrix-*-matrix m n)  devuelve la matriz p,
+                                       __
+                        donde p_(ij) = >_k m_(ik) n_(kj)
+
+ (transpose m)          devuelve la matriz n,
+                        donde n_(ij) = m_(ji)
+#+end_example
+
+Podemos definir el producto punto como[fn:83]
+
+#+begin_src scheme
+(define (dot-product v w)
+  (accumulate + 0 (map * v w)))
+#+end_src
+
+Rellena las expresiones faltantes en los siguientes procedimientos para calcular las otras operaciones de matrices. (El procedimiento ~accumulate-n~ está definido en el [[#exercise-2.36][Ejercicio 2.36]].)
+
+#+begin_src scheme
+(define (matrix-*-vector m v)
+  (map <??> m))
+
+(define (transpose mat)
+  (accumulate-n <??> <??> mat))
+
+(define (matrix-*-matrix m n)
+  (let ((cols (transpose n)))
+    (map <??> m)))
+#+end_src
+
+**** Ejercicio 2.38
+:properties:
+:custom_id: exercise-2.38
+:end:
+
+El procedimiento ~accumulate~ también se conoce como ~fold-right~, porque combina el primer elemento de la secuencia con el resultado de combinar todos los elementos a la derecha. También existe un ~fold-left~, que es similar a ~fold-right~, excepto que combina elementos trabajando en la dirección opuesta:
+
+#+begin_src scheme
+(define (fold-left op initial sequence)
+  (define (iter result rest)
+    (if (null? rest)
+        result
+        (iter (op result (car rest))
+              (cdr rest))))
+  (iter initial sequence))
+#+end_src
+
+¿Cuáles son los valores de
+
+#+begin_src scheme
+(fold-right / 1 (list 1 2 3))
+
+(fold-left / 1 (list 1 2 3))
+
+(fold-right list nil (list 1 2 3))
+
+(fold-left list nil (list 1 2 3))
+#+end_src
+
+Indica una propiedad que ~op~ debería satisfacer para garantizar que ~fold-right~ y ~fold-left~ produzcan los mismos valores para cualquier secuencia.
+
+**** Ejercicio 2.39
+:properties:
+:custom_id: exercise-2.39
+:end:
+
+Completa las siguientes definiciones de ~reverse~ ([[#exercise-2.18][Ejercicio 2.18]]) en términos de ~fold-right~ y ~fold-left~ del [[#exercise-2.38][Ejercicio 2.38]]:
+
+#+begin_src scheme
+(define (reverse sequence)
+  (fold-right (lambda (x y) <??>) nil sequence))
+
+(define (reverse sequence)
+  (fold-left (lambda (x y) <??>) nil sequence))
+#+end_src
+
+*Mapeos anidados*
+
+Podemos extender el paradigma de secuencias para incluir muchos cálculos que comúnmente se expresan usando bucles anidados.[fn:84] Considera este problema: Dado un entero positivo n, encuentra todos los pares ordenados de enteros positivos distintos i y j, donde 1 <= j< i<= n, tal que i + j sea primo. Por ejemplo, si n es 6, entonces los pares son los siguientes:
+
+#+begin_example
+   i   | 2 3 4 4 5 6 6
+   j   | 1 2 1 3 2 1 5
+ ------+---------------
+ i + j | 3 5 5 7 7 7 11
+#+end_example
+
+Una manera natural de organizar este cálculo es generar la secuencia de todos los pares ordenados de enteros positivos menores o iguales a n, filtrar para seleccionar aquellos pares cuya suma sea prima, y luego, para cada par (i, j) que pase a través del filtro, producir la tripleta (i,j,i + j).
+
+Aquí hay una manera de generar la secuencia de pares: Para cada entero i <= n, enumera los enteros j<i, y para cada tal i y j genera el par (i,j). En términos de operaciones de secuencia, mapeamos a lo largo de la secuencia ~(enumerate-interval 1 n)~. Para cada i en esta secuencia, mapeamos a lo largo de la secuencia ~(enumerate-interval 1 (- i 1))~. Para cada j en esta última secuencia, generamos el par ~(list i j)~. Esto nos da una secuencia de pares para cada i. Combinar todas las secuencias para todos los i (acumulando con ~append~) produce la secuencia requerida de pares:[fn:85]
+
+#+begin_src scheme
+(accumulate append
+            nil
+            (map (lambda (i)
+                   (map (lambda (j) (list i j))
+                        (enumerate-interval 1 (- i 1))))
+                 (enumerate-interval 1 n)))
+#+end_src
+
+La combinación de mapeo y acumulación con ~append~ es tan común en este tipo de programa que la aislaremos como un procedimiento separado:
+
+#+begin_src scheme
+(define (flatmap proc seq)
+  (accumulate append nil (map proc seq)))
+#+end_src
+
+Ahora filtramos esta secuencia de pares para encontrar aquellos cuya suma es prima. El predicado de filtrado se llama para cada elemento de la secuencia; su argumento es un par y debe extraer los enteros del par. Por lo tanto, el predicado a aplicar a cada elemento en la secuencia es
+
+#+begin_src scheme
+(define (prime-sum? pair)
+  (prime? (+ (car pair) (cadr pair))))
+#+end_src
+
+Finalmente, generamos la secuencia de resultados mapeando sobre los pares filtrados utilizando el siguiente procedimiento, que construye una tripla que consiste en los dos elementos del par junto con su suma:
+
+#+begin_src scheme
+(define (make-pair-sum pair)
+  (list (car pair) (cadr pair) (+ (car pair) (cadr pair))))
+#+end_src
+
+Combinando todos estos pasos obtenemos el procedimiento completo:
+
+#+begin_src scheme
+(define (prime-sum-pairs n)
+  (map make-pair-sum
+       (filter prime-sum?
+               (flatmap
+                (lambda (i)
+                  (map (lambda (j) (list i j))
+                       (enumerate-interval 1 (- i 1))))
+                (enumerate-interval 1 n)))))
+#+end_src
+
+Los mapeos anidados también son útiles para secuencias distintas a aquellas que enumeran intervalos. Supongamos que deseamos generar todas las permutaciones de un conjunto S; es decir, todas las formas de ordenar los elementos en el conjunto. Por ejemplo, las permutaciones de {1,2,3} son {1,2,3}, {1,3,2}, {2,1,3}, {2,3,1}, {3,1,2}, y {3,2,1}. Aquí hay un plan para generar las permutaciones de S: Para cada elemento x en S, generar recursivamente la secuencia de permutaciones de S - x,[fn:86] y adjuntar x al principio de cada una. Esto produce, para cada x en S, la secuencia de permutaciones de S que comienzan con x. Combinar estas secuencias para todas las x da todas las permutaciones de S:[fn:87]
+
+#+begin_src scheme
+(define (permutations s)
+  (if (null? s)                         ; ¿conjunto vacío?
+      (list nil)                        ; secuencia que contiene conjunto vacío
+      (flatmap (lambda (x)
+                 (map (lambda (p) (cons x p))
+                      (permutations (remove x s))))
+               s)))
+#+end_src
+
+Observa cómo esta estrategia reduce el problema de generar permutaciones de S al problema de generar las permutaciones de conjuntos con menos elementos que S. En el caso terminal, descendemos hasta la lista vacía, que representa un conjunto sin elementos. Para esto, generamos ~(list nil)~, que es una secuencia con un elemento, a saber, el conjunto sin elementos. El procedimiento ~remove~ usado en ~permutations~ devuelve todos los elementos en una secuencia dada excepto un elemento dado. Esto puede expresarse como un simple filtro:
+
+#+begin_src scheme
+(define (remove item sequence)
+  (filter (lambda (x) (not (= x item)))
+          sequence))
+#+end_src
+
+**** Exercise 2.40
+:properties:
+:custom_id: exercise-2.40
+:end:
+
+Define un procedimiento ~unique-pairs~ que, dado un entero n, genere la secuencia de pares (i,j) con 1 <= j< i <= n. Usa ~unique-pairs~ para simplificar la definición de ~prime-sum-pairs~ dada anteriormente.
+
+**** Exercise 2.41
+:properties:
+:custom_id: exercise-2.41
+:end:
+
+Escribe un procedimiento para encontrar todas las triplas ordenadas de enteros positivos distintos i, j, y k menores o iguales a un entero dado n que sumen un entero dado s.
+
+<<figure-2.8>> Una solución al problema de las ocho reinas.
+
+#+begin_example
+ +---+---+---+---+---+---+---+---+
+ |   |   |   |   |   | Q |   |   |
+ +---+---+---+---+---+---+---+---+
+ |   |   | Q |   |   |   |   |   |
+ +---+---+---+---+---+---+---+---+
+ | Q |   |   |   |   |   |   |   |
+ +---+---+---+---+---+---+---+---+
+ |   |   |   |   |   |   | Q |   |
+ +---+---+---+---+---+---+---+---+
+ |   |   |   |   | Q |   |   |   |
+ +---+---+---+---+---+---+---+---+
+ |   |   |   |   |   |   |   | Q |
+ +---+---+---+---+---+---+---+---+
+ |   | Q |   |   |   |   |   |   |
+ +---+---+---+---+---+---+---+---+
+ |   |   |   | Q |   |   |   |   |
+ +---+---+---+---+---+---+---+---+
+#+end_example
+
+**** Exercise 2.42
+:properties:
+:custom_id: exercise-2.42
+:end:
+
+El "problema de las ocho reinas" pregunta cómo colocar ocho reinas en un tablero de ajedrez de modo que ninguna reina esté en jaque por ninguna otra (es decir, que no haya dos reinas en la misma fila, columna o diagonal). Una posible solución se muestra en la [[figure-2.8][Figura 2.8]]. Una forma de resolver el problema es trabajar a lo largo del tablero, colocando una reina en cada columna. Una vez que hemos colocado k - 1 reinas, debemos colocar la k-ésima reina en una posición donde no ponga en jaque a ninguna de las reinas ya en el tablero. Podemos formular este enfoque recursivamente: Asumamos que ya hemos generado la secuencia de todas las formas posibles de colocar k - 1 reinas en las primeras k
+
+- 1 columnas del tablero. Para cada una de estas formas, generar un conjunto extendido de
+
+posiciones colocando una reina en cada fila de la k-ésima columna. Ahora filtrar estas, manteniendo solo las posiciones para las cuales la reina en la k-ésima columna está segura con respecto a las otras reinas. Esto produce la secuencia de todas las formas de colocar k reinas en las primeras k columnas. Al continuar este proceso, produciremos no solo una solución, sino todas las soluciones al problema.
+
+Implementamos esta solución como un procedimiento ~queens~, que devuelve una secuencia de todas las soluciones al problema de colocar n reinas en un tablero de ajedrez n*n. ~queens~ tiene un procedimiento interno ~queen-cols~ que devuelve la secuencia de todas las formas de colocar reinas en las primeras k columnas del tablero.
+
+#+begin_src scheme
+(define (queens board-size)
+  (define (queen-cols k)
+    (if (= k 0)
+        (list empty-board)
+        (filter
+         (lambda (positions) (safe? k positions))
+         (flatmap
+          (lambda (rest-of-queens)
+            (map (lambda (new-row)
+                   (adjoin-position new-row k rest-of-queens))
+                 (enumerate-interval 1 board-size)))
+          (queen-cols (- k 1))))))
+  (queen-cols board-size))
+#+end_src
+
+En este procedimiento ~rest-of-queens~ es una forma de colocar k - 1 reinas en las primeras k
+
+- 1 columnas, y ~new-row~ es una fila propuesta en la cual colocar la reina para la
+
+k-ésima columna. Completa el programa implementando la representación para conjuntos de posiciones del tablero, incluyendo el procedimiento ~adjoin-position~, que adjunta una nueva posición fila-columna a un conjunto de posiciones, y ~empty-board~, que representa un conjunto vacío de posiciones. También debes escribir el procedimiento ~safe?~, que determina para un conjunto de posiciones, si la reina en la k-ésima columna está segura con respecto a las demás. (Nota que solo necesitamos verificar si la nueva reina está segura--las otras reinas ya están garantizadas seguras con respecto a las demás.)
+
+**** Exercise 2.43
+:properties:
+:custom_id: exercise-2.43
+:end:
+
+Louis Reasoner está teniendo un tiempo terrible haciendo el [[#exercise-2.42][Ejercicio 2.42]]. Su procedimiento ~queens~ parece funcionar, pero se ejecuta extremadamente lento. (Louis nunca logra esperar lo suficiente para que resuelva ni siquiera el caso 6*6.) Cuando Louis le pide ayuda a Eva Lu Ator, ella señala que él ha intercambiado el orden de los mapeos anidados en el ~flatmap~, escribiéndolo como
+
+#+begin_src scheme
+(flatmap
+ (lambda (new-row)
+   (map (lambda (rest-of-queens)
+          (adjoin-position new-row k rest-of-queens))
+        (queen-cols (- k 1))))
+ (enumerate-interval 1 board-size))
+#+end_src
+
+Explica por qué este intercambio hace que el programa se ejecute lentamente. Estima cuánto tiempo tomará el programa de Louis para resolver el problema de las ocho reinas, asumiendo que el programa en el [[#exercise-2.42][Ejercicio 2.42]] resuelve el problema en tiempo T.
+
+*** 2.2.4 Ejemplo: Un lenguaje pictórico
+:properties:
+:custom_id: section-2.2.4
+:end:
+
+Esta sección presenta un lenguaje simple para dibujar imágenes que ilustra el poder de la abstracción de datos y la clausura, y también aprovecha los procedimientos de orden superior de una manera esencial. El lenguaje está diseñado para facilitar la experimentación con patrones como los de la [[figure-2.9][Figura 2.9]], que están compuestos de elementos repetidos que se desplazan y escalan.[fn:88] En este lenguaje, los objetos de datos que se combinan se representan como procedimientos en lugar de como estructura de listas. Así como ~cons~, que satisface la propiedad de clausura, nos permitió construir fácilmente estructuras de listas arbitrariamente complicadas, las operaciones en este lenguaje, que también satisfacen la propiedad de clausura, nos permiten construir fácilmente patrones arbitrariamente complicados.
+
+<<figure-2.9>> Diseños generados con el lenguaje pictórico.
+
+[two graphic images not included]
+
+*El lenguaje pictórico*
+
+Cuando comenzamos nuestro estudio de programación en la sección [[#section-1.1][1.1]], enfatizamos la importancia de describir un lenguaje centrándose en las primitivas del lenguaje, sus medios de combinación y sus medios de abstracción. Seguiremos ese marco aquí.
+
+Parte de la elegancia de este lenguaje pictórico es que solo hay un tipo de elemento, llamado <<i277>> pintor. Un pintor dibuja una imagen que se desplaza y escala para ajustarse dentro de un marco designado con forma de paralelogramo. Por ejemplo, hay un pintor primitivo al que llamaremos ~wave~ que hace un dibujo de líneas burdo, como se muestra en la [[figure-2.10][Figura 2.10]]. La forma real del dibujo depende del marco: las cuatro imágenes en la [[figure-2.10][Figura 2.10]] son producidas por el mismo pintor ~wave~, pero con respecto a cuatro marcos diferentes. Los pintores pueden ser más elaborados que esto: El pintor primitivo llamado ~rogers~ pinta una imagen del fundador del MIT, William Barton Rogers, como se muestra en la [[figure-2.11][Figura 2.11]].[fn:89] Las cuatro imágenes en la [[figure-2.11][Figura 2.11]] están dibujadas con respecto a los mismos cuatro marcos que las imágenes de ~wave~ en la [[figure-2.10][Figura 2.10]].
+
+Para combinar imágenes, utilizamos varias operaciones que construyen nuevos pintores a partir de pintores dados. Por ejemplo, la operación ~beside~ toma dos pintores y produce un nuevo pintor compuesto que dibuja la imagen del primer pintor en la mitad izquierda del marco y la imagen del segundo pintor en la mitad derecha del marco. De manera similar, ~below~ toma dos pintores y produce un pintor compuesto que dibuja la imagen del primer pintor debajo de la imagen del segundo pintor. Algunas operaciones transforman un solo pintor para producir un nuevo pintor. Por ejemplo, ~flip-vert~ toma un pintor y produce un pintor que dibuja su imagen al revés, y ~flip-horiz~ produce un pintor que dibuja la imagen del pintor original invertida de izquierda a derecha.
+
+<<figure-2.10>> Imágenes producidas por el pintor ~wave~, con respecto a cuatro marcos diferentes. Los marcos, mostrados con líneas punteadas, no son parte de las imágenes.
+
+[four graphic images not included]
+<<figure-2.11>> Imágenes de William Barton Rogers, fundador y primer presidente del MIT, pintadas con respecto a los mismos cuatro marcos que en la [[figure-2.10][Figura 2.10]] (imagen original reimpresa con el permiso del MIT Museum).
+
+[four graphic images not included]
+
+La [[figure-2.12][Figura 2.12]] muestra el dibujo de un pintor llamado ~wave4~ que se construye en dos etapas partiendo de ~wave~:
+
+#+begin_src scheme
+(define wave2 (beside wave (flip-vert wave)))
+(define wave4 (below wave2 wave2))
+#+end_src
+
+<<figure-2.12>> Creando una figura compleja, partiendo del pintor ~wave~ de la [[figure-2.10][Figura 2.10]].
+
+[two graphic images not included]
+
+#+begin_src scheme
+(define wave2
+  (define wave4
+    (beside wave (flip-vert wave)))
+  (below wave2 wave2))
+#+end_src
+
+Al construir una imagen compleja de esta manera estamos aprovechando el hecho de que los pintores están cerrados bajo los medios de combinación del lenguaje. El ~beside~ o ~below~ de dos pintores es en sí mismo un pintor; por lo tanto, podemos usarlo como un elemento para hacer pintores más complejos. Al igual que con la construcción de estructuras de listas usando ~cons~, la clausura de nuestros datos bajo los medios de combinación es crucial para la capacidad de crear estructuras complejas mientras usamos solo unas pocas operaciones.
+
+Una vez que podemos combinar pintores, nos gustaría poder abstraer patrones típicos de combinación de pintores. Implementaremos las operaciones de pintores como procedimientos de Scheme. Esto significa que no necesitamos un mecanismo especial de abstracción en el lenguaje pictórico: Como los medios de combinación son procedimientos ordinarios de Scheme, automáticamente tenemos la capacidad de hacer cualquier cosa con las operaciones de pintores que podamos hacer con procedimientos. Por ejemplo, podemos abstraer el patrón en ~wave4~ como
+
+#+begin_src scheme
+(define (flipped-pairs painter)
+  (let ((painter2 (beside painter (flip-vert painter))))
+    (below painter2 painter2)))
+#+end_src
+
+y definir ~wave4~ como una instancia de este patrón:
+
+#+begin_src scheme
+(define wave4 (flipped-pairs wave))
+#+end_src
+
+También podemos definir operaciones recursivas. Aquí hay una que hace que los pintores se dividan y ramifiquen hacia la derecha como se muestra en las figuras [[figure-2.13][Figura 2.13]] y [[figure-2.14][Figura 2.14]]:
+
+#+begin_src scheme
+(define (right-split painter n)
+  (if (= n 0)
+      painter
+      (let ((smaller (right-split painter (- n 1))))
+        (beside painter (below smaller smaller)))))
+#+end_src
+
+<<figure-2.13>> Planes recursivos para ~right-split~ y ~corner-split~.
+
+#+begin_example
+ +-------------+-------------+    +------+------+-------------+
+ |             |             |    | up-  | up-  |             |
+ |             | right-split |    | split| split| corner-split|
+ |             |             |    |      |      |             |
+ |             |     n-1     |    |  n-1 |  n-1 |     n-1     |
+ |             |             |    |      |      |             |
+ |  identity   +-------------+    +------+------+-------------+
+ |             |             |    |             | right-split |
+ |             | right-split |    |             |     n-1     |
+ |             |             |    |  identity   +-------------+
+ |             |     n-1     |    |             | right-split |
+ |             |             |    |             |     n-1     |
+ +-------------+-------------+    +-------------+-------------+
+
+        right-split n                    corner-split n
+#+end_example
+
+Podemos producir patrones equilibrados ramificándose hacia arriba así como hacia la derecha (ver [[#exercise-2.44][Ejercicio 2.44]] y las figuras [[figure-2.13][Figura 2.13]] y [[figure-2.14][Figura 2.14]]):
+
+#+begin_src scheme
+(define (corner-split painter n)
+  (if (= n 0)
+      painter
+      (let ((up (up-split painter (- n 1)))
+            (right (right-split painter (- n 1))))
+        (let ((top-left (beside up up))
+              (bottom-right (below right right))
+              (corner (corner-split painter (- n 1))))
+          (beside (below painter top-left)
+                  (below bottom-right corner))))))
+#+end_src
+
+<<figure-2.14>> Las operaciones recursivas ~right-split~ y ~corner-split~ aplicadas a los pintores ~wave~ y ~rogers~. Combinar cuatro figuras ~corner-split~ produce diseños simétricos ~square-limit~ como se muestra en la [[figure-2.9][Figura 2.9]].
+
+[two graphic images not included]
+
+#+begin_src scheme
+(right-split wave 4)         (right-split rogers 4)
+#+end_src
+
+[dos imágenes gráficas no incluidas]
+
+#+begin_src scheme
+(corner-split wave 4)        (corner-split rogers 4)
+#+end_src
+
+Al colocar cuatro copias de ~corner-split~ apropiadamente, obtenemos un patrón llamado ~square-limit~, cuya aplicación a ~wave~ y ~rogers~ se muestra en la [[figure-2.9][Figura 2.9]]:
+
+#+begin_src scheme
+(define (square-limit painter n)
+  (let ((quarter (corner-split painter n)))
+    (let ((half (beside (flip-horiz quarter) quarter)))
+      (below (flip-vert half) half))))
+#+end_src
+
+**** Ejercicio 2.44
+:properties:
+:custom_id: exercise-2.44
+:end:
+
+Define el procedimiento ~up-split~ usado por ~corner-split~. Es similar a ~right-split~, excepto que intercambia los roles de ~below~ y ~beside~.
+
+*Operaciones de orden superior*
+
+Además de abstraer patrones de combinación de pintores, podemos trabajar a un nivel superior, abstrayendo patrones de combinación de operaciones de pintor. Es decir, podemos ver las operaciones de pintor como elementos a manipular y podemos escribir medios de combinación para estos elementos--procedimientos que toman operaciones de pintor como argumentos y crean nuevas operaciones de pintor.
+
+Por ejemplo, ~flipped-pairs~ y ~square-limit~ organizan cada uno cuatro copias de la imagen de un pintor en un patrón cuadrado; difieren solo en cómo orientan las copias. Una forma de abstraer este patrón de combinación de pintores es con el siguiente procedimiento, que toma cuatro operaciones de pintor de un argumento y produce una operación de pintor que transforma un pintor dado con esas cuatro operaciones y organiza los resultados en un cuadrado. ~tl~, ~tr~, ~bl~ y ~br~ son las transformaciones a aplicar a la copia superior izquierda, la copia superior derecha, la copia inferior izquierda y la copia inferior derecha, respectivamente.
+
+#+begin_src scheme
+(define (square-of-four tl tr bl br)
+  (lambda (painter)
+    (let ((top (beside (tl painter) (tr painter)))
+          (bottom (beside (bl painter) (br painter))))
+      (below bottom top))))
+#+end_src
+
+Entonces ~flipped-pairs~ puede definirse en términos de ~square-of-four~ como sigue:[fn:90]
+
+#+begin_src scheme
+(define (flipped-pairs painter)
+  (let ((combine4 (square-of-four identity flip-vert
+                                  identity flip-vert)))
+    (combine4 painter)))
+#+end_src
+
+y ~square-limit~ puede expresarse como[fn:91]
+
+#+begin_src scheme
+(define (square-limit painter n)
+  (let ((combine4 (square-of-four flip-horiz identity
+                                  rotate180 flip-vert)))
+    (combine4 (corner-split painter n))))
+#+end_src
+
+**** Ejercicio 2.45
+:properties:
+:custom_id: exercise-2.45
+:end:
+
+~right-split~ y ~up-split~ pueden expresarse como instancias de una operación de división general. Define un procedimiento ~split~ con la propiedad de que al evaluar
+
+#+begin_src scheme
+(define right-split (split beside below))
+(define up-split (split below beside))
+#+end_src
+
+produzca procedimientos ~right-split~ y ~up-split~ con los mismos comportamientos que los ya definidos.
+
+*Marcos*
+
+Antes de que podamos mostrar cómo implementar pintores y sus medios de combinación, primero debemos considerar los marcos. Un marco puede describirse mediante tres vectores--un vector de origen y dos vectores de arista. El vector de origen especifica el desplazamiento del origen del marco desde algún origen absoluto en el plano, y los vectores de arista especifican los desplazamientos de las esquinas del marco desde su origen. Si las aristas son perpendiculares, el marco será rectangular. De lo contrario, el marco será un paralelogramo más general.
+
+La [[figure-2.15][Figura 2.15]] muestra un marco y sus vectores asociados. De acuerdo con la abstracción de datos, aún no necesitamos ser específicos sobre cómo se representan los marcos, salvo decir que hay un constructor ~make-frame~, que toma tres vectores y produce un marco, y tres selectores correspondientes ~origin-frame~, ~edge1-frame~ y ~edge2-frame~ (ver [[#exercise-2.47][Ejercicio 2.47]]).
+
+<<figure-2.15>> Un marco se describe mediante tres vectores - un origen y dos aristas.
+
+#+begin_example
+                          __
+                      __--  \
+                  __--       \
+       __     __--            \   __
+      |\  __--                 \__-|
+        \-                  __--
+ vector  \              __--
+ arista2  \         __--    vector
+ marco     \    __--        arista1
+            \_--            marco
+             -   <--+
+           vector  |
+           origen  +-- punto (0,0)
+           marco       en pantalla de visualización
+#+end_example
+
+Usaremos coordenadas en el cuadrado unitario (0<= x,y<= 1) para especificar imágenes. Con cada marco, asociamos un <<i145>> mapa de coordenadas de marco, que se utilizará para desplazar y escalar imágenes para ajustarlas al marco. El mapa transforma el cuadrado unitario en el marco mapeando el vector v = (x,y) a la suma vectorial
+
+#+begin_example
+  Origen(Marco) + r * Arista_1(Marco) + y * Arista_2(Marco)
+#+end_example
+
+Por ejemplo, (0,0) se mapea al origen del marco, (1,1) al vértice diagonalmente opuesto al origen, y (0.5,0.5) al centro del marco. Podemos crear el mapa de coordenadas de un marco con el siguiente procedimiento:[fn:92]
+
+#+begin_src scheme
+(define (frame-coord-map frame)
+  (lambda (v)
+    (add-vect
+     (origin-frame frame)
+     (add-vect (scale-vect (xcor-vect v)
+                           (edge1-frame frame))
+               (scale-vect (ycor-vect v)
+                           (edge2-frame frame))))))
+#+end_src
+
+Observa que aplicar ~frame-coord-map~ a un marco devuelve un procedimiento que, dado un vector, devuelve un vector. Si el vector argumento está en el cuadrado unitario, el vector resultante estará en el marco. Por ejemplo,
+
+#+begin_src scheme
+((frame-coord-map a-frame) (make-vect 0 0))
+#+end_src
+
+devuelve el mismo vector que
+
+#+begin_src scheme
+(origin-frame a-frame)
+#+end_src
+
+**** Ejercicio 2.46
+:properties:
+:custom_id: exercise-2.46
+:end:
+
+Un vector bidimensional v que va desde el origen hasta un punto puede representarse como un par que consiste en una coordenada x y una coordenada y. Implementa una abstracción de datos para vectores proporcionando un constructor ~make-vect~ y los selectores correspondientes ~xcor-vect~ y ~ycor-vect~. En términos de tus selectores y constructor, implementa procedimientos ~add-vect~, ~sub-vect~ y ~scale-vect~ que realicen las operaciones de suma de vectores, resta de vectores y multiplicación de un vector por un escalar:
+
+#+begin_example
+ (x_1, y_1) + (x_2, y_2) = (x_1 + x_2, y_1 + y_2)
+ (x_1, y_1) - (x_2, y_2) = (x_1 - x_2, y_1 - y_2)
+              s * (x, y) = (sx, sy)
+#+end_example
+
+**** Ejercicio 2.47
+:properties:
+:custom_id: exercise-2.47
+:end:
+
+Aquí hay dos posibles constructores para marcos:
+
+#+begin_src scheme
+(define (make-frame origin edge1 edge2)
+  (list origin edge1 edge2))
+
+(define (make-frame origin edge1 edge2)
+  (cons origin (cons edge1 edge2)))
+#+end_src
+
+Para cada constructor, proporciona los selectores apropiados para producir una implementación para marcos.
+
+*Pintores*
+
+Un pintor se representa como un procedimiento que, dado un marco como argumento, dibuja una imagen particular desplazada y escalada para ajustarse al marco. Es decir, si ~p~ es un pintor y ~f~ es un marco, entonces producimos la imagen de ~p~ en ~f~ llamando a ~p~ con ~f~ como argumento.
+
+Los detalles de cómo se implementan los pintores primitivos dependen de las características particulares del sistema gráfico y del tipo de imagen a dibujar. Por ejemplo, supongamos que tenemos un procedimiento ~draw-line~ que dibuja una línea en la pantalla entre dos puntos especificados. Entonces podemos crear pintores para dibujos de líneas, como el pintor ~wave~ en [[figure-2.10][Figura 2.10]], a partir de listas de segmentos de línea de la siguiente manera:[fn:93]
+
+#+begin_src scheme
+(define (segments->painter segment-list)
+  (lambda (frame)
+    (for-each
+     (lambda (segment)
+       (draw-line
+        ((frame-coord-map frame) (start-segment segment))
+        ((frame-coord-map frame) (end-segment segment))))
+     segment-list)))
+#+end_src
+
+Los segmentos se dan utilizando coordenadas con respecto al cuadrado unitario. Para cada segmento en la lista, el pintor transforma los puntos extremos del segmento con el mapa de coordenadas del marco y dibuja una línea entre los puntos transformados.
+
+Representar los pintores como procedimientos erige una poderosa barrera de abstracción en el lenguaje de imágenes. Podemos crear y mezclar todo tipo de pintores primitivos, basados en una variedad de capacidades gráficas. Los detalles de su implementación no importan. Cualquier procedimiento puede servir como pintor, siempre que tome un marco como argumento y dibuje algo escalado para ajustarse al marco.[fn:94]
+
+**** Ejercicio 2.48
+:properties:
+:custom_id: exercise-2.48
+:end:
+
+Un segmento de línea dirigido en el plano puede representarse como un par de vectores: el vector que va desde el origen hasta el punto de inicio del segmento, y el vector que va desde el origen hasta el punto final del segmento. Utiliza tu representación de vectores del [[#exercise-2.46][Ejercicio 2.46]] para definir una representación para segmentos con un constructor ~make-segment~ y selectores ~start-segment~ y ~end-segment~.
+
+**** Ejercicio 2.49
+:properties:
+:custom_id: exercise-2.49
+:end:
+
+Utiliza ~segments->painter~ para definir los siguientes pintores primitivos:
+
+a. El pintor que dibuja el contorno del marco designado.
+
+b. El pintor que dibuja una "X" conectando las esquinas opuestas del marco.
+
+c. El pintor que dibuja una forma de diamante conectando los puntos medios de los lados del marco.
+
+d. El pintor ~wave~.
+
+*Transformando y combinando pintores*
+
+Una operación sobre pintores (como ~flip-vert~ o ~beside~) funciona creando un pintor que invoca los pintores originales con respecto a marcos derivados del marco argumento. Por lo tanto, por ejemplo, ~flip-vert~ no tiene que saber cómo funciona un pintor para invertirlo, solo tiene que saber cómo voltear un marco al revés: El pintor invertido simplemente usa el pintor original, pero en el marco invertido.
+
+Las operaciones de pintor se basan en el procedimiento ~transform-painter~, que toma como argumentos un pintor e información sobre cómo transformar un marco y produce un nuevo pintor. El pintor transformado, cuando se llama sobre un marco, transforma el marco y llama al pintor original sobre el marco transformado. Los argumentos de ~transform-painter~ son puntos (representados como vectores) que especifican las esquinas del nuevo marco: Cuando se mapean en el marco, el primer punto especifica el origen del nuevo marco y los otros dos especifican los extremos de sus vectores de borde. Por lo tanto, los argumentos dentro del cuadrado unitario especifican un marco contenido dentro del marco original.
+
+#+begin_src scheme
+(define (transform-painter painter origin corner1 corner2)
+  (lambda (frame)
+    (let ((m (frame-coord-map frame)))
+      (let ((new-origin (m origin)))
+        (painter
+         (make-frame new-origin
+                     (sub-vect (m corner1) new-origin)
+                     (sub-vect (m corner2) new-origin)))))))
+#+end_src
+
+Aquí se muestra cómo voltear imágenes de pintor verticalmente:
+
+#+begin_src scheme
+(define (flip-vert painter)
+  (transform-painter painter
+                     (make-vect 0.0 1.0)   ; nuevo ~origin~
+                     (make-vect 1.0 1.0)   ; nuevo final de ~edge1~
+                     (make-vect 0.0 0.0))) ; nuevo final de ~edge2~
+#+end_src
+
+Usando ~transform-painter~, podemos definir fácilmente nuevas transformaciones. Por ejemplo, podemos definir un pintor que reduzca su imagen al cuarto superior derecho del marco que se le da:
+
+#+begin_src scheme
+(define (shrink-to-upper-right painter)
+  (transform-painter painter
+                     (make-vect 0.5 0.5)
+                     (make-vect 1.0 0.5)
+                     (make-vect 0.5 1.0)))
+#+end_src
+
+Otras transformaciones rotan imágenes en sentido antihorario 90 grados[fn:95]
+
+#+begin_src scheme
+(define (rotate90 painter)
+  (transform-painter painter
+                     (make-vect 1.0 0.0)
+                     (make-vect 1.0 1.0)
+                     (make-vect 0.0 0.0)))
+#+end_src
+
+o comprimen imágenes hacia el centro del marco:[fn:96]
+
+#+begin_src scheme
+(define (squash-inwards painter)
+  (transform-painter painter
+                     (make-vect 0.0 0.0)
+                     (make-vect 0.65 0.35)
+                     (make-vect 0.35 0.65)))
+#+end_src
+
+La transformación de marcos es también la clave para definir medios de combinar dos o más pintores. El procedimiento ~beside~, por ejemplo, toma dos pintores, los transforma para pintar en las mitades izquierda y derecha de un marco argumento respectivamente, y produce un nuevo pintor compuesto. Cuando se le da un marco al pintor compuesto, este llama al primer pintor transformado para pintar en la mitad izquierda del marco y llama al segundo pintor transformado para pintar en la mitad derecha del marco:
+
+#+begin_src scheme
+(define (beside painter1 painter2)
+  (let ((split-point (make-vect 0.5 0.0)))
+    (let ((paint-left
+           (transform-painter painter1
+                              (make-vect 0.0 0.0)
+                              split-point
+                              (make-vect 0.0 1.0)))
+          (paint-right
+           (transform-painter painter2
+                              split-point
+                              (make-vect 1.0 0.0)
+                              (make-vect 0.5 1.0))))
+      (lambda (frame)
+        (paint-left frame)
+        (paint-right frame)))))
+#+end_src
+
+Observa cómo la abstracción de datos de pintores, y en particular la representación de pintores como procedimientos, hace que ~beside~ sea fácil de implementar. El procedimiento ~beside~ no necesita saber nada sobre los detalles de los pintores componentes aparte de que cada pintor dibujará algo en su marco designado.
+
+**** Ejercicio 2.50
+:properties:
+:custom_id: exercise-2.50
+:end:
+
+Define la transformación ~flip-horiz~, que voltea pintores horizontalmente, y transformaciones que rotan pintores en sentido antihorario 180 grados y 270 grados.
+
+**** Ejercicio 2.51
+:properties:
+:custom_id: exercise-2.51
+:end:
+
+Define la operación ~below~ para pintores. ~below~ toma dos pintores como argumentos. El pintor resultante, dado un marco, dibuja con el primer pintor en la parte inferior del marco y con el segundo pintor en la parte superior. Define ~below~ de dos maneras diferentes: primero escribiendo un procedimiento que sea análogo al procedimiento ~beside~ dado anteriormente, y nuevamente en términos de ~beside~ y operaciones de rotación adecuadas (del [[#exercise-2.50][Ejercicio 2.50]]).
+
+*Niveles de lenguaje para diseño robusto*
+
+El lenguaje de imágenes ejercita algunas de las ideas críticas que hemos introducido sobre abstracción con procedimientos y datos. Las abstracciones de datos fundamentales, los pintores, se implementan usando representaciones procedurales, lo que permite al lenguaje manejar diferentes capacidades básicas de dibujo de manera uniforme. Los medios de combinación satisfacen la propiedad de clausura, lo que nos permite construir fácilmente diseños complejos. Finalmente, todas las herramientas para abstraer procedimientos están disponibles para nosotros para abstraer medios de combinación para pintores.
+
+También hemos obtenido un vistazo de otra idea crucial sobre lenguajes y diseño de programas. Este es el enfoque de <<i367>> diseño estratificado, la noción de que un sistema complejo debe estructurarse como una secuencia de niveles que se describen usando una secuencia de lenguajes. Cada nivel se construye combinando partes que se consideran primitivas en ese nivel, y las partes construidas en cada nivel se usan como primitivas en el siguiente nivel. El lenguaje usado en cada nivel de un diseño estratificado tiene primitivas, medios de combinación y medios de abstracción apropiados para ese nivel de detalle.
+
+El diseño estratificado impregna la ingeniería de sistemas complejos. Por ejemplo, en ingeniería informática, las resistencias y transistores se combinan (y se describen usando un lenguaje de circuitos analógicos) para producir partes como compuertas and y compuertas or, que forman las primitivas de un lenguaje para diseño de circuitos digitales.[fn:97] Estas partes se combinan para construir procesadores, estructuras de bus y sistemas de memoria, que a su vez se combinan para formar computadoras, usando lenguajes apropiados para arquitectura de computadoras. Las computadoras se combinan para formar sistemas distribuidos, usando lenguajes apropiados para describir interconexiones de red, y así sucesivamente.
+
+Como un pequeño ejemplo de estratificación, nuestro lenguaje de imágenes usa elementos primitivos (pintores primitivos) que se crean usando un lenguaje que especifica puntos y líneas para proporcionar las listas de segmentos de línea para ~segments->painter~, o los detalles de sombreado para un pintor como ~rogers~. La mayor parte de nuestra descripción del lenguaje de imágenes se centró en combinar estas primitivas, usando combinadores geométricos como ~beside~ y ~below~. También trabajamos en un nivel superior, considerando ~beside~ y ~below~ como primitivas a manipular en un lenguaje cuyas operaciones, como ~square-of-four~, capturan patrones comunes de combinación de combinadores geométricos.
+
+El diseño estratificado ayuda a hacer que los programas sean <<i337>> robustos, es decir, hace probable que pequeños cambios en una especificación requieran cambios correspondientemente pequeños en el programa. Por ejemplo, supongamos que queríamos cambiar la imagen basada en ~wave~ mostrada en la [[figure-2.9][Figura 2.9]]. Podríamos trabajar en el nivel más bajo para cambiar la apariencia detallada del elemento ~wave~; podríamos trabajar en el nivel medio para cambiar la forma en que ~corner-split~ replica la ~wave~; podríamos trabajar en el nivel más alto para cambiar cómo ~square-limit~ organiza las cuatro copias de la esquina. En general, cada nivel de un diseño estratificado proporciona un vocabulario diferente para expresar las características del sistema, y un tipo diferente de capacidad para cambiarlo.
+
+**** Ejercicio 2.52
+:properties:
+:custom_id: exercise-2.52
+:end:
+
+Haz cambios al límite cuadrado de ~wave~ mostrado en la [[figure-2.9][Figura 2.9]] trabajando en cada uno de los niveles descritos anteriormente. En particular:
+
+a. Añade algunos segmentos al pintor primitivo ~wave~ del [[#exercise-2.49][Ejercicio 2.49]] (para añadir una sonrisa, por ejemplo).
+
+b. Cambia el patrón construido por ~corner-split~ (por ejemplo, usando solo una copia de las imágenes ~up-split~ y ~right-split~ en lugar de dos).
+
+c. Modifica la versión de ~square-limit~ que usa ~square-of-four~ para ensamblar las esquinas en un patrón diferente. (Por ejemplo, podrías hacer que el gran Mr. Rogers mire hacia afuera desde cada esquina del cuadrado.)
+
