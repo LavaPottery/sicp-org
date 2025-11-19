@@ -1,0 +1,1393 @@
+* 4 Abstracción Metalingüística
+:properties:
+:custom_id: section-4
+:end:
+** Introducción
+:properties:
+:VISIBILITY: notoc
+:end:
+
+#+begin_quote
+... Está en las palabras donde reside la magia--Abracadabra, Ábrete Sésamo, y demás--pero las palabras mágicas en una historia no son mágicas en la siguiente. La verdadera magia es comprender qué palabras funcionan, y cuándo, y para qué; el truco es aprender el truco.
+
+... Y esas palabras están hechas de las letras de nuestro alfabeto: un par de docenas de garabatos que podemos dibujar con el bolígrafo. ¡Esta es la clave! Y el tesoro, también, si tan solo pudiéramos ponerle las manos encima. Es como si--como si la clave del tesoro /fuera/ el tesoro!
+
+--John Barth, 'Chimera'
+#+end_quote
+
+En nuestro estudio del diseño de programas, hemos visto que los programadores expertos controlan la complejidad de sus diseños con las mismas técnicas generales utilizadas por los diseñadores de todos los sistemas complejos. Combinan elementos primitivos para formar objetos compuestos, abstraen objetos compuestos para formar bloques de construcción de nivel superior, y preservan la modularidad adoptando vistas apropiadas a gran escala de la estructura del sistema. Al ilustrar estas técnicas, hemos utilizado Lisp como un lenguaje para describir procesos y para construir objetos y procesos de datos computacionales que modelan fenómenos complejos en el mundo real. Sin embargo, a medida que enfrentamos problemas cada vez más complejos, descubriremos que Lisp, o de hecho cualquier lenguaje de programación fijo, no es suficiente para nuestras necesidades. Debemos recurrir constantemente a nuevos lenguajes para expresar nuestras ideas de manera más efectiva. Establecer nuevos lenguajes es una estrategia poderosa para controlar la complejidad en el diseño de ingeniería; a menudo podemos mejorar nuestra capacidad para enfrentar un problema complejo adoptando un nuevo lenguaje que nos permita describir (y por lo tanto pensar sobre) el problema de una manera diferente, utilizando primitivas, medios de combinación y medios de abstracción que son particularmente adecuados para el problema en cuestión.[fn:205]
+
+La programación está dotada de una multitud de lenguajes. Existen lenguajes físicos, como los lenguajes de máquina para computadoras particulares. Estos lenguajes se ocupan de la representación de datos y control en términos de bits individuales de almacenamiento e instrucciones de máquina primitivas. El programador de lenguaje de máquina se ocupa de utilizar el hardware dado para construir sistemas y utilidades para la implementación eficiente de computaciones con recursos limitados. Los lenguajes de alto nivel, construidos sobre un sustrato de lenguaje de máquina, ocultan las preocupaciones sobre la representación de datos como colecciones de bits y la representación de programas como secuencias de instrucciones primitivas. Estos lenguajes tienen medios de combinación y abstracción, como la definición de procedimientos, que son apropiados para la organización a mayor escala de sistemas.
+
+<<i237>> La abstracción metalingüística--establecer nuevos lenguajes--juega un papel importante en todas las ramas del diseño de ingeniería. Es particularmente importante para la programación de computadoras, porque en programación no solo podemos formular nuevos lenguajes sino que también podemos implementar estos lenguajes construyendo evaluadores. Un <<i129>> evaluador (o <<i195>> intérprete) para un lenguaje de programación es un procedimiento que, cuando se aplica a una expresión del lenguaje, realiza las acciones requeridas para evaluar esa expresión.
+
+No es exageración considerar esto como la idea más fundamental en programación:
+
+#+begin_quote
+El evaluador, que determina el significado de las expresiones en un lenguaje de programación, es simplemente otro programa.
+#+end_quote
+
+Apreciar este punto es cambiar nuestras imágenes de nosotros mismos como programadores. Llegamos a vernos como diseñadores de lenguajes, en lugar de solo usuarios de lenguajes diseñados por otros.
+
+De hecho, podemos considerar casi cualquier programa como el evaluador de algún lenguaje. Por ejemplo, el sistema de manipulación de polinomios de la sección [[#section-2.5.3][2.5.3]] incorpora las reglas de la aritmética de polinomios y las implementa en términos de operaciones sobre datos estructurados en listas. Si aumentamos este sistema con procedimientos para leer e imprimir expresiones polinomiales, tenemos el núcleo de un lenguaje de propósito especial para tratar con problemas en matemáticas simbólicas. El simulador de lógica digital de la sección [[#section-3.3.4][3.3.4]] y el propagador de restricciones de la sección [[#section-3.3.5][3.3.5]] son lenguajes legítimos por derecho propio, cada uno con sus propias primitivas, medios de combinación y medios de abstracción. Visto desde esta perspectiva, la tecnología para enfrentar sistemas informáticos a gran escala se fusiona con la tecnología para construir nuevos lenguajes informáticos, y la ciencia de la computación misma se convierte en nada más (y nada menos) que la disciplina de construir lenguajes descriptivos apropiados.
+
+Ahora nos embarcamos en un recorrido de la tecnología por la cual los lenguajes se establecen en términos de otros lenguajes. En este capítulo usaremos Lisp como base, implementando evaluadores como procedimientos de Lisp. Lisp es particularmente adecuado para esta tarea, debido a su capacidad para representar y manipular expresiones simbólicas. Daremos el primer paso para comprender cómo se implementan los lenguajes construyendo un evaluador para Lisp mismo. El lenguaje implementado por nuestro evaluador será un subconjunto del dialecto Scheme de Lisp que usamos en este libro. Aunque el evaluador descrito en este capítulo está escrito para un dialecto particular de Lisp, contiene la estructura esencial de un evaluador para cualquier lenguaje orientado a expresiones diseñado para escribir programas para una máquina secuencial. (De hecho, la mayoría de los procesadores de lenguaje contienen, en su interior, un pequeño evaluador de "Lisp".) El evaluador ha sido simplificado para propósitos de ilustración y discusión, y algunas características han sido omitidas que serían importantes de incluir en un sistema Lisp de calidad de producción. Sin embargo, este evaluador simple es adecuado para ejecutar la mayoría de los programas en este libro.[fn:206]
+
+Una ventaja importante de hacer que el evaluador sea accesible como un programa de Lisp es que podemos implementar reglas de evaluación alternativas describiendo estas como modificaciones al programa evaluador. Un lugar donde podemos usar este poder con buen efecto es para ganar control extra sobre las formas en que los modelos computacionales incorporan la noción de tiempo, que fue tan central en la discusión en el [[#section-3][Capítulo 3]]. Allí, mitigamos algunas de las complejidades del estado y la asignación usando flujos para desacoplar la representación del tiempo en el mundo del tiempo en la computadora. Nuestros programas de flujos, sin embargo, eran a veces engorrosos, porque estaban restringidos por la evaluación de orden aplicativo de Scheme. En la sección [[#section-4.2][4.2]], cambiaremos el lenguaje subyacente para proporcionar un enfoque más elegante, modificando el evaluador para proporcionar una <<i264>> evaluación de orden normal.
+
+La sección [[#section-4.3][4.3]] implementa un cambio lingüístico más ambicioso, mediante el cual las expresiones tienen muchos valores, en lugar de solo un único valor. En este lenguaje de <<i260>> computación no determinista, es natural expresar procesos que generan todos los valores posibles para expresiones y luego buscar aquellos valores que satisfagan ciertas restricciones. En términos de modelos de computación y tiempo, esto es como tener el tiempo ramificándose en un conjunto de "futuros posibles" y luego buscar las líneas de tiempo apropiadas. Con nuestro evaluador no determinista, el seguimiento de múltiples valores y la realización de búsquedas son manejados automáticamente por el mecanismo subyacente del lenguaje.
+
+En la sección [[#section-4.4][4.4]] implementamos un <<i219>> lenguaje de programación lógica en el cual el conocimiento se expresa en términos de relaciones, en lugar de en términos de computaciones con entradas y salidas. Aunque esto hace que el lenguaje sea drásticamente diferente de Lisp, o de hecho de cualquier lenguaje convencional, veremos que el evaluador de programación lógica comparte la estructura esencial del evaluador de Lisp.
+
+** 4.1 El Evaluador Metacircular
+:properties:
+:custom_id: section-4.1
+:end:
+
+Nuestro evaluador para Lisp se implementará como un programa de Lisp. Puede parecer circular pensar en evaluar programas de Lisp usando un evaluador que está implementado en Lisp. Sin embargo, la evaluación es un proceso, por lo que es apropiado describir el proceso de evaluación usando Lisp, que, después de todo, es nuestra herramienta para describir procesos.[fn:207] Un evaluador que está escrito en el mismo lenguaje que evalúa se dice que es <<i236>> metacircular.
+
+El evaluador metacircular es esencialmente una formulación de Scheme del modelo de entornos de evaluación descrito en la sección [[#section-3.2][3.2]]. Recordemos que el modelo tiene dos partes básicas:
+
+1. Para evaluar una combinación (una expresión compuesta que no sea una forma especial), evaluar las subexpresiones y luego aplicar el valor de la subexpresión del operador a los valores de las subexpresiones de los operandos.
+
+2. Para aplicar un procedimiento compuesto a un conjunto de argumentos, evaluar el cuerpo del procedimiento en un nuevo entorno. Para construir este entorno, extender la parte del entorno del objeto procedimiento con un marco en el cual los parámetros formales del procedimiento están vinculados a los argumentos a los cuales se aplica el procedimiento.
+
+Estas dos reglas describen la esencia del proceso de evaluación, un ciclo básico en el cual las expresiones a evaluar en entornos se reducen a procedimientos a aplicar a argumentos, que a su vez se reducen a nuevas expresiones a evaluar en nuevos entornos, y así sucesivamente, hasta que llegamos a símbolos, cuyos valores se buscan en el entorno, y a procedimientos primitivos, que se aplican directamente (ver [[figure-4.1][Figura 4.1]]).[fn:208] Este ciclo de evaluación será incorporado por la interacción entre los dos procedimientos críticos en el evaluador, ~eval~ y ~apply~, que se describen en la sección [[#section-4.1.1][4.1.1]] (ver [[figure-4.1][Figura 4.1]]).
+
+La implementación del evaluador dependerá de procedimientos que definen la <<i383>> sintaxis de las expresiones a evaluar. Usaremos abstracción de datos para hacer que el evaluador sea independiente de la representación del lenguaje. Por ejemplo, en lugar de comprometernos con una elección de que una asignación debe representarse mediante una lista que comienza con el símbolo ~set!~ usamos un predicado abstracto ~assignment?~ para probar una asignación, y usamos selectores abstractos ~assignment-variable~ y ~assignment-value~ para acceder a las partes de una asignación. La implementación de expresiones se describirá en detalle en la sección [[#section-4.1.2][4.1.2]]. También hay operaciones, descritas en la sección [[#section-4.1.3][4.1.3]], que especifican la representación de procedimientos y entornos. Por ejemplo, ~make-procedure~ construye procedimientos compuestos, ~lookup-variable-value~ accede a los valores de variables, y ~apply-primitive-procedure~ aplica un procedimiento primitivo a una lista dada de argumentos.
+
+*** 4.1.1 El Núcleo del Evaluador
+:properties:
+:custom_id: section-4.1.1
+:end:
+
+<<figure-4.1>> El ciclo ~eval~-~apply~ expone la esencia de un lenguaje de computadora.
+
+#+begin_example
+                            .,ad88888888baa,
+                   _    ,d8P"""        ""9888ba.      _
+                  /  .a8"          ,ad88888888888a   |\
+                /   aP'          ,88888888888888888a   \
+               /  ,8"           ,88888888888888888888,  \
+              |  ,8'            (888888888888888888888, |
+             /  ,8'             '8888888888888888888888  \
+             |  8)               '888888888888888888888, |
+Procedimiento,  |  8                  "88888 Apply 8888888) | Expresión
+Argumentos   |  8     Eval          '888888888888888888) | Entorno
+             |  8)                    "8888888888888888  |
+             \  (b                     "88888888888888'  /
+              | '8,                     8888888888888)  |
+              \  "8a                   ,888888888888)  /
+               \   V8,                 d88888888888"  /
+               _\| '8b,             ,d8888888888P' _/
+                      'V8a,       ,ad8888888888P'
+                         ""88888888888888888P"
+                              """"""""""""
+
+                                [gráfico de Normand Veillux, modificado]
+#+end_example
+
+El proceso de evaluación puede describirse como la interacción entre dos procedimientos: ~eval~ y ~apply~.
+
+*Eval*
+
+~eval~ toma como argumentos una expresión y un entorno. Clasifica la expresión y dirige su evaluación. ~eval~ está estructurado como un análisis de casos del tipo sintáctico de la expresión a evaluar. Para mantener el procedimiento general, expresamos la determinación del tipo de una expresión de manera abstracta, sin comprometernos con ninguna representación particular para los diversos tipos de expresiones. Cada tipo de expresión tiene un predicado que la prueba y un medio abstracto para seleccionar sus partes. Esta <<i2>> sintaxis abstracta hace fácil ver cómo podemos cambiar la sintaxis del lenguaje usando el mismo evaluador, pero con una colección diferente de procedimientos de sintaxis.
+
+Expresiones primitivas
+
+- Para expresiones auto-evaluables, como números, ~eval~ devuelve la expresión misma.
+
+- ~Eval~ debe buscar variables en el entorno para encontrar sus valores.
+
+Formas especiales
+
+- Para expresiones entre comillas, ~eval~ devuelve la expresión que fue citada.
+
+- Una asignación a (o una definición de) una variable debe llamar recursivamente a ~eval~ para computar el nuevo valor a asociar con la variable. El entorno debe ser modificado para cambiar (o crear) la vinculación de la variable.
+
+- Una expresión ~if~ requiere procesamiento especial de sus partes, de manera de evaluar el consecuente si el predicado es verdadero, y de lo contrario evaluar la alternativa.
+
+- Una expresión ~lambda~ debe ser transformada en un procedimiento aplicable empaquetando juntos los parámetros y el cuerpo especificados por la expresión ~lambda~ con el entorno de la evaluación.
+
+- Una expresión ~begin~ requiere evaluar su secuencia de expresiones en el orden en que aparecen.
+
+- Un análisis de casos (~cond~) se transforma en un anidamiento de expresiones ~if~ y luego se evalúa.
+
+Combinaciones
+
+- Para una aplicación de procedimiento, ~eval~ debe evaluar recursivamente la parte del operador y los operandos de la combinación. El procedimiento y los argumentos resultantes se pasan a ~apply~, que maneja la aplicación real del procedimiento.
+
+Aquí está la definición de ~eval~:
+
+#+begin_src scheme
+(define (eval exp env)
+  (cond ((self-evaluating? exp) exp)
+        ((variable? exp) (lookup-variable-value exp env))
+        ((quoted? exp) (text-of-quotation exp))
+        ((assignment? exp) (eval-assignment exp env))
+        ((definition? exp) (eval-definition exp env))
+        ((if? exp) (eval-if exp env))
+        ((lambda? exp)
+         (make-procedure (lambda-parameters exp)
+                         (lambda-body exp)
+                         env))
+        ((begin? exp)
+         (eval-sequence (begin-actions exp) env))
+        ((cond? exp) (eval (cond->if exp) env))
+        ((application? exp)
+         (apply (eval (operator exp) env)
+                (list-of-values (operands exp) env)))
+        (else
+         (error "Unknown expression type - EVAL" exp))))
+#+end_src
+
+Para mayor claridad, ~eval~ ha sido implementado como un análisis de casos usando ~cond~. La desventaja de esto es que nuestro procedimiento maneja solo unos pocos tipos distinguibles de expresiones, y no se pueden definir nuevos sin editar la definición de ~eval~. En la mayoría de las implementaciones de Lisp, el despacho sobre el tipo de una expresión se hace en un estilo dirigido por datos. Esto permite a un usuario agregar nuevos tipos de expresiones que ~eval~ puede distinguir, sin modificar la definición de ~eval~ misma. (Ver [[#exercise-4.3][Ejercicio 4.3]].)
+
+*Apply*
+
+~apply~ toma dos argumentos, un procedimiento y una lista de argumentos a los cuales debe aplicarse el procedimiento. ~apply~ clasifica los procedimientos en dos tipos: Llama a ~apply-primitive-procedure~ para aplicar primitivas; aplica procedimientos compuestos evaluando secuencialmente las expresiones que conforman el cuerpo del procedimiento. El entorno para la evaluación del cuerpo de un procedimiento compuesto se construye extendiendo el entorno base llevado por el procedimiento para incluir un marco que vincula los parámetros del procedimiento a los argumentos a los cuales se va a aplicar el procedimiento. Aquí está la definición de ~apply~:
+
+#+begin_src scheme
+(define (apply procedure arguments)
+  (cond ((primitive-procedure? procedure)
+         (apply-primitive-procedure procedure arguments))
+        ((compound-procedure? procedure)
+         (eval-sequence
+          (procedure-body procedure)
+          (extend-environment
+           (procedure-parameters procedure)
+           arguments
+           (procedure-environment procedure))))
+        (else
+         (error
+          "Unknown procedure type - APPLY" procedure))))
+#+end_src
+
+*Argumentos de procedimientos*
+
+Cuando ~eval~ procesa una aplicación de procedimiento, usa ~list-of-values~ para producir la lista de argumentos a los cuales se va a aplicar el procedimiento. ~list-of-values~ toma como argumento los operandos de la combinación. Evalúa cada operando y devuelve una lista de los valores correspondientes:[fn:209]
+
+#+begin_src scheme
+(define (list-of-values exps env)
+  (if (no-operands? exps)
+      '()
+      (cons (eval (first-operand exps) env)
+            (list-of-values (rest-operands exps) env))))
+#+end_src
+
+*Condicionales*
+
+~eval-if~ evalúa la parte del predicado de una expresión ~if~ en el entorno dado. Si el resultado es verdadero, ~eval-if~ evalúa el consecuente, de lo contrario evalúa la alternativa:
+
+#+begin_src scheme
+(define (eval-if exp env)
+  (if (true? (eval (if-predicate exp) env))
+      (eval (if-consequent exp) env)
+      (eval (if-alternative exp) env)))
+#+end_src
+
+El uso de ~true?~ en ~eval-if~ resalta el problema de la conexión entre un lenguaje implementado y un lenguaje de implementación. El ~if-predicate~ se evalúa en el lenguaje que se está implementando y por lo tanto produce un valor en ese lenguaje. El predicado del intérprete ~true?~ traduce ese valor en un valor que puede ser probado por el ~if~ en el lenguaje de implementación: La representación metacircular de la verdad podría no ser la misma que la de Scheme subyacente.[fn:210]
+
+*Secuencias*
+
+~eval-sequence~ es usado por ~apply~ para evaluar la secuencia de expresiones en un cuerpo de procedimiento y por ~eval~ para evaluar la secuencia de expresiones en una expresión ~begin~. Toma como argumentos una secuencia de expresiones y un entorno, y evalúa las expresiones en el orden en que ocurren. El valor devuelto es el valor de la expresión final.
+
+#+begin_src scheme
+(define (eval-sequence exps env)
+  (cond ((last-exp? exps) (eval (first-exp exps) env))
+        (else (eval (first-exp exps) env)
+              (eval-sequence (rest-exps exps) env))))
+#+end_src
+
+*Asignaciones y definiciones*
+
+El siguiente procedimiento maneja asignaciones a variables. Llama a ~eval~ para encontrar el valor a asignar y transmite la variable y el valor resultante a ~set-variable-value!~ para ser instalado en el entorno designado.
+
+#+begin_src scheme
+(define (eval-assignment exp env)
+  (set-variable-value! (assignment-variable exp)
+                       (eval (assignment-value exp) env)
+                       env)
+  'ok)
+#+end_src
+
+Las definiciones de variables se manejan de manera similar.[fn:211]
+
+#+begin_src scheme
+(define (eval-definition exp env)
+  (define-variable! (definition-variable exp)
+    (eval (definition-value exp) env)
+    env)
+  'ok)
+#+end_src
+
+Hemos elegido aquí devolver el símbolo ~ok~ como el valor de una asignación o una definición.[fn:212]
+
+**** Ejercicio 4.1
+:properties:
+:custom_id: exercise-4.1
+:end:
+
+Observa que no podemos decir si el evaluador metacircular evalúa operandos de izquierda a derecha o de derecha a izquierda. Su orden de evaluación es heredado del Lisp subyacente: Si los argumentos de ~cons~ en ~list-of-values~ se evalúan de izquierda a derecha, entonces ~list-of-values~ evaluará operandos de izquierda a derecha; y si los argumentos de ~cons~ se evalúan de derecha a izquierda, entonces ~list-of-values~ evaluará operandos de derecha a izquierda.
+
+Escribe una versión de ~list-of-values~ que evalúe operandos de izquierda a derecha independientemente del orden de evaluación en el Lisp subyacente. También escribe una versión de ~list-of-values~ que evalúe operandos de derecha a izquierda.
+
+*** 4.1.2 Representación de Expresiones
+:properties:
+:custom_id: section-4.1.2
+:end:
+
+El evaluador recuerda al programa de diferenciación simbólica discutido en la sección [[#section-2.3.2][2.3.2]]. Ambos programas operan sobre expresiones simbólicas. En ambos programas, el resultado de operar sobre una expresión compuesta se determina operando recursivamente sobre las partes de la expresión y combinando los resultados de una manera que depende del tipo de la expresión. En ambos programas usamos abstracción de datos para desacoplar las reglas generales de operación de los detalles de cómo se representan las expresiones. En el programa de diferenciación esto significaba que el mismo procedimiento de diferenciación podía tratar con expresiones algebraicas en forma de prefijo, en forma de infijo, o en alguna otra forma. Para el evaluador, esto significa que la sintaxis del lenguaje que se está evaluando está determinada únicamente por los procedimientos que clasifican y extraen partes de expresiones.
+
+Aquí está la especificación de la sintaxis de nuestro lenguaje:
+
+1. Los únicos elementos auto-evaluables son números y cadenas:
+
+#+begin_src scheme
+(define (self-evaluating? exp)
+  (cond ((number? exp) true)
+        ((string? exp) true)
+        (else false)))
+#+end_src
+
+2. Las variables están representadas por símbolos:
+
+#+begin_src scheme
+(define (variable? exp) (symbol? exp))
+#+end_src
+
+3. Las comillas tienen la forma '(quote <TEXT-OF-QUOTATION>)':[fn:213]
+
+#+begin_src scheme
+(define (quoted? exp)
+  (tagged-list? exp 'quote))
+
+(define (text-of-quotation exp) (cadr exp))
+#+end_src
+
+~quoted?~ se define en términos del procedimiento ~tagged-list?~, que identifica listas que comienzan con un símbolo designado:
+
+#+begin_src scheme
+(define (tagged-list? exp tag)
+  (if (pair? exp)
+      (eq? (car exp) tag)
+      false))
+#+end_src
+
+4. Las asignaciones tienen la forma '(set! <VAR> <VALUE>)':
+
+#+begin_src scheme
+(define (assignment? exp)
+  (tagged-list? exp 'set!))
+
+(define (assignment-variable exp) (cadr exp))
+
+(define (assignment-value exp) (caddr exp))
+#+end_src
+
+5. Las definiciones tienen la forma
+
+#+begin_src scheme
+(define <VAR> <VALUE>)
+#+end_src
+
+o la forma
+
+#+begin_src scheme
+(define (<VAR> <PARAMETER_1> ... <PARAMETER_N>)
+  <BODY>)
+#+end_src
+
+La última forma (definición de procedimiento estándar) es azúcar sintáctico para
+
+#+begin_src scheme
+(define <VAR>
+  (lambda (<PARAMETER_1> ... <PARAMETER_N>)
+    <BODY>))
+#+end_src
+
+Los procedimientos de sintaxis correspondientes son los siguientes:
+
+#+begin_src scheme
+(define (definition? exp)
+  (tagged-list? exp 'define))
+
+(define (definition-variable exp)
+  (if (symbol? (cadr exp))
+      (cadr exp)
+      (caadr exp)))
+
+(define (definition-value exp)
+  (if (symbol? (cadr exp))
+      (caddr exp)
+      (make-lambda (cdadr exp)          ; formal parameters
+                   (cddr exp)))) ; body
+#+end_src
+
+6. Las expresiones ~lambda~ son listas que comienzan con el símbolo ~lambda~:
+
+#+begin_src scheme
+(define (lambda? exp) (tagged-list? exp 'lambda))
+
+(define (lambda-parameters exp) (cadr exp))
+
+(define (lambda-body exp) (cddr exp))
+#+end_src
+
+También proporcionamos un constructor para expresiones ~lambda~, que es usado por ~definition-value~, arriba:
+
+#+begin_src scheme
+(define (make-lambda parameters body)
+  (cons 'lambda (cons parameters body)))
+#+end_src
+
+7. Los condicionales comienzan con ~if~ y tienen un predicado, un consecuente, y una alternativa (opcional). Si la expresión no tiene parte alternativa, proporcionamos ~false~ como la alternativa.[fn:214]
+
+#+begin_src scheme
+(define (if? exp) (tagged-list? exp 'if))
+
+(define (if-predicate exp) (cadr exp))
+
+(define (if-consequent exp) (caddr exp))
+
+(define (if-alternative exp)
+  (if (not (null? (cdddr exp)))
+      (cadddr exp)
+      'false))
+#+end_src
+
+También proporcionamos un constructor para expresiones ~if~, para ser usado por ~cond->if~ para transformar expresiones ~cond~ en expresiones ~if~:
+
+#+begin_src scheme
+(define (make-if predicate consequent alternative)
+  (list 'if predicate consequent alternative))
+#+end_src
+
+8. ~begin~ empaqueta una secuencia de expresiones en una sola expresión. Incluimos operaciones de sintaxis sobre expresiones ~begin~ para extraer la secuencia real de la expresión ~begin~, así como selectores que devuelven la primera expresión y el resto de las expresiones en la secuencia.[fn:215]
+
+#+begin_src scheme
+(define (begin? exp) (tagged-list? exp 'begin))
+
+(define (begin-actions exp) (cdr exp))
+
+(define (last-exp? seq) (null? (cdr seq)))
+
+(define (first-exp seq) (car seq))
+
+(define (rest-exps seq) (cdr seq))
+#+end_src
+
+También incluimos un constructor ~sequence->exp~ (para usar por ~cond->if~) que transforma una secuencia en una sola expresión, usando ~begin~ si es necesario:
+
+#+begin_src scheme
+(define (sequence->exp seq)
+  (cond ((null? seq) seq)
+        ((last-exp? seq) (first-exp seq))
+        (else (make-begin seq))))
+
+(define (make-begin seq) (cons 'begin seq))
+#+end_src
+
+9. Una aplicación de procedimiento es cualquier expresión compuesta que no sea uno de los tipos de expresión anteriores. El ~car~ de la expresión es el operador, y el ~cdr~ es la lista de operandos:
+
+#+begin_src scheme
+(define (application? exp) (pair? exp))
+
+(define (operator exp) (car exp))
+
+(define (operands exp) (cdr exp))
+
+(define (no-operands? ops) (null? ops))
+
+(define (first-operand ops) (car ops))
+
+(define (rest-operands ops) (cdr ops))
+#+end_src
+
+*Expresiones derivadas*
+
+Algunas formas especiales en nuestro lenguaje pueden definirse en términos de expresiones que involucran otras formas especiales, en lugar de implementarse directamente. Un ejemplo es ~cond~, que puede implementarse como un anidamiento de expresiones ~if~. Por ejemplo, podemos reducir el problema de evaluar la expresión
+
+#+begin_src scheme
+(cond ((> x 0) x)
+      ((= x 0) (display 'zero) 0)
+      (else (- x)))
+#+end_src
+
+al problema de evaluar la siguiente expresión que involucra expresiones ~if~ y ~begin~:
+
+#+begin_src scheme
+(if (> x 0)
+    x
+    (if (= x 0)
+        (begin (display 'zero)
+               0)
+        (- x)))
+#+end_src
+
+Implementar la evaluación de ~cond~ de esta manera simplifica el evaluador porque reduce el número de formas especiales para las cuales el proceso de evaluación debe ser especificado explícitamente.
+
+Incluimos procedimientos de sintaxis que extraen las partes de una expresión ~cond~, y un procedimiento ~cond->if~ que transforma expresiones ~cond~ en expresiones ~if~. Un análisis de casos comienza con ~cond~ y tiene una lista de cláusulas predicado-acción. Una cláusula es una cláusula ~else~ si su predicado es el símbolo ~else~.[fn:216]
+
+#+begin_src scheme
+(define (cond? exp) (tagged-list? exp 'cond))
+
+(define (cond-clauses exp) (cdr exp))
+
+(define (cond-else-clause? clause)
+  (eq? (cond-predicate clause) 'else))
+
+(define (cond-predicate clause) (car clause))
+
+(define (cond-actions clause) (cdr clause))
+
+(define (cond->if exp)
+  (expand-clauses (cond-clauses exp)))
+
+(define (expand-clauses clauses)
+  (if (null? clauses)
+      'false                            ; no ~else~ clause
+      (let ((first (car clauses))
+            (rest (cdr clauses)))
+        (if (cond-else-clause? first)
+            (if (null? rest)
+                (sequence->exp (cond-actions first))
+                (error "ELSE clause isn't last - COND->IF"
+                       clauses))
+            (make-if (cond-predicate first)
+                     (sequence->exp (cond-actions first))
+                     (expand-clauses rest))))))
+#+end_src
+
+Las expresiones (como ~cond~) que elegimos implementar como transformaciones sintácticas se llaman <<i112>> expresiones derivadas. Las expresiones ~let~ también son expresiones derivadas (ver [[#exercise-4.6][Ejercicio 4.6]]).[fn:217]
+
+**** Ejercicio 4.2
+:properties:
+:custom_id: exercise-4.2
+:end:
+
+Louis Reasoner planea reordenar las cláusulas ~cond~ en ~eval~ de modo que la cláusula para aplicaciones de procedimientos aparezca antes que la cláusula para asignaciones. Argumenta que esto hará que el intérprete sea más eficiente: Dado que los programas generalmente contienen más aplicaciones que asignaciones, definiciones, y demás, su ~eval~ modificado usualmente verificará menos cláusulas que el ~eval~ original antes de identificar el tipo de una expresión.
+
+a. ¿Qué está mal con el plan de Louis? (Pista: ¿Qué hará el evaluador de Louis con la expresión ~(define x 3)~?)
+
+b. Louis está molesto porque su plan no funcionó. Está dispuesto a hacer lo que sea necesario para que su evaluador reconozca aplicaciones de procedimientos antes de que verifique la mayoría de otros tipos de expresiones. Ayúdalo cambiando la sintaxis del lenguaje evaluado de modo que las aplicaciones de procedimientos comiencen con ~call~. Por ejemplo, en lugar de ~(factorial 3)~ ahora tendremos que escribir ~(call factorial 3)~ y en lugar de ~(+ 1 2)~ tendremos que escribir ~(call
+   + 1 2)~.
+
+**** Ejercicio 4.3
+:properties:
+:custom_id: exercise-4.3
+:end:
+
+Reescribe ~eval~ de modo que el despacho se haga en estilo dirigido por datos. Compara esto con el procedimiento de diferenciación dirigido por datos del [[#exercise-2.73][Ejercicio 2.73]]. (Puedes usar el ~car~ de una expresión compuesta como el tipo de la expresión, como es apropiado para la sintaxis implementada en esta sección.)
+
+**** Ejercicio 4.4
+:properties:
+:custom_id: exercise-4.4
+:end:
+
+Recuerda las definiciones de las formas especiales ~and~ y ~or~ del [[#section-1][Capítulo 1]]:
+
+- ~and~: Las expresiones se evalúan de izquierda a derecha. Si alguna expresión se evalúa a falso, se devuelve falso; cualquier expresión restante no se evalúa. Si todas las expresiones se evalúan a valores verdaderos, se devuelve el valor de la última expresión. Si no hay expresiones, entonces se devuelve verdadero.
+
+- ~or~: Las expresiones se evalúan de izquierda a derecha. Si alguna expresión se evalúa a un valor verdadero, ese valor se devuelve; cualquier expresión restante no se evalúa. Si todas las expresiones se evalúan a falso, o si no hay expresiones, entonces se devuelve falso.
+
+Instala ~and~ y ~or~ como nuevas formas especiales para el evaluador definiendo procedimientos de sintaxis apropiados y procedimientos de evaluación ~eval-and~ y ~eval-or~. Alternativamente, muestra cómo implementar ~and~ y ~or~ como expresiones derivadas.
+
+**** Ejercicio 4.5
+:properties:
+:custom_id: exercise-4.5
+:end:
+
+Scheme permite una sintaxis adicional para cláusulas ~cond~, '(<TEST> => <RECIPIENT>)'. Si <TEST> se evalúa a un valor verdadero, entonces se evalúa <RECIPIENT>. Su valor debe ser un procedimiento de un argumento; este procedimiento se invoca entonces sobre el valor del <TEST>, y el resultado se devuelve como el valor de la expresión ~cond~. Por ejemplo
+
+#+begin_src scheme
+(cond ((assoc 'b '((a 1) (b 2))) => cadr)
+      (else false))
+#+end_src
+
+devuelve 2. Modifica el manejo de ~cond~ para que soporte esta sintaxis extendida.
+
+**** Ejercicio 4.6
+:properties:
+:custom_id: exercise-4.6
+:end:
+
+Las expresiones ~let~ son expresiones derivadas, porque
+
+#+begin_src scheme
+(let ((<VAR_1> <EXP_1>) ... (<VAR_N> <EXP_N>))
+  <BODY>)
+#+end_src
+
+es equivalente a
+
+#+begin_src scheme
+((lambda (<VAR_1> ... <VAR_N>)
+   <BODY>)
+ <EXP_1>
+ ...
+ <EXP_N>)
+#+end_src
+
+Implementa una transformación sintáctica ~let->combination~ que reduzca la evaluación de expresiones ~let~ a la evaluación de combinaciones del tipo mostrado arriba, y agrega la cláusula apropiada a ~eval~ para manejar expresiones ~let~.
+
+**** Ejercicio 4.7
+:properties:
+:custom_id: exercise-4.7
+:end:
+
+~let*~ es similar a ~let~, excepto que las vinculaciones de las variables ~let~ se realizan secuencialmente de izquierda a derecha, y cada vinculación se hace en un entorno en el cual todas las vinculaciones precedentes son visibles. Por ejemplo
+
+#+begin_src scheme
+(let* ((x 3)
+       (y (+ x 2))
+       (z (+ x y 5)))
+  (* x z))
+#+end_src
+
+devuelve 39. Explica cómo una expresión ~let*~ puede reescribirse como un conjunto de expresiones ~let~ anidadas, y escribe un procedimiento ~let*->nested-lets~ que realice esta transformación. Si ya hemos implementado ~let~ ([[#exercise-4.6][Ejercicio 4.6]]) y queremos extender el evaluador para manejar ~let*~, ¿es suficiente agregar una cláusula a ~eval~ cuya acción sea
+
+#+begin_src scheme
+(eval (let*->nested-lets exp) env)
+#+end_src
+
+o debemos expandir explícitamente ~let*~ en términos de expresiones no derivadas?
+
+**** Ejercicio 4.8
+:properties:
+:custom_id: exercise-4.8
+:end:
+
+"~let~ nombrado" es una variante de ~let~ que tiene la forma
+
+#+begin_src scheme
+(let <VAR> <BINDINGS> <BODY>)
+#+end_src
+
+Los ~<BINDINGS>~ y ~<BODY>~ son tal como en el ~let~ ordinario, excepto que ~<VAR>~ se vincula dentro de ~<BODY>~ a un procedimiento cuyo cuerpo es ~<BODY>~ y cuyos parámetros son las variables en los ~<BINDINGS>~. Así, uno puede ejecutar repetidamente el ~<BODY>~ invocando el procedimiento nombrado ~<VAR>~. Por ejemplo, el procedimiento iterativo de Fibonacci (sección [[#section-1.2.2][1.2.2]]) puede reescribirse usando ~let~ nombrado de la siguiente manera:
+
+#+begin_src scheme
+(define (fib n)
+  (let fib-iter ((a 1)
+                 (b 0)
+                 (count n))
+    (if (= count 0)
+        b
+        (fib-iter (+ a b) a (- count 1)))))
+#+end_src
+
+Modifica ~let->combination~ del [[#exercise-4.6][Ejercicio 4.6]] para que también soporte ~let~ nombrado.
+
+**** Ejercicio 4.9
+:properties:
+:custom_id: exercise-4.9
+:end:
+
+Muchos lenguajes soportan una variedad de construcciones de iteración, como ~do~, ~for~, ~while~ y ~until~. En Scheme, los procesos iterativos pueden expresarse en términos de llamadas a procedimientos ordinarios, por lo que las construcciones de iteración especiales no proporcionan ninguna ganancia esencial en poder computacional. Por otro lado, tales construcciones son a menudo convenientes. Diseña algunas construcciones de iteración, da ejemplos de su uso, y muestra cómo implementarlas como expresiones derivadas.
+
+**** Ejercicio 4.10
+:properties:
+:custom_id: exercise-4.10
+:end:
+
+Al usar abstracción de datos, pudimos escribir un procedimiento ~eval~ que es independiente de la sintaxis particular del lenguaje a evaluar. Para ilustrar esto, diseña e implementa una nueva sintaxis para Scheme modificando los procedimientos en esta sección, sin cambiar ~eval~ o ~apply~.
+
+*** 4.1.3 Estructuras de Datos del Evaluador
+:properties:
+:custom_id: section-4.1.3
+:end:
+
+Además de definir la sintaxis externa de las expresiones, la implementación del evaluador también debe definir las estructuras de datos que el evaluador manipula internamente, como parte de la ejecución de un programa, como la representación de procedimientos y entornos y la representación de verdadero y falso.
+
+*Prueba de predicados*
+
+Para condicionales, aceptamos que cualquier cosa sea verdadera que no sea el objeto explícito ~false~.
+
+#+begin_src scheme
+(define (true? x)
+  (not (eq? x false)))
+
+(define (false? x)
+  (eq? x false))
+#+end_src
+
+*Representación de procedimientos*
+
+Para manejar primitivas, asumimos que tenemos disponibles los siguientes procedimientos:
+
+- ~(apply-primitive-procedure <PROC> <ARGS>)~
+
+  aplica el procedimiento primitivo dado a los valores de argumentos en la lista <ARGS> y devuelve el resultado de la aplicación.
+
+- ~(primitive-procedure? <PROC>)~
+
+prueba si ~<PROC>~ es un procedimiento primitivo.
+
+Estos mecanismos para manejar primitivas se describen con más detalle en la sección [[#section-4.1.4][4.1.4]].
+
+Los procedimientos compuestos se construyen a partir de parámetros, cuerpos de procedimientos y entornos usando el constructor ~make-procedure~:
+
+#+begin_src scheme
+(define (make-procedure parameters body env)
+  (list 'procedure parameters body env))
+
+(define (compound-procedure? p)
+  (tagged-list? p 'procedure))
+
+(define (procedure-parameters p) (cadr p))
+
+(define (procedure-body p) (caddr p))
+
+(define (procedure-environment p) (cadddr p))
+#+end_src
+
+*Operaciones sobre Entornos*
+
+El evaluador necesita operaciones para manipular entornos. Como se explica en la sección [[#section-3.2][3.2]], un entorno es una secuencia de marcos, donde cada marco es una tabla de vinculaciones que asocian variables con sus valores correspondientes. Usamos las siguientes operaciones para manipular entornos:
+
+- ~(lookup-variable-value <VAR> <ENV>)~
+
+devuelve el valor que está vinculado al símbolo ~<VAR>~ en el entorno ~<ENV>~, o señala un error si la variable no está vinculada.
+
+- ~(extend-environment <VARIABLES> <VALUES> <BASE-ENV>)~
+
+devuelve un nuevo entorno, que consiste en un nuevo marco en el cual los símbolos en la lista ~<VARIABLES>~ están vinculados a los elementos correspondientes en la lista ~<VALUES>~, donde el entorno circundante es el entorno ~<BASE-ENV>~.
+
+- ~(define-variable! <VAR> <VALUE> <ENV>)~
+
+agrega al primer marco en el entorno ~<ENV>~ una nueva vinculación que asocia la variable ~<VAR>~ con el valor ~<VALUE>~.
+
+- ~(set-variable-value! <VAR> <VALUE> <ENV>)~
+
+cambia la vinculación de la variable ~<VAR>~ en el entorno ~<ENV>~ de modo que la variable ahora esté vinculada al valor ~<VALUE>~, o señala un error si la variable no está vinculada.
+
+Para implementar estas operaciones representamos un entorno como una lista de marcos. El entorno circundante de un entorno es el ~cdr~ de la lista. El entorno vacío es simplemente la lista vacía.
+
+#+begin_src scheme
+(define (enclosing-environment env) (cdr env))
+
+(define (first-frame env) (car env))
+
+(define the-empty-environment '())
+#+end_src
+
+Cada marco de un entorno se representa como un par de listas: una lista de las variables vinculadas en ese marco y una lista de los valores asociados.[fn:218]
+
+#+begin_src scheme
+(define (make-frame variables values)
+  (cons variables values))
+
+(define (frame-variables frame) (car frame))
+
+(define (frame-values frame) (cdr frame))
+
+(define (add-binding-to-frame! var val frame)
+  (set-car! frame (cons var (car frame)))
+  (set-cdr! frame (cons val (cdr frame))))
+#+end_src
+
+Para extender un entorno con un nuevo marco que asocia variables con valores, hacemos un marco que consiste en la lista de variables y la lista de valores, y adjuntamos esto al entorno. Señalamos un error si el número de variables no coincide con el número de valores.
+
+#+begin_src scheme
+(define (extend-environment vars vals base-env)
+  (if (= (length vars) (length vals))
+      (cons (make-frame vars vals) base-env)
+      (if (< (length vars) (length vals))
+          (error "Too many arguments supplied" vars vals)
+          (error "Too few arguments supplied" vars vals))))
+#+end_src
+
+Para buscar una variable en un entorno, escaneamos la lista de variables en el primer marco. Si encontramos la variable deseada, devolvemos el elemento correspondiente en la lista de valores. Si no encontramos la variable en el marco actual, buscamos en el entorno circundante, y así sucesivamente. Si llegamos al entorno vacío, señalamos un error de "variable no vinculada".
+
+#+begin_src scheme
+(define (lookup-variable-value var env)
+  (define (env-loop env)
+    (define (scan vars vals)
+      (cond ((null? vars)
+             (env-loop (enclosing-environment env)))
+            ((eq? var (car vars))
+             (car vals))
+            (else (scan (cdr vars) (cdr vals)))))
+    (if (eq? env the-empty-environment)
+        (error "Unbound variable" var)
+        (let ((frame (first-frame env)))
+          (scan (frame-variables frame)
+                (frame-values frame)))))
+  (env-loop env))
+#+end_src
+
+Para establecer una variable a un nuevo valor en un entorno especificado, escaneamos en busca de la variable, tal como en ~lookup-variable-value~, y cambiamos el valor correspondiente cuando la encontramos.
+
+#+begin_src scheme
+(define (set-variable-value! var val env)
+  (define (env-loop env)
+    (define (scan vars vals)
+      (cond ((null? vars)
+             (env-loop (enclosing-environment env)))
+            ((eq? var (car vars))
+             (set-car! vals val))
+            (else (scan (cdr vars) (cdr vals)))))
+    (if (eq? env the-empty-environment)
+        (error "Unbound variable - SET!" var)
+        (let ((frame (first-frame env)))
+          (scan (frame-variables frame)
+                (frame-values frame)))))
+  (env-loop env))
+#+end_src
+
+Para definir una variable, buscamos en el primer marco una vinculación para la variable, y cambiamos la vinculación si existe (tal como en ~set-variable-value!~). Si no existe tal vinculación, adjuntamos una al primer marco.
+
+#+begin_src scheme
+(define (define-variable! var val env)
+  (let ((frame (first-frame env)))
+    (define (scan vars vals)
+      (cond ((null? vars)
+             (add-binding-to-frame! var val frame))
+            ((eq? var (car vars))
+             (set-car! vals val))
+            (else (scan (cdr vars) (cdr vals)))))
+    (scan (frame-variables frame)
+          (frame-values frame))))
+#+end_src
+
+El método descrito aquí es solo una de muchas formas plausibles de representar entornos. Dado que usamos abstracción de datos para aislar el resto del evaluador de la elección detallada de la representación, podríamos cambiar la representación del entorno si quisiéramos. (Ver [[#exercise-4.11][Ejercicio 4.11]].) En un sistema Lisp de calidad de producción, la velocidad de las operaciones de entorno del evaluador--especialmente la de búsqueda de variables--tiene un impacto importante en el rendimiento del sistema. La representación descrita aquí, aunque conceptualmente simple, no es eficiente y no se usaría ordinariamente en un sistema de producción.[fn:219]
+
+**** Ejercicio 4.11
+:properties:
+:custom_id: exercise-4.11
+:end:
+
+En lugar de representar un marco como un par de listas, podemos representar un marco como una lista de vinculaciones, donde cada vinculación es un par nombre-valor. Reescribe las operaciones de entorno para usar esta representación alternativa.
+
+**** Ejercicio 4.12
+:properties:
+:custom_id: exercise-4.12
+:end:
+
+Los procedimientos ~set-variable-value!~, ~define-variable!~ y ~lookup-variable-value~ pueden expresarse en términos de procedimientos más abstractos para recorrer la estructura del entorno. Define abstracciones que capturen los patrones comunes y redefine los tres procedimientos en términos de estas abstracciones.
+
+**** Ejercicio 4.13
+:properties:
+:custom_id: exercise-4.13
+:end:
+
+Scheme nos permite crear nuevas vinculaciones para variables por medio de ~define~, pero no proporciona ninguna forma de deshacerse de las vinculaciones. Implementa para el evaluador una forma especial ~make-unbound!~ que elimine la vinculación de un símbolo dado del entorno en el cual se evalúa la expresión ~make-unbound!~. Este problema no está completamente especificado. Por ejemplo, ¿deberíamos eliminar solo la vinculación en el primer marco del entorno? Completa la especificación y justifica cualquier elección que hagas.
+
+*** 4.1.4 Ejecución del Evaluador como un Programa
+:properties:
+:custom_id: section-4.1.4
+:end:
+
+Dado el evaluador, tenemos en nuestras manos una descripción (expresada en Lisp) del proceso por el cual se evalúan las expresiones de Lisp. Una ventaja de expresar el evaluador como un programa es que podemos ejecutar el programa. Esto nos da, ejecutándose dentro de Lisp, un modelo funcional de cómo Lisp mismo evalúa expresiones. Esto puede servir como un marco para experimentar con reglas de evaluación, como haremos más adelante en este capítulo.
+
+Nuestro programa evaluador reduce expresiones finalmente a la aplicación de procedimientos primitivos. Por lo tanto, todo lo que necesitamos para ejecutar el evaluador es crear un mecanismo que llame al sistema Lisp subyacente para modelar la aplicación de procedimientos primitivos.
+
+Debe haber una vinculación para cada nombre de procedimiento primitivo, de modo que cuando ~eval~ evalúe el operador de una aplicación de una primitiva, encuentre un objeto para pasar a ~apply~. Así configuramos un entorno global que asocia objetos únicos con los nombres de los procedimientos primitivos que pueden aparecer en las expresiones que estaremos evaluando. El entorno global también incluye vinculaciones para los símbolos ~true~ y ~false~, de modo que puedan usarse como variables en expresiones a evaluar.
+
+#+begin_src scheme
+(define (setup-environment)
+  (let ((initial-env
+         (extend-environment (primitive-procedure-names)
+                             (primitive-procedure-objects)
+                             the-empty-environment)))
+    (define-variable! 'true true initial-env)
+    (define-variable! 'false false initial-env)
+    initial-env))
+
+(define the-global-environment (setup-environment))
+#+end_src
+
+No importa cómo representemos los objetos de procedimientos primitivos, siempre que ~apply~ pueda identificarlos y aplicarlos usando los procedimientos ~primitive-procedure?~ y ~apply-primitive-procedure~. Hemos elegido representar un procedimiento primitivo como una lista que comienza con el símbolo ~primitive~ y contiene un procedimiento en el Lisp subyacente que implementa esa primitiva.
+
+#+begin_src scheme
+(define (primitive-procedure? proc)
+  (tagged-list? proc 'primitive))
+
+(define (primitive-implementation proc) (cadr proc))
+#+end_src
+
+~setup-environment~ obtendrá los nombres primitivos y los procedimientos de implementación de una lista:[fn:220]
+
+#+begin_src scheme
+(define primitive-procedures
+  (list (list 'car car)
+        (list 'cdr cdr)
+        (list 'cons cons)
+        (list 'null? null?)
+        <MORE PRIMITIVES>
+        ))
+
+(define (primitive-procedure-names)
+  (map car
+       primitive-procedures))
+
+(define (primitive-procedure-objects)
+  (map (lambda (proc) (list 'primitive (cadr proc)))
+       primitive-procedures))
+#+end_src
+
+Para aplicar un procedimiento primitivo, simplemente aplicamos el procedimiento de implementación a los argumentos, usando el sistema Lisp subyacente:[fn:221]
+
+#+begin_src scheme
+(define (apply-primitive-procedure proc args)
+  (apply-in-underlying-scheme
+   (primitive-implementation proc) args))
+#+end_src
+
+Para mayor comodidad al ejecutar el evaluador metacircular, proporcionamos un <<i117>> bucle controlador que modela el bucle leer-evaluar-imprimir del sistema Lisp subyacente. Imprime un <<i307>> símbolo de solicitud, lee una expresión de entrada, evalúa esta expresión en el entorno global, e imprime el resultado. Precedemos cada resultado impreso con un <<i275>> símbolo de salida para distinguir el valor de la expresión de otra salida que pueda ser impresa.[fn:222]
+
+#+begin_src scheme
+(define input-prompt ";;; M-Eval input:")
+(define output-prompt ";;; M-Eval value:")
+
+(define (driver-loop)
+  (prompt-for-input input-prompt)
+  (let ((input (read)))
+    (let ((output (eval input the-global-environment)))
+      (announce-output output-prompt)
+      (user-print output)))
+  (driver-loop))
+
+(define (prompt-for-input string)
+  (newline) (newline) (display string) (newline))
+
+(define (announce-output string)
+  (newline) (display string) (newline))
+#+end_src
+
+Usamos un procedimiento de impresión especial, ~user-print~, para evitar imprimir la parte del entorno de un procedimiento compuesto, que puede ser una lista muy larga (o puede incluso contener ciclos).
+
+#+begin_src scheme
+(define (user-print object)
+  (if (compound-procedure? object)
+      (display (list 'compound-procedure
+                     (procedure-parameters object)
+                     (procedure-body object)
+                     '<procedure-env>))
+      (display object)))
+#+end_src
+
+Ahora todo lo que necesitamos hacer para ejecutar el evaluador es inicializar el entorno global e iniciar el bucle controlador. Aquí hay una interacción de muestra:
+
+#+begin_src scheme
+(define the-global-environment (setup-environment))
+
+(driver-loop)
+
+;;; M-Eval input:
+(define (append x y)
+  (if (null? x)
+      y
+      (cons (car x)
+            (append (cdr x) y))))
+;;; M-Eval value:
+ok
+
+;;; M-Eval input:
+(append '(a b c) '(d e f))
+;;; M-Eval value:
+(a b c d e f)
+#+end_src
+
+**** Ejercicio 4.14
+:properties:
+:custom_id: exercise-4.14
+:end:
+
+Eva Lu Ator y Louis Reasoner están experimentando cada uno con el evaluador metacircular. Eva escribe la definición de ~map~, y ejecuta algunos programas de prueba que lo usan. Funcionan bien. Louis, en contraste, ha instalado la versión del sistema de ~map~ como una primitiva para el evaluador metacircular. Cuando lo intenta, las cosas salen terriblemente mal. Explica por qué el ~map~ de Louis falla aunque el de Eva funciona.
+
+*** 4.1.5 Datos como Programas
+:properties:
+:custom_id: section-4.1.5
+:end:
+
+Al pensar en un programa de Lisp que evalúa expresiones de Lisp, una analogía puede ser útil. Una visión operacional del significado de un programa es que un programa es una descripción de una máquina abstracta (quizás infinitamente grande). Por ejemplo, considera el programa familiar para computar factoriales:
+
+#+begin_src scheme
+(define (factorial n)
+  (if (= n 1)
+      1
+      (* (factorial (- n 1)) n)))
+#+end_src
+
+Podemos considerar este programa como la descripción de una máquina que contiene partes que decrementan, multiplican y prueban igualdad, junto con un interruptor de dos posiciones y otra máquina factorial. (La máquina factorial es infinita porque contiene otra máquina factorial dentro de ella.) La [[figure-4.2][Figura 4.2]] es un diagrama de flujo para la máquina factorial, mostrando cómo las partes están conectadas.
+
+<<figure-4.2>> El programa factorial, visto como una máquina abstracta.
+
+#+begin_example
+     +-----------------------------------+
+     | factorial                   |1    |
+     |              |1             V     |
+     |              |           +-----+  |
+     |              V           | #   |  |
+     |           +-----+        |     |  |
+ 6 --------*-----|  =  |------->|   #-+-----> 720
+     |     |     +-----+        |  /  |  |
+     |     |                    | #   |  |
+     |     |                    +-----+  |
+     |     |                       ^     |
+     |     |                       |     |
+     |     |                    +--+--+  |
+     |     *------------------->|  *  |  |
+     |     |                    +-----+  |
+     |     V                       ^     |
+     |  +-----+    +-----------+   |     |
+     |  |  -  +--->| factorial +---+     |
+     |  +-----+    +-----------+         |
+     |     ^                             |
+     |     |1                            |
+     +-----------------------------------+
+#+end_example
+
+De manera similar, podemos considerar el evaluador como una máquina muy especial que toma como entrada una descripción de una máquina. Dada esta entrada, el evaluador se configura a sí mismo para emular la máquina descrita. Por ejemplo, si alimentamos nuestro evaluador con la definición de ~factorial~, como se muestra en la [[figure-4.3][Figura 4.3]], el evaluador podrá computar factoriales.
+
+<<figure-4.3>> El evaluador emulando una máquina factorial.
+
+#+begin_example
+                 +--------+
+          6 ---->|  eval  |----> 720
+                 +--------+
+                     /
+           . . .    /  . . .
+     . . .       ../. .      .
+   .                           ..
+  .   (define (factorial n)      . . .
+ .      (if (= n 1)                   . .
+  .         1                            .
+  .         (* (factorial (- n 1)) n)))   .
+    . .                       . .        .
+        . .  . .      . . . .     . . . .
+                 . ..
+#+end_example
+
+Desde esta perspectiva, nuestro evaluador se ve como una <<i415>> máquina universal. Imita otras máquinas cuando estas se describen como programas de Lisp.[fn:223] Esto es sorprendente. Intenta imaginar un evaluador análogo para circuitos eléctricos. Este sería un circuito que toma como entrada una señal que codifica los planos para algún otro circuito, como un filtro. Dada esta entrada, el evaluador de circuitos se comportaría entonces como un filtro con la misma descripción. Tal circuito eléctrico universal es casi inimaginablemente complejo. Es notable que el evaluador de programas sea un programa bastante simple.[fn:224]
+
+Otro aspecto sorprendente del evaluador es que actúa como un puente entre los objetos de datos que son manipulados por nuestro lenguaje de programación y el lenguaje de programación mismo. Imagina que el programa evaluador (implementado en Lisp) está ejecutándose, y que un usuario está escribiendo expresiones al evaluador y observando los resultados. Desde la perspectiva del usuario, una expresión de entrada como ~(* x x)~ es una expresión en el lenguaje de programación, que el evaluador debe ejecutar. Desde la perspectiva del evaluador, sin embargo, la expresión es simplemente una lista (en este caso, una lista de tres símbolos: ~*~, ~x~ y ~x~) que debe ser manipulada según un conjunto bien definido de reglas.
+
+Que los programas del usuario sean los datos del evaluador no necesita ser una fuente de confusión. De hecho, a veces es conveniente ignorar esta distinción, y dar al usuario la capacidad de evaluar explícitamente un objeto de datos como una expresión de Lisp, haciendo que ~eval~ esté disponible para uso en programas. Muchos dialectos de Lisp proporcionan un procedimiento primitivo ~eval~ que toma como argumentos una expresión y un entorno y evalúa la expresión relativa al entorno.[fn:225] Así,
+
+#+begin_src scheme
+(eval '(* 5 5) user-initial-environment)
+#+end_src
+
+y
+
+#+begin_src scheme
+(eval (cons '* (list 5 5)) user-initial-environment)
+#+end_src
+
+ambos devolverán 25.[fn:226]
+
+**** Ejercicio 4.15
+:properties:
+:custom_id: exercise-4.15
+:end:
+
+Dado un procedimiento de un argumento ~p~ y un objeto ~a~, se dice que ~p~ "se detiene" en ~a~ si evaluar la expresión ~(p a)~ devuelve un valor (en contraposición a terminar con un mensaje de error o ejecutarse para siempre). Muestra que es imposible escribir un procedimiento ~halts?~ que determine correctamente si ~p~ se detiene en ~a~ para cualquier procedimiento ~p~ y objeto ~a~. Usa el siguiente razonamiento: Si tuvieras tal procedimiento ~halts?~, podrías implementar el siguiente programa:
+
+#+begin_src scheme
+(define (run-forever) (run-forever))
+
+(define (try p)
+  (if (halts? p p)
+      (run-forever)
+      'halted))
+#+end_src
+
+Ahora considera evaluar la expresión ~(try try)~ y muestra que cualquier resultado posible (ya sea detenerse o ejecutarse para siempre) viola el comportamiento deseado de ~halts?~.[fn:227]
+
+*** 4.1.6 Definiciones Internas
+:properties:
+:custom_id: section-4.1.6
+:end:
+
+Nuestro modelo de entorno de evaluación y nuestro evaluador metacircular ejecutan definiciones en secuencia, extendiendo el marco del entorno una definición a la vez. Esto es particularmente conveniente para el desarrollo interactivo de programas, en el cual el programador necesita mezclar libremente la aplicación de procedimientos con la definición de nuevos procedimientos. Sin embargo, si pensamos cuidadosamente sobre las definiciones internas usadas para implementar estructura de bloque (introducida en la sección [[#section-1.1.8][1.1.8]]), encontraremos que la extensión nombre por nombre del entorno puede no ser la mejor forma de definir variables locales.
+
+Considera un procedimiento con definiciones internas, como
+
+#+begin_src scheme
+(define (f x)
+  (define (even? n)
+    (if (= n 0)
+        true
+        (odd? (- n 1))))
+  (define (odd? n)
+    (if (= n 0)
+        false
+        (even? (- n 1))))
+  <REST OF BODY OF ~F~>)
+#+end_src
+
+Nuestra intención aquí es que el nombre ~odd?~ en el cuerpo del procedimiento ~even?~ se refiera al procedimiento ~odd?~ que se define después de ~even?~. El alcance del nombre ~odd?~ es el cuerpo completo de ~f~, no solo la porción del cuerpo de ~f~ que comienza en el punto donde ocurre el ~define~ para ~odd?~. De hecho, cuando consideramos que ~odd?~ mismo se define en términos de ~even?~--de modo que ~even?~ y ~odd?~ son procedimientos mutuamente recursivos--vemos que la única interpretación satisfactoria de los dos ~define~ es considerarlos como si los nombres ~even?~ y ~odd?~ estuvieran siendo agregados al entorno simultáneamente. Más generalmente, en estructura de bloque, el alcance de un nombre local es el cuerpo completo del procedimiento en el cual se evalúa el ~define~.
+
+Sucede que nuestro intérprete evaluará correctamente las llamadas a ~f~, pero por una razón "accidental": Dado que las definiciones de los procedimientos internos vienen primero, no se evaluarán llamadas a estos procedimientos hasta que todos ellos hayan sido definidos. Por lo tanto, ~odd?~ habrá sido definido para el momento en que ~even?~ se ejecute. De hecho, nuestro mecanismo de evaluación secuencial dará el mismo resultado que un mecanismo que implemente directamente definición simultánea para cualquier procedimiento en el cual las definiciones internas vengan primero en un cuerpo y la evaluación de las expresiones de valor para las variables definidas no use realmente ninguna de las variables definidas. (Para un ejemplo de un procedimiento que no obedece estas restricciones, de modo que la definición secuencial no es equivalente a la definición simultánea, ver [[#exercise-4.19][Ejercicio 4.19]].)[fn:228]
+
+Sin embargo, hay una forma simple de tratar las definiciones de modo que los nombres definidos internamente tengan verdaderamente alcance simultáneo--simplemente crear todas las variables locales que estarán en el entorno actual antes de evaluar cualquiera de las expresiones de valor. Una forma de hacer esto es mediante una transformación sintáctica sobre expresiones ~lambda~. Antes de evaluar el cuerpo de una expresión ~lambda~, "escaneamos" y eliminamos todas las definiciones internas en el cuerpo. Las variables definidas internamente se crearán con un ~let~ y luego se establecerán a sus valores mediante asignación. Por ejemplo, el procedimiento
+
+#+begin_src scheme
+(lambda <VARS>
+  (define u <E1>)
+  (define v <E2>)
+  <E3>)
+#+end_src
+
+se transformaría en
+
+#+begin_src scheme
+(lambda <VARS>
+  (let ((u '*unassigned*)
+        (v '*unassigned*))
+    (set! u <E1>)
+    (set! v <E2>)
+    <E3>))
+#+end_src
+
+donde ~*unassigned*~ es un símbolo especial que hace que buscar una variable señale un error si se intenta usar el valor de la variable aún no asignada.
+
+Una estrategia alternativa para escanear definiciones internas se muestra en el [[#exercise-4.18][Ejercicio 4.18]]. A diferencia de la transformación mostrada arriba, esta impone la restricción de que los valores de las variables definidas puedan evaluarse sin usar ninguno de los valores de las variables.[fn:229]
+
+**** Ejercicio 4.16
+:properties:
+:custom_id: exercise-4.16
+:end:
+
+En este ejercicio implementamos el método recién descrito para interpretar definiciones internas. Asumimos que el evaluador soporta ~let~ (ver [[#exercise-4.6][Ejercicio 4.6]]).
+
+a. Cambia ~lookup-variable-value~ (sección [[#section-4.1.3][4.1.3]]) para señalar un error si el valor que encuentra es el símbolo ~*unassigned*~.
+
+b. Escribe un procedimiento ~scan-out-defines~ que tome un cuerpo de procedimiento y devuelva uno equivalente que no tenga definiciones internas, haciendo la transformación descrita arriba.
+
+c. Instala ~scan-out-defines~ en el intérprete, ya sea en ~make-procedure~ o en ~procedure-body~ (ver sección [[#section-4.1.3][4.1.3]]). ¿Qué lugar es mejor? ¿Por qué?
+
+**** Ejercicio 4.17
+:properties:
+:custom_id: exercise-4.17
+:end:
+
+Dibuja diagramas del entorno en efecto al evaluar la expresión <E3> en el procedimiento en el texto, comparando cómo se estructurará esto cuando las definiciones se interpretan secuencialmente con cómo se estructurará si las definiciones se escanean como se describe. ¿Por qué hay un marco extra en el programa transformado? Explica por qué esta diferencia en la estructura del entorno nunca puede hacer una diferencia en el comportamiento de un programa correcto. Diseña una forma de hacer que el intérprete implemente la regla de alcance "simultáneo" para definiciones internas sin construir el marco extra.
+
+**** Ejercicio 4.18
+:properties:
+:custom_id: exercise-4.18
+:end:
+
+Considera una estrategia alternativa para escanear definiciones que traduce el ejemplo en el texto a
+
+#+begin_src scheme
+(lambda <VARS>
+  (let ((u '*unassigned*)
+        (v '*unassigned*))
+    (let ((a <E1>)
+          (b <E2>))
+      (set! u a)
+      (set! v b))
+    <E3>))
+#+end_src
+
+Aquí ~a~ y ~b~ están destinados a representar nuevos nombres de variables, creados por el intérprete, que no aparecen en el programa del usuario. Considera el procedimiento ~solve~ de la sección [[#section-3.5.4][3.5.4]]:
+
+#+begin_src scheme
+(define (solve f y0 dt)
+  (define y (integral (delay dy) y0 dt))
+  (define dy (stream-map f y))
+  y)
+#+end_src
+
+¿Funcionará este procedimiento si las definiciones internas se escanean como se muestra en este ejercicio? ¿Qué pasa si se escanean como se muestra en el texto? Explica.
+
+**** Ejercicio 4.19
+:properties:
+:custom_id: exercise-4.19
+:end:
+
+Ben Bitdiddle, Alyssa P. Hacker y Eva Lu Ator están discutiendo sobre el resultado deseado de evaluar la expresión
+
+#+begin_src scheme
+(let ((a 1))
+  (define (f x)
+    (define b (+ a x))
+    (define a 5)
+    (+ a b))
+  (f 10))
+#+end_src
+
+Ben afirma que el resultado debería obtenerse usando la regla secuencial para ~define~: ~b~ se define como 11, luego ~a~ se define como 5, por lo que el resultado es 16. Alyssa objeta que la recursión mutua requiere la regla de alcance simultáneo para definiciones de procedimientos internos, y que es irrazonable tratar los nombres de procedimientos de manera diferente a otros nombres. Así, ella argumenta por el mecanismo implementado en el [[#exercise-4.16][Ejercicio 4.16]]. Esto llevaría a que ~a~ no esté asignado en el momento en que se debe computar el valor para ~b~. Por lo tanto, en la visión de Alyssa el procedimiento debería producir un error. Eva tiene una tercera opinión. Ella dice que si las definiciones de ~a~ y ~b~ están realmente destinadas a ser simultáneas, entonces el valor 5 para ~a~ debería usarse al evaluar ~b~. Por lo tanto, en la visión de Eva ~a~ debería ser 5, ~b~ debería ser 15, y el resultado debería ser 20. ¿Cuál (si alguno) de estos puntos de vista apoyas? ¿Puedes idear una forma de implementar definiciones internas de modo que se comporten como Eva prefiere?[fn:230]
+
+**** Ejercicio 4.20
+:properties:
+:custom_id: exercise-4.20
+:end:
+
+Debido a que las definiciones internas parecen secuenciales pero son en realidad simultáneas, algunas personas prefieren evitarlas por completo, y usar la forma especial ~letrec~ en su lugar. ~letrec~ se parece a ~let~, por lo que no es sorprendente que las variables que vincula se vinculen simultáneamente y tengan el mismo alcance entre sí. El procedimiento de muestra ~f~ arriba puede escribirse sin definiciones internas, pero con exactamente el mismo significado, como
+
+#+begin_src scheme
+(define (f x)
+  (letrec ((even?
+            (lambda (n)
+              (if (= n 0)
+                  true
+                  (odd? (- n 1)))))
+           (odd?
+            (lambda (n)
+              (if (= n 0)
+                  false
+                  (even? (- n 1))))))
+    <REST OF BODY OF ~F~>))
+#+end_src
+
+Las expresiones ~letrec~, que tienen la forma
+
+#+begin_src scheme
+(letrec ((<VAR_1> <EXP_1>) ... (<VAR_N> <EXP_N>))
+  <BODY>)
+#+end_src
+
+son una variación de ~let~ en la cual las expresiones <EXP_K> que proporcionan los valores iniciales para las variables <VAR_K> se evalúan en un entorno que incluye todas las vinculaciones de ~letrec~. Esto permite recursión en las vinculaciones, como la recursión mutua de ~even?~ y ~odd?~ en el ejemplo anterior, o la evaluación de 10 factorial con
+
+#+begin_src scheme
+(letrec ((fact
+          (lambda (n)
+            (if (= n 1)
+                1
+                (* n (fact (- n 1)))))))
+  (fact 10))
+#+end_src
+
+a. Implementa ~letrec~ como una expresión derivada, transformando una expresión ~letrec~ en una expresión ~let~ como se muestra en el texto arriba o en el [[#exercise-4.18][Ejercicio 4.18]]. Es decir, las variables ~letrec~ deberían crearse con un ~let~ y luego asignarse sus valores con ~set!~.
+
+b. Louis Reasoner está confundido por todo este alboroto sobre las definiciones internas. Como él lo ve, si no te gusta usar ~define~ dentro de un procedimiento, puedes simplemente usar ~let~. Ilustra lo que hay de suelto en su razonamiento dibujando un diagrama de entorno que muestre el entorno en el cual se evalúa el <REST OF BODY OF F> durante la evaluación de la expresión ~(f 5)~, con ~f~ definida como en este ejercicio. Dibuja un diagrama de entorno para la misma evaluación, pero con ~let~ en lugar de ~letrec~ en la definición de ~f~.
+
+**** Ejercicio 4.21
+:properties:
+:custom_id: exercise-4.21
+:end:
+
+Sorprendentemente, la intuición de Louis en el [[#exercise-4.20][Ejercicio 4.20]] es correcta. De hecho es posible especificar procedimientos recursivos sin usar ~letrec~ (o incluso ~define~), aunque el método para lograr esto es mucho más sutil de lo que Louis imaginó. La siguiente expresión computa 10 factorial aplicando un procedimiento factorial recursivo:[fn:231]
+
+#+begin_src scheme
+((lambda (n)
+   ((lambda (fact)
+      (fact fact n))
+    (lambda (ft k)
+      (if (= k 1)
+          1
+          (* k (ft ft (- k 1)))))))
+ 10)
+#+end_src
+
+a. Verifica (evaluando la expresión) que esto realmente computa factoriales. Idea una expresión análoga para computar números de Fibonacci.
+
+b. Considera el siguiente procedimiento, que incluye definiciones internas mutuamente recursivas:
+
+#+begin_src scheme
+(define (f x)
+  (define (even? n)
+    (if (= n 0)
+        true
+        (odd? (- n 1))))
+  (define (odd? n)
+    (if (= n 0)
+        false
+        (even? (- n 1))))
+  (even? x))
+#+end_src
+
+Completa las expresiones faltantes para completar una definición alternativa de ~f~, que no usa ni definiciones internas ni ~letrec~:
+
+#+begin_src scheme
+(define (f x)
+  ((lambda (even? odd?)
+     (even? even? odd? x))
+   (lambda (ev? od? n)
+     (if (= n 0) true (od? <??> <??> <??>)))
+   (lambda (ev? od? n)
+     (if (= n 0) false (ev? <??> <??> <??>)))))
+#+end_src
+
+*** 4.1.7 Separación del Análisis Sintáctico de la Ejecución
+:properties:
+:custom_id: section-4.1.7
+:end:
+
+El evaluador implementado arriba es simple, pero es muy ineficiente, porque el análisis sintáctico de las expresiones está entrelazado con su ejecución. Así, si un programa se ejecuta muchas veces, su sintaxis se analiza muchas veces. Considera, por ejemplo, evaluar ~(factorial 4)~ usando la siguiente definición de ~factorial~:
+
+#+begin_src scheme
+(define (factorial n)
+  (if (= n 1)
+      1
+      (* (factorial (- n 1)) n)))
+#+end_src
+
+Cada vez que se llama a ~factorial~, el evaluador debe determinar que el cuerpo es una expresión ~if~ y extraer el predicado. Solo entonces puede evaluar el predicado y despachar sobre su valor. Cada vez que evalúa la expresión ~(* (factorial (- n 1)) n)~, o las subexpresiones ~(factorial (- n 1))~ y ~(- n 1)~, el evaluador debe realizar el análisis de casos en ~eval~ para determinar que la expresión es una aplicación, y debe extraer su operador y operandos. Este análisis es costoso. Realizarlo repetidamente es un desperdicio.
+
+Podemos transformar el evaluador para que sea significativamente más eficiente organizando las cosas de modo que el análisis sintáctico se realice solo una vez.[fn:232] Dividimos ~eval~, que toma una expresión y un entorno, en dos partes. El procedimiento ~analyze~ toma solo la expresión. Realiza el análisis sintáctico y devuelve un nuevo procedimiento, el <<i132>> procedimiento de ejecución, que encapsula el trabajo a realizar al ejecutar la expresión analizada. El procedimiento de ejecución toma un entorno como su argumento y completa la evaluación. Esto ahorra trabajo porque ~analyze~ se llamará solo una vez sobre una expresión, mientras que el procedimiento de ejecución puede llamarse muchas veces.
+
+Con la separación en análisis y ejecución, ~eval~ ahora se convierte en
+
+#+begin_src scheme
+(define (eval exp env)
+  ((analyze exp) env))
+#+end_src
+
+El resultado de llamar a ~analyze~ es el procedimiento de ejecución a aplicar al entorno. El procedimiento ~analyze~ es el mismo análisis de casos que realizaba el ~eval~ original de la sección [[#section-4.1.1][4.1.1]], excepto que los procedimientos a los cuales despachamos realizan solo análisis, no evaluación completa:
+
+#+begin_src scheme
+(define (analyze exp)
+  (cond ((self-evaluating? exp)
+         (analyze-self-evaluating exp))
+        ((quoted? exp) (analyze-quoted exp))
+        ((variable? exp) (analyze-variable exp))
+        ((assignment? exp) (analyze-assignment exp))
+        ((definition? exp) (analyze-definition exp))
+        ((if? exp) (analyze-if exp))
+        ((lambda? exp) (analyze-lambda exp))
+        ((begin? exp) (analyze-sequence (begin-actions exp)))
+        ((cond? exp) (analyze (cond->if exp)))
+        ((application? exp) (analyze-application exp))
+        (else
+         (error "Unknown expression type - ANALYZE" exp))))
+#+end_src
+
+Aquí está el procedimiento de análisis sintáctico más simple, que maneja expresiones auto-evaluables. Devuelve un procedimiento de ejecución que ignora su argumento de entorno y simplemente devuelve la expresión:
+
+#+begin_src scheme
+(define (analyze-self-evaluating exp)
+  (lambda (env) exp))
+#+end_src
+
+Para una expresión entre comillas, podemos ganar un poco de eficiencia extrayendo el texto de la cita solo una vez, en la fase de análisis, en lugar de en la fase de ejecución.
+
+#+begin_src scheme
+(define (analyze-quoted exp)
+  (let ((qval (text-of-quotation exp)))
+    (lambda (env) qval)))
+#+end_src
+
+Buscar el valor de una variable todavía debe hacerse en la fase de ejecución, ya que esto depende de conocer el entorno.[fn:233]
+
+#+begin_src scheme
+(define (analyze-variable exp)
+  (lambda (env) (lookup-variable-value exp env)))
+#+end_src
+
+~analyze-assignment~ también debe diferir realmente establecer la variable hasta la ejecución, cuando se ha proporcionado el entorno. Sin embargo, el hecho de que la expresión ~assignment-value~ puede analizarse (recursivamente) durante el análisis es una ganancia importante en eficiencia, porque la expresión ~assignment-value~ ahora se analizará solo una vez. Lo mismo aplica para las definiciones.
+
+#+begin_src scheme
+(define (analyze-assignment exp)
+  (let ((var (assignment-variable exp))
+        (vproc (analyze (assignment-value exp))))
+    (lambda (env)
+      (set-variable-value! var (vproc env) env)
+      'ok)))
+
+(define (analyze-definition exp)
+  (let ((var (definition-variable exp))
+        (vproc (analyze (definition-value exp))))
+    (lambda (env)
+      (define-variable! var (vproc env) env)
+      'ok)))
+#+end_src
+
+Para expresiones ~if~, extraemos y analizamos el predicado, el consecuente y la alternativa en el tiempo de análisis.
+
+#+begin_src scheme
+(define (analyze-if exp)
+  (let ((pproc (analyze (if-predicate exp)))
+        (cproc (analyze (if-consequent exp)))
+        (aproc (analyze (if-alternative exp))))
+    (lambda (env)
+      (if (true? (pproc env))
+          (cproc env)
+          (aproc env)))))
+#+end_src
+
+Analizar una expresión ~lambda~ también logra una ganancia importante en eficiencia: Analizamos el cuerpo del ~lambda~ solo una vez, aunque los procedimientos resultantes de la evaluación del ~lambda~ puedan aplicarse muchas veces.
+
+#+begin_src scheme
+(define (analyze-lambda exp)
+  (let ((vars (lambda-parameters exp))
+        (bproc (analyze-sequence (lambda-body exp))))
+    (lambda (env) (make-procedure vars bproc env))))
+#+end_src
+
+El análisis de una secuencia de expresiones (como en un ~begin~ o el cuerpo de una expresión ~lambda~) es más complicado.[fn:234] Cada expresión en la secuencia se analiza, produciendo un procedimiento de ejecución. Estos procedimientos de ejecución se combinan para producir un procedimiento de ejecución que toma un entorno como argumento y llama secuencialmente a cada procedimiento de ejecución individual con el entorno como argumento.
+
+#+begin_src scheme
+(define (analyze-sequence exps)
+  (define (sequentially proc1 proc2)
+    (lambda (env) (proc1 env) (proc2 env)))
+  (define (loop first-proc rest-procs)
+    (if (null? rest-procs)
+        first-proc
+        (loop (sequentially first-proc (car rest-procs))
+              (cdr rest-procs))))
+  (let ((procs (map analyze exps)))
+    (if (null? procs)
+        (error "Empty sequence - ANALYZE"))
+    (loop (car procs) (cdr procs))))
+#+end_src
+
+Para analizar una aplicación, analizamos el operador y los operandos y construimos un procedimiento de ejecución que llama al procedimiento de ejecución del operador (para obtener el procedimiento real a aplicar) y a los procedimientos de ejecución de los operandos (para obtener los argumentos reales). Luego pasamos estos a ~execute-application~, que es el análogo de ~apply~ en la sección [[#section-4.1.1][4.1.1]]. ~execute-application~ difiere de ~apply~ en que el cuerpo del procedimiento para un procedimiento compuesto ya ha sido analizado, por lo que no hay necesidad de hacer análisis adicional. En su lugar, simplemente llamamos al procedimiento de ejecución para el cuerpo sobre el entorno extendido.
+
+#+begin_src scheme
+(define (analyze-application exp)
+  (let ((fproc (analyze (operator exp)))
+        (aprocs (map analyze (operands exp))))
+    (lambda (env)
+      (execute-application (fproc env)
+                           (map (lambda (aproc) (aproc env))
+                                aprocs)))))
+
+(define (execute-application proc args)
+  (cond ((primitive-procedure? proc)
+         (apply-primitive-procedure proc args))
+        ((compound-procedure? proc)
+         ((procedure-body proc)
+          (extend-environment (procedure-parameters proc)
+                              args
+                              (procedure-environment proc))))
+        (else
+         (error
+          "Unknown procedure type - EXECUTE-APPLICATION"
+          proc))))
+#+end_src
+
+Nuestro nuevo evaluador usa las mismas estructuras de datos, procedimientos de sintaxis y procedimientos de soporte en tiempo de ejecución que en las secciones [[#section-4.1.2][4.1.2]], [[#section-4.1.3][4.1.3]] y [[#section-4.1.4][4.1.4]].
+
+**** Ejercicio 4.22
+:properties:
+:custom_id: exercise-4.22
+:end:
+
+Extiende el evaluador en esta sección para soportar la forma especial ~let~. (Ver [[#exercise-4.6][Ejercicio 4.6]].)
+
+**** Ejercicio 4.23
+:properties:
+:custom_id: exercise-4.23
+:end:
+
+Alyssa P. Hacker no entiende por qué ~analyze-sequence~ necesita ser tan complicado. Todos los otros procedimientos de análisis son transformaciones directas de los procedimientos de evaluación correspondientes (o cláusulas ~eval~) en la sección [[#section-4.1.1][4.1.1]]. Esperaba que ~analyze-sequence~ se viera así:
+
+#+begin_src scheme
+(define (analyze-sequence exps)
+  (define (execute-sequence procs env)
+    (cond ((null? (cdr procs)) ((car procs) env))
+          (else ((car procs) env)
+                (execute-sequence (cdr procs) env))))
+  (let ((procs (map analyze exps)))
+    (if (null? procs)
+        (error "Empty sequence - ANALYZE"))
+    (lambda (env) (execute-sequence procs env))))
+#+end_src
+
+Eva Lu Ator le explica a Alyssa que la versión en el texto hace más del trabajo de evaluar una secuencia en el tiempo de análisis. El procedimiento de ejecución de secuencias de Alyssa, en lugar de tener las llamadas a los procedimientos de ejecución individuales incorporadas, recorre los procedimientos para llamarlos: En efecto, aunque las expresiones individuales en la secuencia han sido analizadas, la secuencia misma no lo ha sido.
+
+Compara las dos versiones de ~analyze-sequence~. Por ejemplo, considera el caso común (típico de cuerpos de procedimientos) donde la secuencia tiene solo una expresión. ¿Qué trabajo hará el procedimiento de ejecución producido por el programa de Alyssa? ¿Qué pasa con el procedimiento de ejecución producido por el programa en el texto arriba? ¿Cómo se comparan las dos versiones para una secuencia con dos expresiones?
+
+**** Ejercicio 4.24
+:properties:
+:custom_id: exercise-4.24
+:end:
+
+Diseña y lleva a cabo algunos experimentos para comparar la velocidad del evaluador metacircular original con la versión en esta sección. Usa tus resultados para estimar la fracción de tiempo que se gasta en análisis versus ejecución para varios procedimientos.
+
