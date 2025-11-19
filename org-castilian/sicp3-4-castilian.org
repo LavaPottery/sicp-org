@@ -1,0 +1,555 @@
+** 3.4 Concurrencia: El tiempo es esencial
+:properties:
+:custom_id: section-3.4
+:end:
+
+Hemos visto el poder de los objetos computacionales con estado local como herramientas para el modelado. Sin embargo, como advirtió la sección [[#section-3.1.3][3.1.3]], este poder tiene un precio: la pérdida de la transparencia referencial, dando lugar a una maraña de preguntas sobre identidad y cambio, y la necesidad de abandonar el modelo de sustitución de evaluación en favor del modelo de entorno más intrincado.
+
+El problema central que acecha bajo la complejidad del estado, la identidad y el cambio es que al introducir la asignación nos vemos obligados a admitir <<i396>> el tiempo en nuestros modelos computacionales. Antes de introducir la asignación, todos nuestros programas eran atemporales, en el sentido de que cualquier expresión que tiene un valor siempre tiene el mismo valor. En contraste, recordemos el ejemplo de modelar retiros de una cuenta bancaria y devolver el saldo resultante, introducido al principio de la sección [[#section-3.1.1][3.1.1]]:
+
+#+begin_src scheme
+(withdraw 25)
+75
+
+(withdraw 25)
+50
+#+end_src
+
+Aquí las evaluaciones sucesivas de la misma expresión producen valores diferentes. Este comportamiento surge del hecho de que la ejecución de sentencias de asignación (en este caso, asignaciones a la variable ~balance~) delimita <<i243>> momentos en el tiempo cuando los valores cambian. El resultado de evaluar una expresión depende no solo de la expresión misma, sino también de si la evaluación ocurre antes o después de estos momentos. Construir modelos en términos de objetos computacionales con estado local nos obliga a enfrentar el tiempo como un concepto esencial en la programación.
+
+Podemos ir más lejos en la estructuración de modelos computacionales para que coincidan con nuestra percepción del mundo físico. Los objetos en el mundo no cambian uno a la vez en secuencia. Más bien los percibimos actuando <<i78>> concurrentemente--todos a la vez. Por lo tanto, a menudo es natural modelar sistemas como colecciones de procesos computacionales que se ejecutan concurrentemente. Así como podemos hacer nuestros programas modulares organizando modelos en términos de objetos con estado local separado, a menudo es apropiado dividir los modelos computacionales en partes que evolucionan separada y concurrentemente. Incluso si los programas se van a ejecutar en una computadora secuencial, la práctica de escribir programas como si fueran a ejecutarse concurrentemente obliga al programador a evitar restricciones de temporización no esenciales y así hace que los programas sean más modulares.
+
+Además de hacer que los programas sean más modulares, el cómputo concurrente puede proporcionar una ventaja de velocidad sobre el cómputo secuencial. Las computadoras secuenciales ejecutan solo una operación a la vez, por lo que la cantidad de tiempo que lleva realizar una tarea es proporcional al número total de operaciones realizadas.[fn:162] Sin embargo, si es posible descomponer un problema en piezas que son relativamente independientes y necesitan comunicarse solo raramente, puede ser posible asignar piezas a procesadores de cómputo separados, produciendo una ventaja de velocidad proporcional al número de procesadores disponibles.
+
+Desafortunadamente, las complejidades introducidas por la asignación se vuelven aún más problemáticas en presencia de concurrencia. El hecho de la ejecución concurrente, ya sea porque el mundo opera en paralelo o porque nuestras computadoras lo hacen, conlleva una complejidad adicional en nuestra comprensión del tiempo.
+
+*** 3.4.1 La naturaleza del tiempo en sistemas concurrentes
+:properties:
+:custom_id: section-3.4.1
+:end:
+
+En la superficie, el tiempo parece sencillo. Es un ordenamiento impuesto sobre los eventos.[fn:163] Para cualesquiera eventos A y B, o bien A ocurre antes que B, A y B son simultáneos, o A ocurre después de B. Por ejemplo, volviendo al ejemplo de la cuenta bancaria, supongamos que Peter retira $10 y Paul retira $25 de una cuenta conjunta que inicialmente contiene $100, dejando $65 en la cuenta. Dependiendo del orden de los dos retiros, la secuencia de saldos en la cuenta es o bien $100 -> $90 -> $65 o $100 -> $75 -> $65. En una implementación informática del sistema bancario, esta secuencia cambiante de saldos podría modelarse mediante asignaciones sucesivas a una variable ~balance~.
+
+En situaciones complejas, sin embargo, tal perspectiva puede ser problemática. Supongamos que Peter y Paul, y otras personas además, están accediendo a la misma cuenta bancaria a través de una red de cajeros automáticos distribuidos por todo el mundo. La secuencia real de saldos en la cuenta dependerá críticamente del momento detallado de los accesos y los detalles de la comunicación entre las máquinas.
+
+Esta indeterminación en el orden de los eventos puede plantear problemas serios en el diseño de sistemas concurrentes. Por ejemplo, supongamos que los retiros realizados por Peter y Paul se implementan como dos procesos separados que comparten una variable común ~balance~, cada proceso especificado por el procedimiento dado en la sección [[#section-3.1.1][3.1.1]]:
+
+#+begin_src scheme
+(define (withdraw amount)
+  (if (>= balance amount)
+      (begin (set! balance (- balance amount))
+             balance)
+      "Insufficient funds"))
+#+end_src
+
+Si los dos procesos operan independientemente, entonces Peter podría comprobar el saldo e intentar retirar una cantidad legítima. Sin embargo, Paul podría retirar algunos fondos entre el momento en que Peter comprueba el saldo y el momento en que Peter completa el retiro, invalidando así la comprobación de Peter.
+
+Las cosas pueden ser aún peores. Considera la expresión
+
+#+begin_src scheme
+(set! balance (- balance amount))
+#+end_src
+
+ejecutada como parte de cada proceso de retiro. Esto consiste de tres pasos: (1) acceder al valor de la variable ~balance~; (2) calcular el nuevo saldo; (3) establecer ~balance~ a este nuevo valor. Si los retiros de Peter y Paul ejecutan esta sentencia concurrentemente, entonces los dos retiros podrían entrelazar el orden en el que acceden a ~balance~ y lo establecen al nuevo valor.
+
+El diagrama temporal en la [[figure-3.29][Figura 3.29]] representa un orden de eventos donde ~balance~ comienza en 100, Peter retira 10, Paul retira 25, y sin embargo el valor final de ~balance~ es 75. Como se muestra en el diagrama, la razón de esta anomalía es que la asignación de Paul de 75 a ~balance~ se hace bajo el supuesto de que el valor de ~balance~ a decrementar es 100. Ese supuesto, sin embargo, se volvió inválido cuando Peter cambió ~balance~ a 90. Esto es un fallo catastrófico para el sistema bancario, porque la cantidad total de dinero en el sistema no se conserva. Antes de las transacciones, la cantidad total de dinero era $100. Después, Peter tiene $10, Paul tiene $25, y el banco tiene $75.[fn:164]
+
+El fenómeno general ilustrado aquí es que varios procesos pueden compartir una variable de estado común. Lo que hace esto complicado es que más de un proceso puede estar intentando manipular el estado compartido al mismo tiempo. Para el ejemplo de la cuenta bancaria, durante cada transacción, cada cliente debería poder actuar como si los otros clientes no existieran. Cuando un cliente cambia el saldo de una manera que depende del saldo, debe poder asumir que, justo antes del momento del cambio, el saldo sigue siendo lo que él pensaba que era.
+
+*Comportamiento correcto de programas concurrentes*
+
+El ejemplo anterior tipifica los errores sutiles que pueden colarse en los programas concurrentes. La raíz de esta complejidad reside en las asignaciones a variables que son compartidas entre los diferentes procesos. Ya sabemos que debemos tener cuidado al escribir programas que usan ~set!~, porque los resultados de un cómputo dependen del orden en que ocurren las asignaciones.[fn:165] Con procesos concurrentes debemos tener especial cuidado con las asignaciones, porque puede que no seamos capaces de controlar el orden de las asignaciones realizadas por los diferentes procesos. Si varios de tales cambios pueden hacerse concurrentemente (como con dos depositantes accediendo a una cuenta conjunta) necesitamos alguna manera de asegurar que nuestro sistema se comporta correctamente. Por ejemplo, en el caso de retiros de una cuenta bancaria conjunta, debemos asegurar que el dinero se conserva. Para hacer que los programas concurrentes se comporten correctamente, puede que tengamos que poner algunas restricciones sobre la ejecución concurrente.
+
+<<figure-3.29>> Diagrama temporal que muestra cómo el entrelazamiento del orden de eventos en dos retiros bancarios puede llevar a un saldo final incorrecto.
+
+#+begin_example
+  |           Peter              Bank              Paul
+  |                              ____
+  |                             /    \
+  |             .--------------|  $100 |-------------.
+  |             |               \____/              |
+  |             V                                   V
+  |  .----------------------.            .----------------------.
+  |  | Access balance: $100 |            | Access balance: $100 |
+  |  `----------+-----------'            `----------+-----------'
+  |             V                                   V
+  |  .----------------------.            .----------------------.
+  |  | new value: 100-10=90 |            | new value: 100-25=75 |
+  |  `----------+-----------'            `----------+-----------'
+  |             V                                   |
+  |  .----------------------.                       |
+  |  | set! balance to $90  |                       |
+  |  `----------+-----------'    ____               |
+  |             |               /    \              |
+  |             `------------->| $ 90 |             V
+  |                             \____/   .----------------------.
+  |                                      | new value: 100-25=75 |
+  |                              ____    `----------+-----------'
+  |                             /    \              |
+  |                            | $ 90 |<------------'
+  V                             \____/
+ time
+#+end_example
+
+Una posible restricción sobre la concurrencia estipularía que no pueden ocurrir al mismo tiempo dos operaciones que cambien cualesquiera variables de estado compartido. Este es un requisito extremadamente estricto. Para la banca distribuida, requeriría que el diseñador del sistema asegure que solo una transacción podría proceder a la vez. Esto sería tanto ineficiente como excesivamente conservador. La [[figure-3.30][Figura 3.30]] muestra a Peter y Paul compartiendo una cuenta bancaria, donde Paul tiene además una cuenta privada. El diagrama ilustra dos retiros de la cuenta compartida (uno por Peter y uno por Paul) y un depósito en la cuenta privada de Paul.[fn:166] Los dos retiros de la cuenta compartida no deben ser concurrentes (ya que ambos acceden y actualizan la misma cuenta), y el depósito y retiro de Paul no deben ser concurrentes (ya que ambos acceden y actualizan la cantidad en la cartera de Paul). Pero no debería haber problema permitiendo que el depósito de Paul en su cuenta privada proceda concurrentemente con el retiro de Peter de la cuenta compartida.
+
+<<figure-3.30>> Depósitos y retiros concurrentes de una cuenta conjunta en Bank1 y una cuenta privada en Bank2.
+
+#+begin_example
+  |    Peter          Bank1          Paul           Bank2
+  |    ____           ____           ____           ____
+  |   /    \         /    \         /    \         /    \
+  |  |  $7  |--. .--|  $100 |       |  $5  |--. .--|  $300 |
+  |   \____/   V V   \____/         \____/   V V   \____/
+  |           +---+                         +---+
+  |           | W |                         | D |
+  |    ____   ++-++   ____           ____   ++-++   ____
+  |   /    \   | |   /    \         /    \   | |   /    \
+  |  | $17  |<-' `->| $90  |--. .--|  $0  |<-' `->|  $305 |
+  |   \____/         \____/   V V   \____/         \____/
+  |                          +---+
+  |                          | W |
+  |    ____           ____   ++-++   ____           ____
+  |   /    \         /    \   | |   /    \         /    \
+  |  | $17  |       | $65  |<-' `->| $25  |       |  $305 |
+  |   \____/         \____/         \____/         \____/
+  V
+ time
+#+end_example
+
+Una restricción menos estricta sobre la concurrencia aseguraría que un sistema concurrente produce el mismo resultado como si los procesos se hubieran ejecutado secuencialmente en algún orden. Hay dos aspectos importantes en este requisito. Primero, no requiere que los procesos se ejecuten realmente secuencialmente, sino solo que produzcan resultados que sean los mismos /como si/ se hubieran ejecutado secuencialmente. Para el ejemplo en la [[figure-3.30][Figura 3.30]], el diseñador del sistema de cuenta bancaria puede permitir con seguridad que el depósito de Paul y el retiro de Peter ocurran concurrentemente, porque el resultado neto será el mismo que si las dos operaciones hubieran ocurrido secuencialmente. Segundo, puede haber más de un posible resultado "correcto" producido por un programa concurrente, porque solo requerimos que el resultado sea el mismo que para /algún/ orden secuencial. Por ejemplo, supongamos que la cuenta conjunta de Peter y Paul comienza con $100, y Peter deposita $40 mientras Paul retira concurrentemente la mitad del dinero en la cuenta. Entonces la ejecución secuencial podría resultar en que el saldo de la cuenta sea o bien $70 o $90 (ver [[#exercise-3.38][Ejercicio 3.38]]).[fn:167]
+
+Hay aún requisitos más débiles para la ejecución correcta de programas concurrentes. Un programa para simular difusión (digamos, el flujo de calor en un objeto) podría consistir de un gran número de procesos, cada uno representando un pequeño volumen de espacio, que actualizan sus valores concurrentemente. Cada proceso cambia repetidamente su valor al promedio de su propio valor y los valores de sus vecinos. Este algoritmo converge a la respuesta correcta independientemente del orden en que se hacen las operaciones; no hay necesidad de restricciones sobre el uso concurrente de los valores compartidos.
+
+**** Ejercicio 3.38
+:properties:
+:custom_id: exercise-3.38
+:end:
+
+Supongamos que Peter, Paul y Mary comparten una cuenta bancaria conjunta que inicialmente contiene $100. Concurrentemente, Peter deposita $10, Paul retira $20, y Mary retira la mitad del dinero en la cuenta, ejecutando los siguientes comandos:
+
+#+begin_example
+ Peter: (set! balance (+ balance 10))
+ Paul:  (set! balance (- balance 20))
+ Mary:  (set! balance (- balance (/ balance 2)))
+#+end_example
+
+a. Lista todos los diferentes valores posibles para ~balance~ después de que estas tres transacciones se hayan completado, asumiendo que el sistema bancario fuerza a los tres procesos a ejecutarse secuencialmente en algún orden.
+
+b. ¿Cuáles son algunos otros valores que podrían producirse si el sistema permite que los procesos se entrelacen? Dibuja diagramas temporales como el de la [[figure-3.29][Figura 3.29]] para explicar cómo pueden ocurrir estos valores.
+
+*** 3.4.2 Mecanismos para Controlar la Concurrencia
+:properties:
+:custom_id: section-3.4.2
+:end:
+
+Hemos visto que la dificultad al tratar con procesos concurrentes está arraigada en la necesidad de considerar el entrelazamiento del orden de eventos en los diferentes procesos. Por ejemplo, supongamos que tenemos dos procesos, uno con tres eventos ordenados (a,b,c) y uno con tres eventos ordenados (x,y,z). Si los dos procesos se ejecutan concurrentemente, sin restricciones sobre cómo se entrelaza su ejecución, entonces hay 20 ordenamientos diferentes posibles para los eventos que son consistentes con los ordenamientos individuales de los dos procesos:
+
+#+begin_example
+ (a,b,c,x,y,z)  (a,x,b,y,c,z)  (x,a,b,c,y,z)  (x,a,y,z,b,c)
+ (a,b,x,c,y,z)  (a,x,b,y,z,c)  (x,a,b,y,c,z)  (x,y,a,b,c,z)
+ (a,b,x,y,c,z)  (a,x,y,b,c,z)  (x,a,b,y,z,c)  (x,y,a,b,z,c)
+ (a,b,x,y,z,c)  (a,x,y,b,z,c)  (x,a,y,b,c,z)  (x,y,a,z,b,c)
+ (a,x,b,c,y,z)  (a,x,y,z,b,c)  (x,a,y,b,z,c)  (x,y,z,a,b,c)
+#+end_example
+
+Como programadores diseñando este sistema, tendríamos que considerar los efectos de cada uno de estos 20 ordenamientos y comprobar que cada comportamiento es aceptable. Tal enfoque rápidamente se vuelve inmanejable a medida que aumentan los números de procesos y eventos.
+
+Un enfoque más práctico para el diseño de sistemas concurrentes es idear mecanismos generales que nos permitan restringir el entrelazamiento de procesos concurrentes de modo que podamos estar seguros de que el comportamiento del programa es correcto. Muchos mecanismos se han desarrollado para este propósito. En esta sección, describimos uno de ellos, el <<i349>> serializador.
+
+*Serializar el acceso al estado compartido*
+
+La serialización implementa la siguiente idea: Los procesos se ejecutarán concurrentemente, pero habrá ciertas colecciones de procedimientos que no pueden ejecutarse concurrentemente. Más precisamente, la serialización crea conjuntos distinguidos de procedimientos tales que solo se permite que ocurra a la vez una ejecución de un procedimiento en cada conjunto serializado. Si algún procedimiento en el conjunto se está ejecutando, entonces un proceso que intenta ejecutar cualquier procedimiento en el conjunto será forzado a esperar hasta que la primera ejecución haya terminado.
+
+Podemos usar la serialización para controlar el acceso a variables compartidas. Por ejemplo, si queremos actualizar una variable compartida basándonos en el valor anterior de esa variable, ponemos el acceso al valor anterior de la variable y la asignación del nuevo valor a la variable en el mismo procedimiento. Luego aseguramos que ningún otro procedimiento que asigne a la variable pueda ejecutarse concurrentemente con este procedimiento serializando todos estos procedimientos con el mismo serializador. Esto garantiza que el valor de la variable no pueda cambiarse entre un acceso y la asignación correspondiente.
+
+*Serializadores en Scheme*
+
+Para hacer el mecanismo anterior más concreto, supongamos que hemos extendido Scheme para incluir un procedimiento llamado ~parallel-execute~:
+
+#+begin_src scheme
+(parallel-execute <P_1> <P_2> ... <P_K>)
+#+end_src
+
+Cada <P> debe ser un procedimiento sin argumentos. ~parallel-execute~ crea un proceso separado para cada <P>, que aplica <P> (sin argumentos). Estos procesos se ejecutan todos concurrentemente.[fn:168]
+
+Como ejemplo de cómo se usa esto, considera
+
+#+begin_src scheme
+(define x 10)
+
+(parallel-execute (lambda () (set! x (* x x)))
+                  (lambda () (set! x (+ x 1))))
+#+end_src
+
+Esto crea dos procesos concurrentes--P_1, que establece ~x~ a ~x~ por ~x~, y P_2, que incrementa ~x~. Después de que la ejecución se completa, ~x~ quedará con uno de cinco valores posibles, dependiendo del entrelazamiento de los eventos de P_1 y P_2:
+
+#+begin_example
+ 101: P_1 establece x a 100 y luego P_2 incrementa
+      x a 101.
+ 121: P_2 incrementa x a 11 y luego P_1 establece
+      x a x por x.
+ 110: P_2 cambia x de 10 a 11 entre las dos
+      veces que P_1 accede al valor de x durante
+      la evaluación de (* x x).
+ 11:  P_2 accede a x, luego P_1 establece x a
+      100, luego P_2 establece x.
+ 100: P_1 accede a ~x~ (dos veces), luego P_2 establece
+      x a 11, luego P_1 establece x.
+#+end_example
+
+Podemos restringir la concurrencia usando procedimientos serializados, que son creados por <<i350>> serializadores. Los serializadores se construyen mediante ~make-serializer~, cuya implementación se da más adelante. Un serializador toma un procedimiento como argumento y devuelve un procedimiento serializado que se comporta como el procedimiento original. Todas las llamadas a un serializador dado devuelven procedimientos serializados en el mismo conjunto.
+
+Así, en contraste con el ejemplo anterior, ejecutar
+
+#+begin_src scheme
+(define x 10)
+
+(define s (make-serializer))
+
+(parallel-execute (s (lambda () (set! x (* x x))))
+                  (s (lambda () (set! x (+ x 1)))))
+#+end_src
+
+solo puede producir dos valores posibles para ~x~, 101 o 121. Las otras posibilidades se eliminan, porque la ejecución de P_1 y P_2 no puede entrelazarse.
+
+Aquí hay una versión del procedimiento ~make-account~ de la sección [[#section-3.1.1][3.1.1]], donde los depósitos y retiros han sido serializados:
+
+#+begin_src scheme
+(define (make-account balance)
+  (define (withdraw amount)
+    (if (>= balance amount)
+        (begin (set! balance (- balance amount))
+               balance)
+        "Insufficient funds"))
+  (define (deposit amount)
+    (set! balance (+ balance amount))
+    balance)
+  (let ((protected (make-serializer)))
+    (define (dispatch m)
+      (cond ((eq? m 'withdraw) (protected withdraw))
+            ((eq? m 'deposit) (protected deposit))
+            ((eq? m 'balance) balance)
+            (else (error "Unknown request - MAKE-ACCOUNT"
+                         m))))
+    dispatch))
+#+end_src
+
+Con esta implementación, dos procesos no pueden estar retirando o depositando en una sola cuenta concurrentemente. Esto elimina la fuente del error ilustrado en la [[figure-3.29][Figura 3.29]], donde Peter cambia el saldo de la cuenta entre los momentos en que Paul accede al saldo para calcular el nuevo valor y cuando Paul realmente realiza la asignación. Por otro lado, cada cuenta tiene su propio serializador, de modo que los depósitos y retiros para diferentes cuentas pueden proceder concurrentemente.
+
+**** Ejercicio 3.39
+:properties:
+:custom_id: exercise-3.39
+:end:
+
+¿Cuáles de las cinco posibilidades en la ejecución paralela mostrada arriba permanecen si en su lugar serializamos la ejecución como sigue:
+
+#+begin_src scheme
+(define x 10)
+
+(define s (make-serializer))
+
+(parallel-execute (lambda () (set! x ((s (lambda () (* x x))))))
+                  (s (lambda () (set! x (+ x 1)))))
+#+end_src
+
+**** Ejercicio 3.40
+:properties:
+:custom_id: exercise-3.40
+:end:
+
+Da todos los valores posibles de ~x~ que pueden resultar de ejecutar
+
+#+begin_src scheme
+(define x 10)
+
+(parallel-execute (lambda () (set! x (* x x)))
+                  (lambda () (set! x (* x x x))))
+#+end_src
+
+¿Cuáles de estas posibilidades permanecen si en su lugar usamos procedimientos serializados:
+
+#+begin_src scheme
+(define x 10)
+
+(define s (make-serializer))
+
+(parallel-execute (s (lambda () (set! x (* x x))))
+                  (s (lambda () (set! x (* x x x)))))
+#+end_src
+
+**** Ejercicio 3.41
+:properties:
+:custom_id: exercise-3.41
+:end:
+
+Ben Bitdiddle se preocupa de que sería mejor implementar la cuenta bancaria como sigue (donde la línea comentada ha sido cambiada):
+
+#+begin_src scheme
+(define (make-account balance)
+  (define (withdraw amount)
+    (if (>= balance amount)
+        (begin (set! balance (- balance amount))
+               balance)
+        "Insufficient funds"))
+  (define (deposit amount)
+    (set! balance (+ balance amount))
+    balance)
+  ;; continúa en la página siguiente
+
+  (let ((protected (make-serializer)))
+    (define (dispatch m)
+      (cond ((eq? m 'withdraw) (protected withdraw))
+            ((eq? m 'deposit) (protected deposit))
+            ((eq? m 'balance)
+             ((protected (lambda () balance)))) ; serializado
+            (else (error "Unknown request - MAKE-ACCOUNT"
+                         m))))
+    dispatch))
+#+end_src
+
+porque permitir acceso no serializado al saldo bancario puede resultar en comportamiento anómalo. ¿Estás de acuerdo? ¿Hay algún escenario que demuestre la preocupación de Ben?
+
+**** Ejercicio 3.42
+:properties:
+:custom_id: exercise-3.42
+:end:
+
+Ben Bitdiddle sugiere que es una pérdida de tiempo crear un nuevo procedimiento serializado en respuesta a cada mensaje ~withdraw~ y ~deposit~. Él dice que ~make-account~ podría cambiarse de modo que las llamadas a ~protected~ se hagan fuera del procedimiento ~dispatch~. Es decir, una cuenta devolvería el mismo procedimiento serializado (que fue creado al mismo tiempo que la cuenta) cada vez que se le pide un procedimiento de retiro.
+
+#+begin_src scheme
+(define (make-account balance)
+  (define (withdraw amount)
+    (if (>= balance amount)
+        (begin (set! balance (- balance amount))
+               balance)
+        "Insufficient funds"))
+  (define (deposit amount)
+    (set! balance (+ balance amount))
+    balance)
+  (let ((protected (make-serializer)))
+    (let ((protected-withdraw (protected withdraw))
+          (protected-deposit (protected deposit)))
+      (define (dispatch m)
+        (cond ((eq? m 'withdraw) protected-withdraw)
+              ((eq? m 'deposit) protected-deposit)
+              ((eq? m 'balance) balance)
+              (else (error "Unknown request - MAKE-ACCOUNT"
+                           m))))
+      dispatch)))
+#+end_src
+
+¿Es este un cambio seguro de hacer? En particular, ¿hay alguna diferencia en qué concurrencia es permitida por estas dos versiones de ~make-account~?
+
+*Complejidad de usar múltiples recursos compartidos*
+
+Los serializadores proporcionan una abstracción poderosa que ayuda a aislar las complejidades de los programas concurrentes de modo que puedan tratarse cuidadosamente y (con suerte) correctamente. Sin embargo, mientras que usar serializadores es relativamente sencillo cuando hay solo un recurso compartido único (como una sola cuenta bancaria), la programación concurrente puede ser traicioneramente difícil cuando hay múltiples recursos compartidos.
+
+Para ilustrar una de las dificultades que pueden surgir, supongamos que deseamos intercambiar los saldos en dos cuentas bancarias. Accedemos a cada cuenta para encontrar el saldo, calculamos la diferencia entre los saldos, retiramos esta diferencia de una cuenta, y la depositamos en la otra cuenta. Podríamos implementar esto como sigue:[fn:169]
+
+#+begin_src scheme
+(define (exchange account1 account2)
+  (let ((difference (- (account1 'balance)
+                       (account2 'balance))))
+    ((account1 'withdraw) difference)
+    ((account2 'deposit) difference)))
+#+end_src
+
+Este procedimiento funciona bien cuando solo un proceso único está intentando hacer el intercambio. Supongamos, sin embargo, que Peter y Paul ambos tienen acceso a las cuentas a1, a2 y a3, y que Peter intercambia a1 y a2 mientras Paul intercambia concurrentemente a1 y a3. Incluso con depósitos y retiros de cuenta serializados para cuentas individuales (como en el procedimiento ~make-account~ mostrado arriba en esta sección), ~exchange~ puede todavía producir resultados incorrectos. Por ejemplo, Peter podría calcular la diferencia en los saldos para a1 y a2, pero entonces Paul podría cambiar el saldo en a1 antes de que Peter sea capaz de completar el intercambio.[fn:170] Para comportamiento correcto, debemos organizar que el procedimiento ~exchange~ bloquee cualquier otro acceso concurrente a las cuentas durante todo el tiempo del intercambio.
+
+Una manera en que podemos lograr esto es usando los serializadores de ambas cuentas para serializar el procedimiento ~exchange~ completo. Para hacer esto, organizaremos el acceso al serializador de una cuenta. Nota que estamos deliberadamente rompiendo la modularidad del objeto cuenta-bancaria exponiendo el serializador. La siguiente versión de ~make-account~ es idéntica a la versión original dada en la sección [[#section-3.1.1][3.1.1]], excepto que se proporciona un serializador para proteger la variable balance, y el serializador se exporta mediante paso de mensajes:
+
+#+begin_src scheme
+(define (make-account-and-serializer balance)
+  (define (withdraw amount)
+    (if (>= balance amount)
+        (begin (set! balance (- balance amount))
+               balance)
+        "Insufficient funds"))
+  (define (deposit amount)
+    (set! balance (+ balance amount))
+    balance)
+  (let ((balance-serializer (make-serializer)))
+    (define (dispatch m)
+      (cond ((eq? m 'withdraw) withdraw)
+            ((eq? m 'deposit) deposit)
+            ((eq? m 'balance) balance)
+            ((eq? m 'serializer) balance-serializer)
+            (else (error "Unknown request - MAKE-ACCOUNT"
+                         m))))
+    dispatch))
+#+end_src
+
+Podemos usar esto para hacer depósitos y retiros serializados. Sin embargo, a diferencia de nuestra cuenta serializada anterior, ahora es la responsabilidad de cada usuario de objetos cuenta-bancaria gestionar explícitamente la serialización, por ejemplo como sigue:[fn:171]
+
+#+begin_src scheme
+(define (deposit account amount)
+  (let ((s (account 'serializer))
+        (d (account 'deposit)))
+    ((s d) amount)))
+#+end_src
+
+Exportar el serializador de esta manera nos da suficiente flexibilidad para implementar un programa de intercambio serializado. Simplemente serializamos el procedimiento ~exchange~ original con los serializadores de ambas cuentas:
+
+#+begin_src scheme
+(define (serialized-exchange account1 account2)
+  (let ((serializer1 (account1 'serializer))
+        (serializer2 (account2 'serializer)))
+    ((serializer1 (serializer2 exchange))
+     account1
+     account2)))
+#+end_src
+
+**** Ejercicio 3.43
+:properties:
+:custom_id: exercise-3.43
+:end:
+
+Supongamos que los saldos en tres cuentas comienzan como $10, $20 y $30, y que múltiples procesos se ejecutan, intercambiando los saldos en las cuentas. Argumenta que si los procesos se ejecutan secuencialmente, después de cualquier número de intercambios concurrentes, los saldos de las cuentas deberían ser $10, $20 y $30 en algún orden. Dibuja un diagrama temporal como el de la [[figure-3.29][Figura 3.29]] para mostrar cómo esta condición puede violarse si los intercambios se implementan usando la primera versión del programa de intercambio de cuentas en esta sección. Por otro lado, argumenta que incluso con este programa ~exchange~, la suma de los saldos en las cuentas se preservará. Dibuja un diagrama temporal para mostrar cómo incluso esta condición se violaría si no serializamos las transacciones en cuentas individuales.
+
+**** Ejercicio 3.44
+:properties:
+:custom_id: exercise-3.44
+:end:
+
+Considera el problema de transferir una cantidad de una cuenta a otra. Ben Bitdiddle afirma que esto puede lograrse con el siguiente procedimiento, incluso si hay múltiples personas transfiriendo dinero concurrentemente entre múltiples cuentas, usando cualquier mecanismo de cuenta que serialice las transacciones de depósito y retiro, por ejemplo, la versión de ~make-account~ en el texto de arriba.
+
+#+begin_src scheme
+(define (transfer from-account to-account amount)
+  ((from-account 'withdraw) amount)
+  ((to-account 'deposit) amount))
+#+end_src
+
+Louis Reasoner afirma que hay un problema aquí, y que necesitamos usar un método más sofisticado, como el requerido para tratar con el problema del intercambio. ¿Tiene razón Louis? Si no, ¿cuál es la diferencia esencial entre el problema de la transferencia y el problema del intercambio? (Deberías asumir que el saldo en ~from-account~ es al menos ~amount~.)
+
+**** Ejercicio 3.45
+:properties:
+:custom_id: exercise-3.45
+:end:
+
+Louis Reasoner piensa que nuestro sistema de cuenta-bancaria es innecesariamente complejo y propenso a errores ahora que los depósitos y retiros no se serializan automáticamente. Él sugiere que ~make-account-and-serializer~ debería haber exportado el serializador (para uso por tales procedimientos como ~serialized-exchange~) además de (en lugar de en vez de) usarlo para serializar cuentas y depósitos como ~make-account~ hizo. Él propone redefinir las cuentas como sigue:
+
+#+begin_src scheme
+(define (make-account-and-serializer balance)
+  (define (withdraw amount)
+    (if (>= balance amount)
+        (begin (set! balance (- balance amount))
+               balance)
+        "Insufficient funds"))
+  (define (deposit amount)
+    (set! balance (+ balance amount))
+    balance)
+  (let ((balance-serializer (make-serializer)))
+    (define (dispatch m)
+      (cond ((eq? m 'withdraw) (balance-serializer withdraw))
+            ((eq? m 'deposit) (balance-serializer deposit))
+            ((eq? m 'balance) balance)
+            ((eq? m 'serializer) balance-serializer)
+            (else (error "Unknown request - MAKE-ACCOUNT"
+                         m))))
+    dispatch))
+#+end_src
+
+Entonces los depósitos se manejan como con el ~make-account~ original:
+
+#+begin_src scheme
+(define (deposit account amount)
+  ((account 'deposit) amount))
+#+end_src
+
+Explica qué está mal con el razonamiento de Louis. En particular, considera qué sucede cuando se llama a ~serialized-exchange~.
+
+*Implementar serializadores*
+
+Implementamos serializadores en términos de un mecanismo de sincronización más primitivo llamado un <<i248>> mutex. Un mutex es un objeto que soporta dos operaciones--el mutex puede ser <<i7>> adquirido, y el mutex puede ser <<i333>> liberado. Una vez que un mutex ha sido adquirido, ninguna otra operación de adquisición sobre ese mutex puede proceder hasta que el mutex sea liberado.[fn:172] En nuestra implementación, cada serializador tiene un mutex asociado. Dado un procedimiento ~p~, el serializador devuelve un procedimiento que adquiere el mutex, ejecuta ~p~, y luego libera el mutex. Esto asegura que solo uno de los procedimientos producidos por el serializador pueda estar ejecutándose a la vez, que es precisamente la propiedad de serialización que necesitamos garantizar.
+
+#+begin_src scheme
+(define (make-serializer)
+  (let ((mutex (make-mutex)))
+    (lambda (p)
+      (define (serialized-p . args)
+        (mutex 'acquire)
+        (let ((val (apply p args)))
+          (mutex 'release)
+          val))
+      serialized-p)))
+#+end_src
+
+El mutex es un objeto mutable (aquí usaremos una lista de un elemento, a la cual nos referiremos como una <<i56>> celda) que puede contener el valor true o false. Cuando el valor es false, el mutex está disponible para ser adquirido. Cuando el valor es true, el mutex no está disponible, y cualquier proceso que intente adquirir el mutex debe esperar.
+
+Nuestro constructor de mutex ~make-mutex~ comienza inicializando el contenido de la celda a false. Para adquirir el mutex, comprobamos la celda. Si el mutex está disponible, establecemos el contenido de la celda a true y procedemos. De lo contrario, esperamos en un bucle, intentando adquirir una y otra vez, hasta que encontramos que el mutex está disponible.[fn:173] Para liberar el mutex, establecemos el contenido de la celda a false.
+
+#+begin_src scheme
+(define (make-mutex)
+  (let ((cell (list false)))
+    (define (the-mutex m)
+      (cond ((eq? m 'acquire)
+             (if (test-and-set! cell)
+                 (the-mutex 'acquire))) ; reintentar
+            ((eq? m 'release) (clear! cell))))
+    the-mutex))
+
+(define (clear! cell)
+  (set-car! cell false))
+#+end_src
+
+~test-and-set!~ comprueba la celda y devuelve el resultado de la comprobación. Además, si la comprobación fue false, ~test-and-set!~ establece el contenido de la celda a true antes de devolver false. Podemos expresar este comportamiento como el siguiente procedimiento:
+
+#+begin_src scheme
+(define (test-and-set! cell)
+  (if (car cell)
+      true
+      (begin (set-car! cell true)
+             false)))
+#+end_src
+
+Sin embargo, esta implementación de ~test-and-set!~ no es suficiente tal como está. Hay una sutileza crucial aquí, que es el lugar esencial donde el control de concurrencia entra en el sistema: La operación ~test-and-set!~ debe realizarse <<i25>> atómicamente. Es decir, debemos garantizar que, una vez que un proceso ha comprobado la celda y encontrado que es false, el contenido de la celda realmente se establecerá a true antes de que cualquier otro proceso pueda comprobar la celda. Si no hacemos esta garantía, entonces el mutex puede fallar de una manera similar al fallo de la cuenta-bancaria en la [[figure-3.29][Figura 3.29]]. (Ver [[#exercise-3.46][Ejercicio 3.46]].)
+
+La implementación real de ~test-and-set!~ depende de los detalles de cómo nuestro sistema ejecuta procesos concurrentes. Por ejemplo, podríamos estar ejecutando procesos concurrentes en un procesador secuencial usando un mecanismo de división de tiempo que cicla a través de los procesos, permitiendo a cada proceso ejecutarse por un tiempo corto antes de interrumpirlo y pasar al siguiente proceso. En ese caso, ~test-and-set!~ puede funcionar deshabilitando la división de tiempo durante la comprobación y establecimiento.[fn:174] Alternativamente, las computadoras multiprocesamiento proporcionan instrucciones que soportan operaciones atómicas directamente en hardware.[fn:175]
+
+**** Ejercicio 3.46
+:properties:
+:custom_id: exercise-3.46
+:end:
+
+Supongamos que implementamos ~test-and-set!~ usando un procedimiento ordinario como se muestra en el texto, sin intentar hacer la operación atómica. Dibuja un diagrama temporal como el de la [[figure-3.29][Figura 3.29]] para demostrar cómo la implementación del mutex puede fallar permitiendo que dos procesos adquieran el mutex al mismo tiempo.
+
+**** Ejercicio 3.47
+:properties:
+:custom_id: exercise-3.47
+:end:
+
+Un semáforo (de tamaño n) es una generalización de un mutex. Como un mutex, un semáforo soporta operaciones de adquisición y liberación, pero es más general en que hasta n procesos pueden adquirirlo concurrentemente. Los procesos adicionales que intentan adquirir el semáforo deben esperar operaciones de liberación. Da implementaciones de semáforos
+
+1. en términos de mutexes.
+2. en términos de operaciones atómicas ~test-and-set!~.
+
+*Interbloqueo*
+
+Ahora que hemos visto cómo implementar serializadores, podemos ver que el intercambio de cuentas todavía tiene un problema, incluso con el procedimiento ~serialized-exchange~ de arriba. Imagina que Peter intenta intercambiar a1 con a2 mientras Paul concurrentemente intenta intercambiar a2 con a1. Supongamos que el proceso de Peter alcanza el punto donde ha entrado en un procedimiento serializado que protege a1 y, justo después de eso, el proceso de Paul entra en un procedimiento serializado que protege a2. Ahora Peter no puede proceder (para entrar en un procedimiento serializado que protege a2) hasta que Paul salga del procedimiento serializado que protege a2. Similarmente, Paul no puede proceder hasta que Peter salga del procedimiento serializado que protege a1. Cada proceso está atascado para siempre, esperando al otro. Esta situación se llama un <<i99>> interbloqueo. El interbloqueo es siempre un peligro en sistemas que proporcionan acceso concurrente a múltiples recursos compartidos.
+
+Una manera de evitar el interbloqueo en esta situación es dar a cada cuenta un número de identificación único y reescribir ~serialized-exchange~ de modo que un proceso siempre intente entrar en un procedimiento que protege la cuenta de número más bajo primero. Aunque este método funciona bien para el problema del intercambio, hay otras situaciones que requieren técnicas más sofisticadas de evitación de interbloqueo, o donde el interbloqueo no puede evitarse en absoluto. (Ver [[#exercise-3.48][Ejercicio 3.48]] y [[#exercise-3.49][Ejercicio 3.49]].)[fn:176]
+
+**** Ejercicio 3.48
+:properties:
+:custom_id: exercise-3.48
+:end:
+
+Explica en detalle por qué el método de evitación de interbloqueo descrito arriba, (es decir, las cuentas están numeradas, y cada proceso intenta adquirir la cuenta de número menor primero) evita el interbloqueo en el problema del intercambio. Reescribe ~serialized-exchange~ para incorporar esta idea. (También necesitarás modificar ~make-account~ de modo que cada cuenta se crea con un número, al cual se pueda acceder enviando un mensaje apropiado.)
+
+**** Ejercicio 3.49
+:properties:
+:custom_id: exercise-3.49
+:end:
+
+Da un escenario donde el mecanismo de evitación de interbloqueo descrito arriba no funciona. (Pista: En el problema del intercambio, cada proceso sabe de antemano a qué cuentas necesitará obtener acceso. Considera una situación donde un proceso debe obtener acceso a algunos recursos compartidos antes de que pueda saber qué recursos compartidos adicionales requerirá.)
+
+*Concurrencia, tiempo y comunicación*
+
+Hemos visto cómo programar sistemas concurrentes requiere controlar el ordenamiento de eventos cuando diferentes procesos acceden al estado compartido, y hemos visto cómo lograr este control mediante el uso juicioso de serializadores. Pero los problemas de la concurrencia yacen más profundo que esto, porque, desde un punto de vista fundamental, no siempre está claro qué se entiende por "estado compartido."
+
+Mecanismos como ~test-and-set!~ requieren que los procesos examinen una bandera compartida global en momentos arbitrarios. Esto es problemático e ineficiente de implementar en procesadores modernos de alta velocidad, donde debido a técnicas de optimización como el entubamiento y la memoria en caché, el contenido de la memoria puede no estar en un estado consistente en cada instante. En los sistemas multiprocesamiento contemporáneos, por lo tanto, el paradigma del serializador está siendo suplantado por nuevos enfoques al control de concurrencia.[fn:177]
+
+Los aspectos problemáticos del estado compartido también surgen en sistemas grandes y distribuidos. Por ejemplo, imagina un sistema bancario distribuido donde los bancos de sucursales individuales mantienen valores locales para saldos bancarios y periódicamente comparan estos con valores mantenidos por otras sucursales. En tal sistema el valor del "saldo de la cuenta" estaría indeterminado, excepto justo después de la sincronización. Si Peter deposita dinero en una cuenta que tiene conjuntamente con Paul, ¿cuándo deberíamos decir que el saldo de la cuenta ha cambiado--cuando el saldo en la sucursal local cambia, o no hasta después de la sincronización? Y si Paul accede a la cuenta desde una sucursal diferente, ¿cuáles son las restricciones razonables a poner sobre el sistema bancario tal que el comportamiento sea "correcto"? Lo único que podría importar para la corrección es el comportamiento observado por Peter y Paul individualmente y el "estado" de la cuenta inmediatamente después de la sincronización. Las preguntas sobre el saldo "real" de la cuenta o el orden de eventos entre sincronizaciones pueden ser irrelevantes o sin sentido.[fn:178]
+
+El fenómeno básico aquí es que sincronizar diferentes procesos, establecer estado compartido, o imponer un orden sobre los eventos requiere comunicación entre los procesos. En esencia, cualquier noción de tiempo en el control de concurrencia debe estar íntimamente ligada a la comunicación.[fn:179] Es intrigante que una conexión similar entre tiempo y comunicación también surge en la Teoría de la Relatividad, donde la velocidad de la luz (la señal más rápida que puede usarse para sincronizar eventos) es una constante fundamental que relaciona tiempo y espacio. Las complejidades que encontramos al tratar con tiempo y estado en nuestros modelos computacionales pueden de hecho reflejar una complejidad fundamental del universo físico.
