@@ -1,0 +1,279 @@
+[fn:200] This is a small reflection, in Lisp, of the difficulties that conventional strongly typed languages such as Pascal have in coping with higher-order procedures.  In such languages, the programmer must specify the data types of the arguments and the result of each procedure: number, logical value, sequence, and so on.  Consequently, we could not express an abstraction such as "map a given procedure ~proc~ over all the elements in a sequence" by a single higher-order procedure such as ~stream-map~.  Rather, we would need a different mapping procedure for each different combination of argument and result data types that might be specified for a ~proc~.  Maintaining a practical notion of "data type" in the presence of higher-order procedures raises many difficult issues.  One way of dealing with this problem is illustrated by the language ML (Gordon, Milner, and Wadsworth 1979), whose "polymorphic data types" include templates for higher-order transformations between data types.  Moreover, data types for most procedures in ML are never explicitly declared by the programmer.  Instead, ML includes a <<i407>> type-inferencing mechanism that uses information in the environment to deduce the data types for newly defined procedures.
+
+[fn:201] Similarly in physics, when we observe a moving particle, we say that the position (state) of the particle is changing.  However, from the perspective of the particle's world line in space-time there is no change involved.
+
+[fn:202] John Backus, the inventor of Fortran, gave high visibility to functional programming when he was awarded the ACM Turing award in 1978.  His acceptance speech (Backus 1978) strongly advocated the functional approach.  A good overview of functional programming is given in Henderson 1980 and in Darlington, Henderson, and Turner 1982.
+
+[fn:203] Observe that, for any two streams, there is in general more than one acceptable order of interleaving.  Thus, technically, "merge" is a relation rather than a function--the answer is not a deterministic function of the inputs.  We already mentioned ([fn:39]) that nondeterminism is essential when dealing with concurrency.  The merge relation illustrates the same essential nondeterminism, from the functional perspective.  In section [[#section-4.3][4.3]], we will look at nondeterminism from yet another point of view.
+
+[fn:204] The object model approximates the world by dividing it into separate pieces.  The functional model does not modularize along object boundaries.  The object model is useful when the unshared state of the "objects" is much larger than the state that they share.  An example of a place where the object viewpoint fails is quantum mechanics, where thinking of things as individual particles leads to paradoxes and confusions.  Unifying the object view with the functional view may have little to do with programming, but rather with fundamental epistemological issues.
+
+[fn:205] The same idea is pervasive throughout all of engineering.  For example, electrical engineers use many different languages for describing circuits.  Two of these are the language of electrical <<i253>> networks and the language of electrical <<i385>> systems.  The network language emphasizes the physical modeling of devices in terms of discrete electrical elements.  The primitive objects of the network language are primitive electrical components such as resistors, capacitors, inductors, and transistors, which are characterized in terms of physical variables called voltage and current.  When describing circuits in the network language, the engineer is concerned with the physical characteristics of a design.  In contrast, the primitive objects of the system language are signal-processing modules such as filters and amplifiers.  Only the functional behavior of the modules is relevant, and signals are manipulated without concern for their physical realization as voltages and currents.  The system language is erected on the network language, in the sense that the elements of signal-processing systems are constructed from electrical networks.  Here, however, the concerns are with the large-scale organization of electrical devices to solve a given application problem; the physical feasibility of the parts is assumed.  This layered collection of languages is another example of the stratified design technique illustrated by the picture language of section [[#section-2.2.4][2.2.4]].
+
+[fn:206] The most important features that our evaluator leaves out are mechanisms for handling errors and supporting debugging.  For a more extensive discussion of evaluators, see Friedman, Wand, and Haynes 1992, which gives an exposition of programming languages that proceeds via a sequence of evaluators written in Scheme.
+
+[fn:207] Even so, there will remain important aspects of the evaluation process that are not elucidated by our evaluator.  The most important of these are the detailed mechanisms by which procedures call other procedures and return values to their callers.  We will address these issues in [[#section-5][Chapter 5]], where we take a closer look at the evaluation process by implementing the evaluator as a simple register machine.
+
+[fn:208] If we grant ourselves the ability to apply primitives, then what remains for us to implement in the evaluator?  The job of the evaluator is not to specify the primitives of the language, but rather to provide the connective tissue--the means of combination and the means of abstraction--that binds a collection of primitives to form a language.  Specifically:
+
+- The evaluator enables us to deal with nested expressions.  For example, although simply applying primitives would suffice for evaluating the expression ~(+ 1 6)~, it is not adequate for handling ~(+ 1 (* 2 3))~.  As far as the primitive procedure ~+~ is concerned, its arguments must be numbers, and it would choke if we passed it the expression ~(* 2 3)~ as an argument.  One important role of the evaluator is to choreograph procedure composition so that ~(* 2 3)~ is reduced to 6 before being passed as an argument to ~+~.
+
+- The evaluator allows us to use variables.  For example, the primitive procedure for addition has no way to deal with expressions such as ~(+ x 1)~.  We need an evaluator to keep track of variables and obtain their values before invoking the primitive procedures.
+
+- The evaluator allows us to define compound procedures.  This involves keeping track of procedure definitions, knowing how to use these definitions in evaluating expressions, and providing a mechanism that enables procedures to accept arguments.
+
+- The evaluator provides the special forms, which must be evaluated differently from procedure calls.
+
+[fn:209] We could have simplified the ~application?~ clause in ~eval~ by using ~map~ (and stipulating that ~operands~ returns a list) rather than writing an explicit ~list-of-values~ procedure.  We chose not to use ~map~ here to emphasize the fact that the evaluator can be implemented without any use of higher-order procedures (and thus could be written in a language that doesn't have higher-order procedures), even though the language that it supports will include higher-order procedures.
+
+[fn:210] In this case, the language being implemented and the implementation language are the same.  Contemplation of the meaning of ~true?~ here yields expansion of consciousness without the abuse of substance.
+
+[fn:211] This implementation of ~define~ ignores a subtle issue in the handling of internal definitions, although it works correctly in most cases.  We will see what the problem is and how to solve it in section [[#section-4.1.6][4.1.6]].
+
+[fn:212] As we said when we introduced ~define~ and ~set!~, these values are implementation-dependent in Scheme--that is, the implementor can choose what value to return.
+
+[fn:213] As mentioned in section [[#section-2.3.1][2.3.1]], the evaluator sees a quoted expression as a list beginning with ~quote~, even if the expression is typed with the quotation mark.  For example, the expression ~'a~ would be seen by the evaluator as ~(quote a)~.  See [[#exercise-2.55][Exercise 2.55]].
+
+[fn:214] The value of an ~if~ expression when the predicate is false and there is no alternative is unspecified in Scheme; we have chosen here to make it false.  We will support the use of the variables ~true~ and ~false~ in expressions to be evaluated by binding them in the global environment.  See section [[#section-4.1.4][4.1.4]].
+
+[fn:215] These selectors for a list of expressions--and the corresponding ones for a list of operands--are not intended as a data abstraction.  They are introduced as mnemonic names for the basic list operations in order to make it easier to understand the explicit-control evaluator in section [[#section-5.4][5.4]].
+
+[fn:216] The value of a ~cond~ expression when all the predicates are false and there is no ~else~ clause is unspecified in Scheme; we have chosen here to make it false.
+
+[fn:217] Practical Lisp systems provide a mechanism that allows a user to add new derived expressions and specify their implementation as syntactic transformations without modifying the evaluator.  Such a user-defined transformation is called a <<i224>> macro.  Although it is easy to add an elementary mechanism for defining macros, the resulting language has subtle name-conflict problems.  There has been much research on mechanisms for macro definition that do not cause these difficulties.  See, for example, Kohlbecker 1986, Clinger and Rees 1991, and Hanson 1991.
+
+[fn:218] Frames are not really a data abstraction in the following code: ~Set-variable-value!~ and ~define-variable!~ use ~set-car!~ to directly modify the values in a frame.  The purpose of the frame procedures is to make the environment-manipulation procedures easy to read.
+
+[fn:219] The drawback of this representation (as well as the variant in [[#exercise-4.11][Exercise 4.11]]) is that the evaluator may have to search through many frames in order to find the binding for a given variable.  (Such an approach is referred to as <<i102>> deep binding.)  One way to avoid this inefficiency is to make use of a strategy called <<i205>> lexical addressing, which will be discussed in section [[#section-5.5.6][5.5.6]].
+
+[fn:220] Any procedure defined in the underlying Lisp can be used as a primitive for the metacircular evaluator.  The name of a primitive installed in the evaluator need not be the same as the name of its implementation in the underlying Lisp; the names are the same here because the metacircular evaluator implements Scheme itself.  Thus, for example, we could put ~(list 'first car)~ or ~(list 'square (lambda (x) (* x x)))~ in the list of ~primitive-procedures~.
+
+[fn:221] ~Apply-in-underlying-scheme~ is the ~apply~ procedure we have used in earlier chapters.  The metacircular evaluator's ~apply~ procedure (section [[#section-4.1.1][4.1.1]]) models the working of this primitive.  Having two different things called ~apply~ leads to a technical problem in running the metacircular evaluator, because defining the metacircular evaluator's ~apply~ will mask the definition of the primitive.  One way around this is to rename the metacircular ~apply~ to avoid conflict with the name of the primitive procedure.  We have assumed instead that we have saved a reference to the underlying ~apply~ by doing
+
+#+begin_src scheme
+(define apply-in-underlying-scheme apply)
+#+end_src
+
+before defining the metacircular ~apply~.  This allows us to access the original version of ~apply~ under a different name.
+
+[fn:222] The primitive procedure ~read~ waits for input from the user, and returns the next complete expression that is typed.  For example, if the user types ~(+ 23 x)~, ~read~ returns a three-element list containing the symbol ~+~, the number 23, and the symbol ~x~.  If the user types ~'x~, ~read~ returns a two-element list containing the symbol ~quote~ and the symbol ~x~.
+
+[fn:223] The fact that the machines are described in Lisp is inessential.  If we give our evaluator a Lisp program that behaves as an evaluator for some other language, say C, the Lisp evaluator will emulate the C evaluator, which in turn can emulate any machine described as a C program.  Similarly, writing a Lisp evaluator in C produces a C program that can execute any Lisp program.  The deep idea here is that any evaluator can emulate any other.  Thus, the notion of "what can in principle be computed" (ignoring practicalities of time and memory required) is independent of the language or the computer, and instead reflects an underlying notion of <<i76>> computability.  This was first demonstrated in a clear way by Alan M. Turing (1912-1954), whose 1936 paper laid the foundations for theoretical computer science.  In the paper, Turing presented a simple computational model--now known as a <<i403>> Turing machine--and argued that any "effective process" can be formulated as a program for such a machine.  (This argument is known as the <<i59>> Church-Turing thesis.)  Turing then implemented a universal machine, i.e., a Turing machine that behaves as an evaluator for Turing-machine programs.  He used this framework to demonstrate that there are well-posed problems that cannot be computed by Turing machines (see [[#exercise-4.15][Exercise 4.15]]), and so by implication cannot be formulated as "effective processes."  Turing went on to make fundamental contributions to practical computer science as well.  For example, he invented the idea of structuring programs using general-purpose subroutines.  See Hodges 1983 for a biography of Turing.
+
+[fn:224] Some people find it counterintuitive that an evaluator, which is implemented by a relatively simple procedure, can emulate programs that are more complex than the evaluator itself.  The existence of a universal evaluator machine is a deep and wonderful property of computation.  <<i324>> Recursion theory, a branch of mathematical logic, is concerned with logical limits of computation.  Douglas Hofstadter's beautiful book 'Go"del, Escher, Bach' (1979) explores some of these ideas.
+
+[fn:225] Warning: This ~eval~ primitive is not identical to the ~eval~ procedure we implemented in section [[#section-4.1.1][4.1.1]], because it uses /actual/ Scheme environments rather than the sample environment structures we built in section [[#section-4.1.3][4.1.3]].  These actual environments cannot be manipulated by the user as ordinary lists; they must be accessed via ~eval~ or other special operations.  Similarly, the ~apply~ primitive we saw earlier is not identical to the metacircular ~apply~, because it uses actual Scheme procedures rather than the procedure objects we constructed in sections [[#section-4.1.3][4.1.3]] and [[#section-4.1.4][4.1.4]].
+
+[fn:226] The MIT implementation of Scheme includes ~eval~, as well as a symbol ~user-initial-environment~ that is bound to the initial environment in which the user's input expressions are evaluated.
+
+[fn:227] Although we stipulated that ~halts?~ is given a procedure object, notice that this reasoning still applies even if ~halts?~ can gain access to the procedure's text and its environment.  This is Turing's celebrated <<i172>> Halting Theorem, which gave the first clear example of a <<i256>> non-computable problem, i.e., a well-posed task that cannot be carried out as a computational procedure.
+
+[fn:228] Wanting programs to not depend on this evaluation mechanism is the reason for the "management is not responsible" remark in [fn:28] of [[#section-1][Chapter 1]].  By insisting that internal definitions come first and do not use each other while the definitions are being evaluated, the IEEE standard for Scheme leaves implementors some choice in the mechanism used to evaluate these definitions.  The choice of one evaluation rule rather than another here may seem like a small issue, affecting only the interpretation of "badly formed" programs.  However, we will see in section [[#section-5.5.6][5.5.6]] that moving to a model of simultaneous scoping for internal definitions avoids some nasty difficulties that would otherwise arise in implementing a compiler.
+
+[fn:229] The IEEE standard for Scheme allows for different implementation strategies by specifying that it is up to the programmer to obey this restriction, not up to the implementation to enforce it.  Some Scheme implementations, including MIT Scheme, use the transformation shown above.  Thus, some programs that don't obey this restriction will in fact run in such implementations.
+
+[fn:230] The MIT implementors of Scheme support Alyssa on the following grounds: Eva is in principle correct - the definitions should be regarded as simultaneous.  But it seems difficult to implement a general, efficient mechanism that does what Eva requires.  In the absence of such a mechanism, it is better to generate an error in the difficult cases of simultaneous definitions (Alyssa's notion) than to produce an incorrect answer (as Ben would have it).
+
+[fn:231] This example illustrates a programming trick for formulating recursive procedures without using ~define~.  The most general trick of this sort is the Y <<i271>> operator, which can be used to give a "pure [lambda]-calculus" implementation of recursion.  (See Stoy 1977 for details on the [lambda] calculus, and Gabriel 1988 for an exposition of the Y operator in Scheme.)
+
+[fn:232] This technique is an integral part of the compilation process, which we shall discuss in [[#section-5][Chapter 5]].  Jonathan Rees wrote a Scheme interpreter like this in about 1982 for the T project (Rees and Adams 1982).  Marc Feeley (1986) (see also Feeley and Lapalme 1987) independently invented this technique in his master's thesis.
+
+[fn:233] There is, however, an important part of the variable search that /can/ be done as part of the syntactic analysis.  As we will show in section [[#section-5.5.6][5.5.6]], one can determine the position in the environment structure where the value of the variable will be found, thus obviating the need to scan the environment for the entry that matches the variable.
+
+[fn:234] See [[#exercise-4.23][Exercise 4.23]] for some insight into the processing of sequences.
+
+[fn:235] Snarf: "To grab, especially a large document or file for the purpose of using it either with or without the owner's permission."  Snarf down: "To snarf, sometimes with the connotation of absorbing, processing, or understanding."  (These definitions were snarfed from Steele et al.  1983.  See also Raymond 1993.)
+
+[fn:236] The difference between the "lazy" terminology and the "normal-order" terminology is somewhat fuzzy.  Generally, "lazy" refers to the mechanisms of particular evaluators, while "normal-order" refers to the semantics of languages, independent of any particular evaluation strategy.  But this is not a hard-and-fast distinction, and the two terminologies are often used interchangeably.
+
+[fn:237] The "strict" versus "non-strict" terminology means essentially the same thing as "applicative-order" versus "normal-order," except that it refers to individual procedures and arguments rather than to the language as a whole.  At a conference on programming languages you might hear someone say, "The normal-order language Hassle has certain strict primitives.  Other procedures take their arguments by lazy evaluation."
+
+[fn:238] The word <<i394>> thunk was invented by an informal working group that was discussing the implementation of call-by-name in Algol 60.  They observed that most of the analysis of ("thinking about") the expression could be done at compile time; thus, at run time, the expression would already have been "thunk" about (Ingerman et al.  1960).
+
+[fn:239] This is analogous to the use of ~force~ on the delayed objects that were introduced in [[#section-3][Chapter 3]] to represent streams.  The critical difference between what we are doing here and what we did in [[#section-3][Chapter 3]] is that we are building delaying and forcing into the evaluator, and thus making this uniform and automatic throughout the language.
+
+[fn:240] Lazy evaluation combined with memoization is sometimes referred to as <<i51>> call-by-need argument passing, in contrast to <<i48>> call-by-name argument passing.  (Call-by-name, introduced in Algol 60, is similar to non-memoized lazy evaluation.)  As language designers, we can build our evaluator to memoize, not to memoize, or leave this an option for programmers ([[#exercise-4.31][Exercise 4.31]]).  As you might expect from [[#section-3][Chapter 3]], these choices raise issues that become both subtle and confusing in the presence of assignments.  (See [[#exercise-4.27][Exercise 4.27]] and [[#exercise-4.29][Exercise 4.29]].)  An excellent article by Clinger (1982) attempts to clarify the multiple dimensions of confusion that arise here.
+
+[fn:241] Notice that we also erase the ~env~ from the thunk once the expression's value has been computed.  This makes no difference in the values returned by the interpreter.  It does help save space, however, because removing the reference from the thunk to the ~env~ once it is no longer needed allows this structure to be <<i160>> garbage-collected and its space recycled, as we will discuss in section [[#section-5.3][5.3]].
+
+Similarly, we could have allowed unneeded environments in the memoized delayed objects of section [[#section-3.5.1][3.5.1]] to be garbage-collected, by having ~memo-proc~ do something like ~(set!  proc '())~ to discard the procedure ~proc~ (which includes the environment in which the ~delay~ was evaluated) after storing its value.
+
+[fn:242] This exercise demonstrates that the interaction between lazy evaluation and side effects can be very confusing.  This is just what you might expect from the discussion in [[#section-3][Chapter 3]].
+
+[fn:243] This is precisely the issue with the ~unless~ procedure, as in [[#exercise-4.26][Exercise 4.26]].
+
+[fn:244] This is the procedural representation described in [[#exercise-2.4][Exercise 2.4]].  Essentially any procedural representation (e.g., a message-passing implementation) would do as well.  Notice that we can install these definitions in the lazy evaluator simply by typing them at the driver loop.  If we had originally included ~cons~, ~car~, and ~cdr~ as primitives in the global environment, they will be redefined.  (Also see [[#exercise-4.33][Exercise 4.33]] and [[#exercise-4.34][Exercise 4.34]].)
+
+[fn:245] This permits us to create delayed versions of more general kinds of list structures, not just sequences.  Hughes 1990 discusses some applications of "lazy trees."
+
+[fn:246] We assume that we have previously defined a procedure ~prime?~ that tests whether numbers are prime.  Even with ~prime?~ defined, the ~prime-sum-pair~ procedure may look suspiciously like the unhelpful "pseudo-Lisp" attempt to define the square-root function, which we described at the beginning of section [[#section-1.1.7][1.1.7]].  In fact, a square-root procedure along those lines can actually be formulated as a nondeterministic program.  By incorporating a search mechanism into the evaluator, we are eroding the distinction between purely declarative descriptions and imperative specifications of how to compute answers.  We'll go even farther in this direction in section [[#section-4.4][4.4]].
+
+[fn:247] The idea of ~amb~ for nondeterministic programming was first described in 1961 by John McCarthy (see McCarthy 1967).
+
+[fn:248] In actuality, the distinction between nondeterministically returning a single choice and returning all choices depends somewhat on our point of view.  From the perspective of the code that uses the value, the nondeterministic choice returns a single value.  From the perspective of the programmer designing the code, the nondeterministic choice potentially returns all possible values, and the computation branches so that each value is investigated separately.
+
+[fn:249] One might object that this is a hopelessly inefficient mechanism.  It might require millions of processors to solve some easily stated problem this way, and most of the time most of those processors would be idle.  This objection should be taken in the context of history.  Memory used to be considered just such an expensive commodity.  In 1964 a megabyte of RAM cost about $400,000.  Now every personal computer has many megabytes of RAM, and most of the time most of that RAM is unused.  It is hard to underestimate the cost of mass-produced electronics.
+
+[fn:250] Automagically: "Automatically, but in a way which, for some reason (typically because it is too complicated, or too ugly, or perhaps even too trivial), the speaker doesn't feel like explaining."  (Steele 1983, Raymond 1993).
+
+[fn:251] The integration of automatic search strategies into programming languages has had a long and checkered history.  The first suggestions that nondeterministic algorithms might be elegantly encoded in a programming language with search and automatic backtracking came from Robert Floyd (1967).  Carl Hewitt (1969) invented a programming language called Planner that explicitly supported automatic chronological backtracking, providing for a built-in depth-first search strategy.  Sussman, Winograd, and Charniak (1971) implemented a subset of this language, called MicroPlanner, which was used to support work in problem solving and robot planning.  Similar ideas, arising from logic and theorem proving, led to the genesis in Edinburgh and Marseille of the elegant language Prolog (which we will discuss in section [[#section-4.4][4.4]]).  After sufficient frustration with automatic search, McDermott and Sussman (1972) developed a language called Conniver, which included mechanisms for placing the search strategy under programmer control.  This proved unwieldy, however, and Sussman and Stallman (1975) found a more tractable approach while investigating methods of symbolic analysis for electrical circuits.  They developed a non-chronological backtracking scheme that was based on tracing out the logical dependencies connecting facts, a technique that has come to be known as <<i109>> dependency-directed backtracking.  Although their method was complex, it produced reasonably efficient programs because it did little redundant search.  Doyle (1979) and McAllester (1978, 1980) generalized and clarified the methods of Stallman and Sussman, developing a new paradigm for formulating search that is now called <<i402>> truth maintenance.  Modern problem-solving systems all use some form of truth-maintenance system as a substrate.  See Forbus and deKleer 1993 for a discussion of elegant ways to build truth-maintenance systems and applications using truth maintenance.  Zabih, McAllester, and Chapman 1987 describes a nondeterministic extension to Scheme that is based on ~amb~; it is similar to the interpreter described in this section, but more sophisticated, because it uses dependency-directed backtracking rather than chronological backtracking.  Winston 1992 gives an introduction to both kinds of backtracking.
+
+[fn:252] Our program uses the following procedure to determine if the elements of a list are distinct:
+
+#+begin_src scheme
+(define (distinct? items)
+  (cond ((null? items) true)
+        ((null? (cdr items)) true)
+        ((member (car items) (cdr items)) false)
+        (else (distinct? (cdr items)))))
+#+end_src
+
+~member~ is like ~memq~ except that it uses ~equal?~ instead of ~eq?~ to test for equality.
+
+[fn:253] This is taken from a booklet called "Problematical Recreations," published in the 1960s by Litton Industries, where it is attributed to the 'Kansas State Engineer'.
+
+[fn:254] Here we use the convention that the first element of each list designates the part of speech for the rest of the words in the list.
+
+[fn:255] Notice that ~parse-word~ uses ~set!~ to modify the unparsed input list.  For this to work, our ~amb~ evaluator must undo the effects of ~set!~ operations when it backtracks.
+
+[fn:256] Observe that this definition is recursive--a verb may be followed by any number of prepositional phrases.
+
+[fn:257] This kind of grammar can become arbitrarily complex, but it is only a toy as far as real language understanding is concerned.  Real natural-language understanding by computer requires an elaborate mixture of syntactic analysis and interpretation of meaning.  On the other hand, even toy parsers can be useful in supporting flexible command languages for programs such as information-retrieval systems.  Winston 1992 discusses computational approaches to real language understanding and also the applications of simple grammars to command languages.
+
+[fn:258] Although Alyssa's idea works just fine (and is surprisingly simple), the sentences that it generates are a bit boring--they don't sample the possible sentences of this language in a very interesting way.  In fact, the grammar is highly recursive in many places, and Alyssa's technique "falls into" one of these recursions and gets stuck.  See [[#exercise-4.50][Exercise 4.50]] for a way to deal with this.
+
+[fn:259] We chose to implement the lazy evaluator in section [[#section-4.2][4.2]] as a modification of the ordinary metacircular evaluator of section [[#section-4.1.1][4.1.1]].  In contrast, we will base the ~amb~ evaluator on the analyzing evaluator of section [[#section-4.1.7][4.1.7]], because the execution procedures in that evaluator provide a convenient framework for implementing backtracking.
+
+[fn:260] We assume that the evaluator supports ~let~ (see [[#exercise-4.22][Exercise 4.22]]), which we have used in our nondeterministic programs.
+
+[fn:261] We didn't worry about undoing definitions, since we can assume that internal definitions are scanned out (section [[#section-4.1.6][4.1.6]]).
+
+[fn:262] Logic programming has grown out of a long history of research in automatic theorem proving.  Early theorem-proving programs could accomplish very little, because they exhaustively searched the space of possible proofs.  The major breakthrough that made such a search plausible was the discovery in the early 1960s of the <<i413>> unification algorithm and the <<i335>> resolution principle (Robinson 1965).  Resolution was used, for example, by Green and Raphael (1968) (see also Green 1969) as the basis for a deductive question-answering system.  During most of this period, researchers concentrated on algorithms that are guaranteed to find a proof if one exists.  Such algorithms were difficult to control and to direct toward a proof.  Hewitt (1969) recognized the possibility of merging the control structure of a programming language with the operations of a logic-manipulation system, leading to the work in automatic search mentioned in section [[#section-4.3.1][4.3.1]] (footnote [fn:251]).  At the same time that this was being done, Colmerauer, in Marseille, was developing rule-based systems for manipulating natural language (see Colmerauer et al.  1973).  He invented a programming language called Prolog for representing those rules.  Kowalski (1973; 1979), in Edinburgh, recognized that execution of a Prolog program could be interpreted as proving theorems (using a proof technique called linear Horn-clause resolution).  The merging of the last two strands led to the logic-programming movement.  Thus, in assigning credit for the development of logic programming, the French can point to Prolog's genesis at the University of Marseille, while the British can highlight the work at the University of Edinburgh.  According to people at MIT, logic programming was developed by these groups in an attempt to figure out what Hewitt was talking about in his brilliant but impenetrable Ph.D. thesis.  For a history of logic programming, see Robinson 1983.
+
+[fn:263] To see the correspondence between the rules and the procedure, let ~x~ in the procedure (where ~x~ is nonempty) correspond to ~(cons u v)~ in the rule.  Then ~z~ in the rule corresponds to the ~append~ of ~(cdr x)~ and ~y~.
+
+[fn:264] This certainly does not relieve the user of the entire problem of how to compute the answer.  There are many different mathematically equivalent sets of rules for formulating the ~append~ relation, only some of which can be turned into effective devices for computing in any direction.  In addition, sometimes "what is" information gives no clue "how to" compute an answer.  For example, consider the problem of computing the y such that y^2 = x.
+
+[fn:265] Interest in logic programming peaked during the early 80s when the Japanese government began an ambitious project aimed at building superfast computers optimized to run logic programming languages.  The speed of such computers was to be measured in LIPS (Logical Inferences Per Second) rather than the usual FLOPS (FLoating-point Operations Per Second).  Although the project succeeded in developing hardware and software as originally planned, the international computer industry moved in a different direction.  See Feigenbaum and Shrobe 1993 for an overview evaluation of the Japanese project.  The logic programming community has also moved on to consider relational programming based on techniques other than simple pattern matching, such as the ability to deal with numerical constraints such as the ones illustrated in the constraint-propagation system of section [[#section-3.3.5][3.3.5]].
+
+[fn:266] This uses the dotted-tail notation introduced in [[#exercise-2.20][Exercise 2.20]].
+
+[fn:267] Actually, this description of ~not~ is valid only for simple cases.  The real behavior of ~not~ is more complex.  We will examine ~not~'s peculiarities in sections [[#section-4.4.2][4.4.2]] and [[#section-4.4.3][4.4.3]].
+
+[fn:268] ~Lisp-value~ should be used only to perform an operation not provided in the query language.  In particular, it should not be used to test equality (since that is what the matching in the query language is designed to do) or inequality (since that can be done with the ~same~ rule shown below).
+
+[fn:269] Notice that we do not need ~same~ in order to make two things be the same: We just use the same pattern variable for each--in effect, we have one thing instead of two things in the first place.  For example, see ~?town~ in the ~lives-near~ rule and ~?middle-manager~ in the ~wheel~ rule below.  ~same~ is useful when we want to force two things to be different, such as ~?person-1~ and ~?person-2~ in the ~lives-near~ rule.  Although using the same pattern variable in two parts of a query forces the same value to appear in both places, using different pattern variables does not force different values to appear.  (The values assigned to different pattern variables may be the same or different.)
+
+[fn:270] We will also allow rules without bodies, as in ~same~, and we will interpret such a rule to mean that the rule conclusion is satisfied by any values of the variables.
+
+[fn:271] Because matching is generally very expensive, we would like to avoid applying the full matcher to every element of the data base.  This is usually arranged by breaking up the process into a fast, coarse match and the final match.  The coarse match filters the data base to produce a small set of candidates for the final match.  With care, we can arrange our data base so that some of the work of coarse matching can be done when the data base is constructed rather then when we want to select the candidates.  This is called <<i182>> indexing the data base.  There is a vast technology built around data-base-indexing schemes.  Our implementation, described in section [[#section-4.4.4][4.4.4]], contains a simple-minded form of such an optimization.
+
+[fn:272] But this kind of exponential explosion is not common in ~and~ queries because the added conditions tend to reduce rather than expand the number of frames produced.
+
+[fn:273] There is a large literature on data-base-management systems that is concerned with how to handle complex queries efficiently.
+
+[fn:274] There is a subtle difference between this filter implementation of ~not~ and the usual meaning of ~not~ in mathematical logic.  See section [[#section-4.4.3][4.4.3]].
+
+[fn:275] In one-sided pattern matching, all the equations that contain pattern variables are explicit and already solved for the unknown (the pattern variable).
+
+[fn:276] Another way to think of unification is that it generates the most general pattern that is a specialization of the two input patterns.  That is, the unification of ~(?x a)~ and ~((b ?y) ?z)~ is ~((b ?y) a)~, and the unification of ~(?x a ?y)~ and ~(?y ?z a)~, discussed above, is ~(a a a)~.  For our implementation, it is more convenient to think of the result of unification as a frame rather than a pattern.
+
+[fn:277] Since unification is a generalization of matching, we could simplify the system by using the unifier to produce both streams.  Treating the easy case with the simple matcher, however, illustrates how matching (as opposed to full-blown unification) can be useful in its own right.
+
+[fn:278] The reason we use streams (rather than lists) of frames is that the recursive application of rules can generate infinite numbers of values that satisfy a query.  The delayed evaluation embodied in streams is crucial here: The system will print responses one by one as they are generated, regardless of whether there are a finite or infinite number of responses.
+
+[fn:279] That a particular method of inference is legitimate is not a trivial assertion.  One must prove that if one starts with true premises, only true conclusions can be derived.  The method of inference represented by rule applications is <<i242>> modus ponens, the familiar method of inference that says that if A is true and /A implies B/ is true, then we may conclude that B is true.
+
+[fn:280] We must qualify this statement by agreeing that, in speaking of the "inference" accomplished by a logic program, we assume that the computation terminates.  Unfortunately, even this qualified statement is false for our implementation of the query language (and also false for programs in Prolog and most other current logic programming languages) because of our use of ~not~ and ~lisp-value~.  As we will describe below, the ~not~ implemented in the query language is not always consistent with the ~not~ of mathematical logic, and ~lisp-value~ introduces additional complications.  We could implement a language consistent with mathematical logic by simply removing ~not~ and ~lisp-value~ from the language and agreeing to write programs using only simple queries, ~and~, and ~or~.  However, this would greatly restrict the expressive power of the language.  One of the major concerns of research in logic programming is to find ways to achieve more consistency with mathematical logic without unduly sacrificing expressive power.
+
+[fn:281] This is not a problem of the logic but one of the procedural interpretation of the logic provided by our interpreter.  We could write an interpreter that would not fall into a loop here.  For example, we could enumerate all the proofs derivable from our assertions and our rules in a breadth-first rather than a depth-first order.  However, such a system makes it more difficult to take advantage of the order of deductions in our programs.  One attempt to build sophisticated control into such a program is described in deKleer et al.  1977.  Another technique, which does not lead to such serious control problems, is to put in special knowledge, such as detectors for particular kinds of loops ([[#exercise-4.67][Exercise 4.67]]).  However, there can be no general scheme for reliably preventing a system from going down infinite paths in performing deductions.  Imagine a diabolical rule of the form "To show P(x) is true, show that P(f(x)) is true," for some suitably chosen function f.
+
+[fn:282] Consider the query ~(not (baseball-fan (Bitdiddle Ben)))~.  The system finds that ~(baseball-fan (Bitdiddle Ben))~ is not in the data base, so the empty frame does not satisfy the pattern and is not filtered out of the initial stream of frames.  The result of the query is thus the empty frame, which is used to instantiate the input query to produce ~(not (baseball-fan (Bitdiddle Ben)))~.
+
+[fn:283] A discussion and justification of this treatment of ~not~ can be found in the article by Clark (1978).
+
+[fn:284] In general, unifying ~?y~ with an expression involving ~?y~ would require our being able to find a fixed point of the equation ~?y~ = <EXPRESSION INVOLVING ?Y>.  It is sometimes possible to syntactically form an expression that appears to be the solution.  For example, ~?y~ = ~(f ?y)~ seems to have the fixed point '(f (f (f ... )))', which we can produce by beginning with the expression ~(f ?y)~ and repeatedly substituting ~(f ?y)~ for ~?y~.  Unfortunately, not every such equation has a meaningful fixed point.  The issues that arise here are similar to the issues of manipulating infinite series in mathematics.  For example, we know that 2 is the solution to the equation y = 1
++ y/2.  Beginning with the expression 1 + y/2 and repeatedly substituting 1 +
+y/2 for y gives
+
+#+begin_example
+ 2 = y = 1 + y/2 = 1 + (1 + y/2)/2 = 1 + 1/2 + y/4 = ...
+#+end_example
+
+which leads to
+
+#+begin_example
+ 2 = 1 + 1/2 + 1/4 + 1/8 + ...
+#+end_example
+
+However, if we try the same manipulation beginning with the observation that - 1 is the solution to the equation y = 1 + 2y, we obtain
+
+#+begin_example
+ -1 = y = 1 + 2y = 1 + 2(1 + 2y) = 1 + 2 + 4y = ...
+#+end_example
+
+which leads to
+
+#+begin_example
+ -1 = 1 + 2 + 4 + 8 + ...
+#+end_example
+
+Although the formal manipulations used in deriving these two equations are identical, the first result is a valid assertion about infinite series but the second is not.  Similarly, for our unification results, reasoning with an arbitrary syntactically constructed expression may lead to errors.
+
+[fn:285] Most Lisp systems give the user the ability to modify the ordinary ~read~ procedure to perform such transformations by defining <<i320>> reader macro characters.  Quoted expressions are already handled in this way: The reader automatically translates ~'expression~ into ~(quote expression)~ before the evaluator sees it.  We could arrange for ~?expression~ to be transformed into ~(?  expression)~ in the same way; however, for the sake of clarity we have included the transformation procedure here explicitly.
+
+~expand-question-mark~ and ~contract-question-mark~ use several procedures with ~string~ in their names.  These are Scheme primitives.
+
+[fn:286] This assumption glosses over a great deal of complexity.  Usually a large portion of the implementation of a Lisp system is dedicated to making reading and printing work.
+
+[fn:287] One might argue that we don't need to save the old ~n~; after we decrement it and solve the subproblem, we could simply increment it to recover the old value.  Although this strategy works for factorial, it cannot work in general, since the old value of a register cannot always be computed from the new one.
+
+[fn:288] In section [[#section-5.3][5.3]] we will see how to implement a stack in terms of more primitive operations.
+
+[fn:289] Using the ~receive~ procedure here is a way to get ~extract-labels~ to effectively return two values--~labels~ and ~insts~--without explicitly making a compound data structure to hold them.  An alternative implementation, which returns an explicit pair of values, is
+
+#+begin_src scheme
+(define (extract-labels text)
+  (if (null? text)
+      (cons '() '())
+      (let ((result (extract-labels (cdr text))))
+        (let ((insts (car result)) (labels (cdr result)))
+          (let ((next-inst (car text)))
+            (if (symbol? next-inst)
+                (cons insts
+                      (cons (make-label-entry next-inst insts) labels))
+                (cons (cons (make-instruction next-inst) insts)
+                      labels)))))))
+#+end_src
+
+which would be called by ~assemble~ as follows:
+
+#+begin_src scheme
+(define (assemble controller-text machine)
+  (let ((result (extract-labels controller-text)))
+    (let ((insts (car result)) (labels (cdr result)))
+      (update-insts! insts labels machine)
+      insts)))
+#+end_src
+
+You can consider our use of ~receive~ as demonstrating an elegant way to return multiple values, or simply an excuse to show off a programming trick.  An argument like ~receive~ that is the next procedure to be invoked is called a "continuation."  Recall that we also used continuations to implement the backtracking control structure in the ~amb~ evaluator in section [[#section-4.3.3][4.3.3]].
+
+[fn:290] We could represent memory as lists of items.  However, the access time would then not be independent of the index, since accessing the nth element of a list requires n - 1 ~cdr~ operations.
+
+[fn:291] For completeness, we should specify a ~make-vector~ operation that constructs vectors.  However, in the present application we will use vectors only to model fixed divisions of the computer memory.
+
+[fn:292] This is precisely the same "tagged data" idea we introduced in [[#section-2][Chapter 2]] for dealing with generic operations.  Here, however, the data types are included at the primitive machine level rather than constructed through the use of lists.
+
+[fn:293] Type information may be encoded in a variety of ways, depending on the details of the machine on which the Lisp system is to be implemented.  The execution efficiency of Lisp programs will be strongly dependent on how cleverly this choice is made, but it is difficult to formulate general design rules for good choices.  The most straightforward way to implement typed pointers is to allocate a fixed set of bits in each pointer to be a <<i404>> type field that encodes the data type.  Important questions to be addressed in designing such a representation include the following: How many type bits are required?  How large must the vector indices be?  How efficiently can the primitive machine instructions be used to manipulate the type fields of pointers?  Machines that include special hardware for the efficient handling of type fields are said to have <<i389>> tagged architectures.
+
+[fn:294] This decision on the representation of numbers determines whether ~eq?~, which tests equality of pointers, can be used to test for equality of numbers.  If the pointer contains the number itself, then equal numbers will have the same pointer.  But if the pointer contains the index of a location where the number is stored, equal numbers will be guaranteed to have equal pointers only if we are careful never to store the same number in more than one location.
+
+[fn:295] This is just like writing a number as a sequence of digits, except that each "digit" is a number between 0 and the largest number that can be stored in a single pointer.
+
+[fn:296] There are other ways of finding free storage.  For example, we could link together all the unused pairs into a <<i150>> free list.  Our free locations are consecutive (and hence can be accessed by incrementing a pointer) because we are using a compacting garbage collector, as we will see in section [[#section-5.3.2][5.3.2]].
+
+[fn:297] This is essentially the implementation of ~cons~ in terms of ~set-car!~ and ~set-cdr!~, as described in section [[#section-3.3.1][3.3.1]].  The operation ~get-new-pair~ used in that implementation is realized here by the ~free~ pointer.
+
+[fn:298] This may not be true eventually, because memories may get large enough so that it would be impossible to run out of free memory in the lifetime of the computer.  For example, there are about 3*(10^13), microseconds in a year, so if we were to ~cons~ once per microsecond we would need about 10^15 cells of memory to build a machine that could operate for 30 years without running out of memory.  That much memory seems absurdly large by today's standards, but it is not physically impossible.  On the other hand, processors are getting faster and a future computer may have large numbers of processors operating in parallel on a single memory, so it may be possible to use up memory much faster than we have postulated.
+
+[fn:299] We assume here that the stack is represented as a list as described in section [[#section-5.3.1][5.3.1]], so that items on the stack are accessible via the pointer in the stack register.

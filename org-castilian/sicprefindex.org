@@ -1,0 +1,653 @@
+* References
+
+1. Abelson, Harold, Andrew Berlin, Jacob Katzenelson, William McAllister, Guillermo Rozas, Gerald Jay Sussman, and Jack Wisdom.  1992.  The Supercomputer Toolkit: A general framework for special-purpose computing.  'International Journal of High-Speed Electronics' 3(3):337-361.
+
+2. Allen, John.  1978.  'Anatomy of Lisp'.  New York: McGraw-Hill.
+
+3. ANSI X3.226-1994.  'American National Standard for Information Systems--Programming Language--Common Lisp'.
+
+4. Appel, Andrew W. 1987.  Garbage collection can be faster than stack allocation.  'Information Processing Letters' 25(4):275-279.
+
+5. Backus, John.  1978.  Can programming be liberated from the von Neumann style?  'Communications of the ACM' 21(8):613-641.
+
+6. Baker, Henry G., Jr.  1978.  List processing in real time on a serial computer.  'Communications of the ACM' 21(4):280-293.
+
+7. Batali, John, Neil Mayle, Howard Shrobe, Gerald Jay Sussman, and Daniel Weise. 1982.  The Scheme-81 architecture--System and chip.  In 'Proceedings of the MIT Conference on Advanced Research in VLSI', edited by Paul Penfield, Jr.  Dedham, MA: Artech House.
+
+8. Borning, Alan.  1977.  ThingLab--An object-oriented system for building simulations using constraints.  In 'Proceedings of the 5th International Joint Conference on Artificial Intelligence'.
+
+9. Borodin, Alan, and Ian Munro.  1975.  'The Computational Complexity of Algebraic and Numeric Problems'.  New York: American Elsevier.
+
+10. Chaitin, Gregory J. 1975.  Randomness and mathematical proof.  'Scientific American' 232(5):47-52.
+
+11. Church, Alonzo.  1941.  'The Calculi of Lambda-Conversion'.  Princeton, N.J.: Princeton University Press.
+
+12. Clark, Keith L. 1978.  Negation as failure.  In 'Logic and Data Bases'.  New York: Plenum Press, pp.  293-322.
+
+13. Clinger, William.  1982.  Nondeterministic call by need is neither lazy nor by name.  In 'Proceedings of the ACM Symposium on Lisp and Functional Programming', pp.  226-234.
+
+14. Clinger, William, and Jonathan Rees.  1991.  Macros that work.  In 'Proceedings of the 1991 ACM Conference on Principles of Programming Languages', pp. 155-162.
+
+15. Colmerauer A., H. Kanoui, R. Pasero, and P. Roussel.  1973.  Un syste`me de communication homme-machine en franc,ais.  Technical report, Groupe Intelligence Artificielle, Universite' d'Aix Marseille, Luminy.
+
+16. Cormen, Thomas, Charles Leiserson, and Ronald Rivest.  1990.  'Introduction to Algorithms'.  Cambridge, MA: MIT Press.
+
+17. Darlington, John, Peter Henderson, and David Turner.  1982.  'Functional Programming and Its Applications'.  New York: Cambridge University Press.
+
+18. Dijkstra, Edsger W. 1968a.  The structure of the "THE" multiprogramming system. 'Communications of the ACM' 11(5):341-346.
+
+19. Dijkstra, Edsger W. 1968b.  Cooperating sequential processes.  In 'Programming Languages', edited by F. Genuys.  New York: Academic Press, pp.  43-112.
+
+20. Dinesman, Howard P. 1968.  'Superior Mathematical Puzzles'.  New York: Simon and Schuster.
+
+21. deKleer, Johan, Jon Doyle, Guy Steele, and Gerald J. Sussman.  1977.  AMORD: Explicit control of reasoning.  In 'Proceedings of the ACM Symposium on Artificial Intelligence and Programming Languages', pp.  116-125.
+
+22. Doyle, Jon.  1979.  A truth maintenance system.  'Artificial Intelligence' 12:231-272.
+
+23. Feigenbaum, Edward, and Howard Shrobe.  1993.  The Japanese National Fifth Generation Project: Introduction, survey, and evaluation.  In 'Future Generation Computer Systems', vol.  9, pp.  105-117.
+
+24. Feeley, Marc.  1986.  Deux approches a` l'implantation du language Scheme. Masters thesis, Universite' de Montre'al.
+
+25. Feeley, Marc and Guy Lapalme.  1987.  Using closures for code generation. 'Journal of Computer Languages' 12(1):47-66.
+
+26. Feller, William.  1957.  'An Introduction to Probability Theory and Its Applications', volume 1.  New York: John Wiley & Sons.
+
+27. Fenichel, R., and J. Yochelson.  1969.  A Lisp garbage collector for virtual memory computer systems.  'Communications of the ACM' 12(11):611-612.
+
+28. Floyd, Robert.  1967.  Nondeterministic algorithms.  'JACM', 14(4):636-644.
+
+29. Forbus, Kenneth D., and Johan deKleer.  1993.  'Building Problem Solvers'. Cambridge, MA: MIT Press.
+
+30. Friedman, Daniel P., and David S. Wise.  1976.  CONS should not evaluate its arguments.  In 'Automata, Languages, and Programming: Third International Colloquium', edited by S. Michaelson and R. Milner, pp.  257-284.
+
+31. Friedman, Daniel P., Mitchell Wand, and Christopher T. Haynes.  1992. 'Essentials of Programming Languages'.  Cambridge, MA: MIT Press/McGraw-Hill.
+
+32. Gabriel, Richard P. 1988.  The Why of /Y/. 'Lisp Pointers' 2(2):15-25.
+
+33. Goldberg, Adele, and David Robson.  1983.  'Smalltalk-80: The Language and Its Implementation'.  Reading, MA: Addison-Wesley.
+
+34. Gordon, Michael, Robin Milner, and Christopher Wadsworth.  1979.  'Edinburgh LCF'. Lecture Notes in Computer Science, volume 78.  New York: Springer-Verlag.
+
+35. Gray, Jim, and Andreas Reuter.  1993.  'Transaction Processing: Concepts and Models'.  San Mateo, CA: Morgan-Kaufman.
+
+36. Green, Cordell.  1969.  Application of theorem proving to problem solving.  In 'Proceedings of the International Joint Conference on Artificial Intelligence', pp.  219-240.
+
+37. Green, Cordell, and Bertram Raphael.  1968.  The use of theorem-proving techniques in question-answering systems.  In 'Proceedings of the ACM National Conference', pp.  169-181.
+
+38. Griss, Martin L. 1981.  Portable Standard Lisp, a brief overview.  Utah Symbolic Computation Group Operating Note 58, University of Utah.
+
+39. Guttag, John V. 1977.  Abstract data types and the development of data structures.  'Communications of the ACM' 20(6):397-404.
+
+40. Hamming, Richard W. 1980.  'Coding and Information Theory'.  Englewood Cliffs, N.J.: Prentice-Hall.
+
+41. Hanson, Christopher P. 1990.  Efficient stack allocation for tail-recursive languages.  In 'Proceedings of ACM Conference on Lisp and Functional Programming', pp.  106-118.
+
+42. Hanson, Christopher P. 1991.  A syntactic closures macro facility.  'Lisp Pointers', 4(3).
+
+43. Hardy, Godfrey H. 1921.  Srinivasa Ramanujan.  'Proceedings of the London Mathematical Society' XIX(2).
+
+44. Hardy, Godfrey H., and E. M. Wright.  1960.  'An Introduction to the Theory of Numbers'.  4th edition.  New York: Oxford University Press.
+
+45. Havender, J. 1968.  Avoiding deadlocks in multi-tasking systems.  'IBM Systems Journal' 7(2):74-84.
+
+46. Hearn, Anthony C. 1969.  Standard Lisp.  Technical report AIM-90, Artificial Intelligence Project, Stanford University.
+
+47. Henderson, Peter.  1980.  'Functional Programming: Application and Implementation'.  Englewood Cliffs, N.J.: Prentice-Hall.
+
+48. Henderson.  Peter.  1982.  Functional Geometry.  In 'Conference Record of the 1982 ACM Symposium on Lisp and Functional Programming', pp.  179-187.
+
+49. Hewitt, Carl E. 1969.  PLANNER: A language for proving theorems in robots.  In 'Proceedings of the International Joint Conference on Artificial Intelligence', pp.  295-301.
+
+50. Hewitt, Carl E. 1977.  Viewing control structures as patterns of passing messages.  'Journal of Artificial Intelligence' 8(3):323-364.
+
+51. Hoare, C. A. R. 1972.  Proof of correctness of data representations.  'Acta Informatica' 1(1).
+
+52. Hodges, Andrew.  1983.  'Alan Turing: The Enigma'.  New York: Simon and Schuster.
+
+53. Hofstadter, Douglas R. 1979.  'Go"del, Escher, Bach: An Eternal Golden Braid'. New York: Basic Books.
+
+54. Hughes, R. J. M. 1990.  Why functional programming matters.  In 'Research Topics in Functional Programming', edited by David Turner.  Reading, MA: Addison-Wesley, pp.  17-42.
+
+55. IEEE Std 1178-1990.  1990.  'IEEE Standard for the Scheme Programming Language'.
+
+56. Ingerman, Peter, Edgar Irons, Kirk Sattley, and Wallace Feurzeig; assisted by M. Lind, Herbert Kanner, and Robert Floyd.  1960.  THUNKS: A way of compiling procedure statements, with some comments on procedure declarations.  Unpublished manuscript.  (Also, private communication from Wallace Feurzeig.)
+
+57. Kaldewaij, Anne.  1990.  'Programming: The Derivation of Algorithms'.  New York: Prentice-Hall.
+
+58. Kohlbecker, Eugene Edmund, Jr.  1986.  Syntactic extensions in the programming language Lisp.  Ph.D. thesis, Indiana University.
+
+59. Konopasek, Milos, and Sundaresan Jayaraman.  1984.  'The TK!Solver Book: A Guide to Problem-Solving in Science, Engineering, Business, and Education'.  Berkeley, CA: Osborne/McGraw-Hill.
+
+60. Knuth, Donald E. 1973.  'Fundamental Algorithms'.  Volume 1 of 'The Art of Computer Programming'.  2nd edition.  Reading, MA: Addison-Wesley.
+
+61. Knuth, Donald E. 1981.  'Seminumerical Algorithms'.  Volume 2 of 'The Art of Computer Programming'.  2nd edition.  Reading, MA: Addison-Wesley.
+
+62. Kowalski, Robert.  1973.  Predicate logic as a programming language.  Technical report 70, Department of Computational Logic, School of Artificial Intelligence, University of Edinburgh.
+
+63. Kowalski, Robert.  1979.  'Logic for Problem Solving'.  New York: North-Holland.
+
+64. Lamport, Leslie.  1978.  Time, clocks, and the ordering of events in a distributed system.  'Communications of the ACM' 21(7):558-565.
+
+65. Lampson, Butler, J. J. Horning, R. London, J. G. Mitchell, and G. K. Popek. 1981.  Report on the programming language Euclid.  Technical report, Computer Systems Research Group, University of Toronto.
+
+66. Landin, Peter.  1965.  A correspondence between Algol 60 and Church's lambda notation: Part I. 'Communications of the ACM' 8(2):89-101.
+
+67. Lieberman, Henry, and Carl E. Hewitt.  1983.  A real-time garbage collector based on the lifetimes of objects.  'Communications of the ACM' 26(6):419-429.
+
+68. Liskov, Barbara H., and Stephen N. Zilles.  1975.  Specification techniques for data abstractions.  'IEEE Transactions on Software Engineering' 1(1):7-19.
+
+69. McAllester, David Allen.  1978.  A three-valued truth-maintenance system.  Memo 473, MIT Artificial Intelligence Laboratory.
+
+70. McAllester, David Allen.  1980.  An outlook on truth maintenance.  Memo 551, MIT Artificial Intelligence Laboratory.
+
+71. McCarthy, John.  1960.  Recursive functions of symbolic expressions and their computation by machine.  'Communications of the ACM' 3(4):184-195.
+
+72. McCarthy, John.  1967.  A basis for a mathematical theory of computation.  In 'Computer Programing and Formal Systems', edited by P. Braffort and D. Hirschberg.  North-Holland.
+
+73. McCarthy, John.  1978.  The history of Lisp.  In 'Proceedings of the ACM SIGPLAN Conference on the History of Programming Languages'.
+
+74. McCarthy, John, P. W. Abrahams, D. J. Edwards, T. P. Hart, and M. I. Levin. 1965.  'Lisp 1.5 Programmer's Manual'.  2nd edition.  Cambridge, MA: MIT Press.
+
+75. McDermott, Drew, and Gerald Jay Sussman.  1972.  Conniver reference manual. Memo 259, MIT Artificial Intelligence Laboratory.
+
+76. Miller, Gary L. 1976.  Riemann's Hypothesis and tests for primality.  'Journal of Computer and System Sciences' 13(3):300-317.
+
+77. Miller, James S., and Guillermo J. Rozas.  1994.  Garbage collection is fast, but a stack is faster.  Memo 1462, MIT Artificial Intelligence Laboratory.
+
+78. Moon, David.  1978.  MacLisp reference manual, Version 0.  Technical report, MIT Laboratory for Computer Science.
+
+79. Moon, David, and Daniel Weinreb.  1981.  Lisp machine manual.  Technical report, MIT Artificial Intelligence Laboratory.
+
+80. Morris, J. H., Eric Schmidt, and Philip Wadler.  1980.  Experience with an applicative string processing language.  In 'Proceedings of the 7th Annual ACM SIGACT/SIGPLAN Symposium on the Principles of Programming Languages'.
+
+81. Phillips, Hubert.  1934.  'The Sphinx Problem Book'.  London: Faber and Faber.
+
+82. Pitman, Kent.  1983.  The revised MacLisp Manual (Saturday evening edition). Technical report 295, MIT Laboratory for Computer Science.
+
+83. Rabin, Michael O. 1980.  Probabilistic algorithm for testing primality. 'Journal of Number Theory' 12:128-138.
+
+84. Raymond, Eric.  1993.  'The New Hacker's Dictionary'.  2nd edition.  Cambridge, MA: MIT Press.
+
+85. Raynal, Michel.  1986.  'Algorithms for Mutual Exclusion'.  Cambridge, MA: MIT Press.
+
+86. Rees, Jonathan A., and Norman I. Adams IV. 1982.  T: A dialect of Lisp or, lambda: The ultimate software tool.  In 'Conference Record of the 1982 ACM Symposium on Lisp and Functional Programming', pp.  114-122.
+
+87. Rees, Jonathan, and William Clinger (eds).  1991.  The revised^4 report on the algorithmic language Scheme.  'Lisp Pointers', 4(3).
+
+88. Rivest, Ronald, Adi Shamir, and Leonard Adleman.  1977.  A method for obtaining digital signatures and public-key cryptosystems.  Technical memo LCS/TM82, MIT Laboratory for Computer Science.
+
+89. Robinson, J. A. 1965.  A machine-oriented logic based on the resolution principle.  'Journal of the ACM' 12(1):23.
+
+90. Robinson, J. A. 1983.  Logic programming--Past, present, and future.  'New Generation Computing' 1:107-124.
+
+91. Spafford, Eugene H. 1989.  The Internet Worm: Crisis and aftermath. 'Communications of the ACM' 32(6):678-688.
+
+92. Steele, Guy Lewis, Jr.  1977.  Debunking the "expensive procedure call" myth. In 'Proceedings of the National Conference of the ACM', pp.  153-62.
+
+93. Steele, Guy Lewis, Jr.  1982.  An overview of Common Lisp.  In 'Proceedings of the ACM Symposium on Lisp and Functional Programming', pp.  98-107.
+
+94. Steele, Guy Lewis, Jr.  1990.  'Common Lisp: The Language'.  2nd edition. Digital Press.
+
+95. Steele, Guy Lewis, Jr., and Gerald Jay Sussman.  1975.  Scheme: An interpreter for the extended lambda calculus.  Memo 349, MIT Artificial Intelligence Laboratory.
+
+96. Steele, Guy Lewis, Jr., Donald R. Woods, Raphael A. Finkel, Mark R. Crispin, Richard M. Stallman, and Geoffrey S. Goodfellow.  1983.  'The Hacker's Dictionary'.  New York: Harper & Row.
+
+97. Stoy, Joseph E. 1977.  'Denotational Semantics'.  Cambridge, MA: MIT Press.
+
+98. Sussman, Gerald Jay, and Richard M. Stallman.  1975.  Heuristic techniques in computer-aided circuit analysis.  'IEEE Transactions on Circuits and Systems' CAS-22(11):857-865.
+
+99. Sussman, Gerald Jay, and Guy Lewis Steele Jr.  1980.  Constraints--A language for expressing almost-hierachical descriptions.  'AI Journal' 14:1-39.
+
+100. Sussman, Gerald Jay, and Jack Wisdom.  1992.  Chaotic evolution of the solar system.  'Science' 257:256-262.
+
+101. Sussman, Gerald Jay, Terry Winograd, and Eugene Charniak.  1971.  Microplanner reference manual.  Memo 203A, MIT Artificial Intelligence Laboratory.
+
+102. Sutherland, Ivan E. 1963.  SKETCHPAD: A man-machine graphical communication system.  Technical report 296, MIT Lincoln Laboratory.
+
+103. Teitelman, Warren.  1974.  Interlisp reference manual.  Technical report, Xerox Palo Alto Research Center.
+
+104. Thatcher, James W., Eric G. Wagner, and Jesse B. Wright.  1978.  Data type specification: Parameterization and the power of specification techniques.  In 'Conference Record of the Tenth Annual ACM Symposium on Theory of Computing', pp.  119-132.
+
+105. Turner, David.  1981.  The future of applicative languages.  In 'Proceedings of the 3rd European Conference on Informatics', Lecture Notes in Computer Science, volume 123.  New York: Springer-Verlag, pp.  334-348.
+
+106. Wand, Mitchell.  1980.  Continuation-based program transformation strategies. 'Journal of the ACM' 27(1):164-180.
+
+107. Waters, Richard C. 1979.  A method for analyzing loop programs.  'IEEE Transactions on Software Engineering' 5(3):237-247.
+
+108. Winograd, Terry.  1971.  Procedures as a representation for data in a computer program for understanding natural language.  Technical report AI TR-17, MIT Artificial Intelligence Laboratory.
+
+109. Winston, Patrick.  1992.  'Artificial Intelligence'.  3rd edition.  Reading, MA: Addison-Wesley.
+
+110. Zabih, Ramin, David McAllester, and David Chapman.  1987.  Non-deterministic Lisp with dependency-directed backtracking.  'AAAI-87', pp.  59-64.
+
+111. Zippel, Richard.  1979.  Probabilistic algorithms for sparse polynomials.  Ph.D. dissertation, Department of Electrical Engineering and Computer Science, MIT.
+
+112. Zippel, Richard.  1993.  'Effective Polynomial Computation'.  Boston, MA: Kluwer Academic Publishers.
+
+* Index
+
+- [[i1][abstract models]]
+- [[i2][abstract syntax]]
+- [[i3][abstraction barriers]]
+- [[i4][abstraction barriers <1>]]
+- [[i5][accumulator]]
+- [[i6][accumulator <1>]]
+- [[i7][acquired]]
+- [[i8][action]]
+- [[i9][additive]]
+- [[i10][additively]]
+- [[i11][additively <1>]]
+- [[i12][address]]
+- [[i13][address arithmetic]]
+- [[i14][agenda]]
+- [[i15][algebraic specification]]
+- [[i16][aliasing]]
+- [[i17][and-gate]]
+- [[i18][applicative-order]]
+- [[i19][applicative-order evaluation]]
+- [[i20][arbiter]]
+- [[i21][arguments]]
+- [[i22][assembler]]
+- [[i23][assertions]]
+- [[i24][assignment operator]]
+- [[i25][atomically]]
+- [[i26][automatic storage allocation]]
+- [[i27][average damping]]
+- [[i28][B-trees]]
+- [[i29][backbone]]
+- [[i30][backquote]]
+- [[i31][backtracks]]
+- [[i32][balanced]]
+- [[i33][barrier synchronization]]
+- [[i34][base address]]
+- [[i35][Bertrand's hypothesis]]
+- [[i36][bignum]]
+- [[i37][bindings]]
+- [[i38][binds]]
+- [[i39][binomial coefficients]]
+- [[i40][block structure]]
+- [[i41][bound variable]]
+- [[i42][box-and-pointer notation]]
+- [[i43][breakpoint]]
+- [[i44][broken heart]]
+- [[i45][bugs]]
+- [[i46][cache-coherence]]
+- [[i47][call-by-name]]
+- [[i48][call-by-name <1>]]
+- [[i49][call-by-name thunks]]
+- [[i50][call-by-need]]
+- [[i51][call-by-need <1>]]
+- [[i52][call-by-need thunks]]
+- [[i53][capturing]]
+- [[i54][Carmichael numbers]]
+- [[i55][case analysis]]
+- [[i56][cell]]
+- [[i57][chronological backtracking]]
+- [[i58][Church numerals]]
+- [[i59][Church-Turing thesis]]
+- [[i60][clauses]]
+- [[i61][closed world assumption]]
+- [[i62][closure]]
+- [[i63][closure property]]
+- [[i64][code generator]]
+- [[i65][coerce]]
+- [[i66][coercion]]
+- [[i67][combinations]]
+- [[i68][comments]]
+- [[i69][compacting]]
+- [[i70][compilation]]
+- [[i71][compile-time environment]]
+- [[i72][composition]]
+- [[i73][compound data]]
+- [[i74][compound data object]]
+- [[i75][compound procedure]]
+- [[i76][computability]]
+- [[i77][computational process]]
+- [[i78][concurrently]]
+- [[i79][congruent modulo]]
+- [[i80][connectors]]
+- [[i81][consequent expression]]
+- [[i82][constraint networks]]
+- [[i83][constructors]]
+- [[i84][continuation procedures]]
+- [[i85][continued fraction]]
+- [[i86][control structure]]
+- [[i87][controller]]
+- [[i88][conventional interfaces]]
+- [[i89][conventional interfaces <1>]]
+- [[i90][current time]]
+- [[i91][data]]
+- [[i92][data <1>]]
+- [[i93][data abstraction]]
+- [[i94][data abstraction <1>]]
+- [[i95][data paths]]
+- [[i96][data-directed]]
+- [[i97][data-directed programming]]
+- [[i98][data-directed programming <1>]]
+- [[i99][deadlock]]
+- [[i100][deadlock-recovery]]
+- [[i101][debug]]
+- [[i102][deep binding]]
+- [[i103][deferred operations]]
+- [[i104][delayed argument]]
+- [[i105][delayed evaluation]]
+- [[i106][delayed evaluation <1>]]
+- [[i107][delayed object]]
+- [[i108][dense]]
+- [[i109][dependency-directed backtracking]]
+- [[i110][depth-first search]]
+- [[i111][deque]]
+- [[i112][derived expressions]]
+- [[i113][digital signals]]
+- [[i114][dispatching on type]]
+- [[i115][displacement number]]
+- [[i116][dotted-tail notation]]
+- [[i117][driver loop]]
+- [[i118][empty list]]
+- [[i119][encapsulated]]
+- [[i120][enclosing environment]]
+- [[i121][entry points]]
+- [[i122][enumerator]]
+- [[i123][environment]]
+- [[i124][environment model]]
+- [[i125][environments]]
+- [[i126][Euclid's Algorithm]]
+- [[i127][Euclidean ring]]
+- [[i128][evaluating]]
+- [[i129][evaluator]]
+- [[i130][event-driven simulation]]
+- [[i131][evlis tail recursion]]
+- [[i132][execution procedure]]
+- [[i133][explicit-control evaluator]]
+- [[i134][expression]]
+- [[i135][failure continuation]]
+- [[i136][FIFO]]
+- [[i137][filter]]
+- [[i138][filter <1>]]
+- [[i139][first-class]]
+- [[i140][fixed point]]
+- [[i141][fixed-length]]
+- [[i142][forcing]]
+- [[i143][forwarding address]]
+- [[i144][frame]]
+- [[i145][frame coordinate map]]
+- [[i146][frame number]]
+- [[i147][framed-stack]]
+- [[i148][frames]]
+- [[i149][free]]
+- [[i150][free list]]
+- [[i151][front]]
+- [[i152][full-adder]]
+- [[i153][function boxes]]
+- [[i154][functional programming]]
+- [[i155][functional programming languages]]
+- [[i156][garbage]]
+- [[i157][garbage collection]]
+- [[i158][garbage collection <1>]]
+- [[i159][garbage collector]]
+- [[i160][garbage-collected]]
+- [[i161][generic operations]]
+- [[i162][generic procedures]]
+- [[i163][generic procedures <1>]]
+- [[i164][glitches]]
+- [[i165][global]]
+- [[i166][global <1>]]
+- [[i167][global environment]]
+- [[i168][golden ratio]]
+- [[i169][grammar]]
+- [[i170][half-adder]]
+- [[i171][half-interval method]]
+- [[i172][Halting Theorem]]
+- [[i173][headed list]]
+- [[i174][hiding principle]]
+- [[i175][hierarchical]]
+- [[i176][hierarchy of types]]
+- [[i177][higher-order procedures]]
+- [[i178][Horner's rule]]
+- [[i179][imperative programming]]
+- [[i180][indeterminates]]
+- [[i181][index]]
+- [[i182][indexing]]
+- [[i183][instantiated with]]
+- [[i184][instruction counting]]
+- [[i185][instruction execution procedure]]
+- [[i186][instruction sequence]]
+- [[i187][instruction tracing]]
+- [[i188][instructions]]
+- [[i189][instructions <1>]]
+- [[i190][integerizing factor]]
+- [[i191][integers]]
+- [[i192][integrator]]
+- [[i193][interning]]
+- [[i194][interpreter]]
+- [[i195][interpreter <1>]]
+- [[i196][invariant quantity]]
+- [[i197][inverter]]
+- [[i198][iterative improvement]]
+- [[i199][iterative process]]
+- [[i200][k-term finite continued fraction]]
+- [[i201][key]]
+- [[i202][labels]]
+- [[i203][lazy evaluation]]
+- [[i204][lexical address]]
+- [[i205][lexical addressing]]
+- [[i206][lexical scoping]]
+- [[i207][linear iterative process]]
+- [[i208][linear recursive process]]
+- [[i209][linkage descriptor]]
+- [[i210][list]]
+- [[i211][list <1>]]
+- [[i212][list <2>]]
+- [[i213][list structure]]
+- [[i214][list-structured]]
+- [[i215][list-structured memory]]
+- [[i216][local evolution]]
+- [[i217][local state variables]]
+- [[i218][location]]
+- [[i219][logic-programming]]
+- [[i220][logical and]]
+- [[i221][logical deductions]]
+- [[i222][logical or]]
+- [[i223][machine language]]
+- [[i224][macro]]
+- [[i225][map]]
+- [[i226][mark-sweep]]
+- [[i227][means of abstraction]]
+- [[i228][means of combination]]
+- [[i229][memoization]]
+- [[i230][Memoization]]
+- [[i231][memoize]]
+- [[i232][merge]]
+- [[i233][message passing]]
+- [[i234][message passing <1>]]
+- [[i235][message-passing]]
+- [[i236][metacircular]]
+- [[i237][Metalinguistic abstraction]]
+- [[i238][Miller-Rabin test]]
+- [[i239][modular]]
+- [[i240][modulo]]
+- [[i241][modulo <1>]]
+- [[i242][modus ponens]]
+- [[i243][moments in time]]
+- [[i244][Monte Carlo integration]]
+- [[i245][Monte Carlo simulation]]
+- [[i246][mutable data objects]]
+- [[i247][mutators]]
+- [[i248][mutex]]
+- [[i249][mutual exclusion]]
+- [[i250][n-fold smoothed function]]
+- [[i251][native language]]
+- [[i252][needed]]
+- [[i253][networks]]
+- [[i254][Newton's method]]
+- [[i255][nil]]
+- [[i256][non-computable]]
+- [[i257][non-strict]]
+- [[i258][nondeterministic]]
+- [[i259][nondeterministic choice point]]
+- [[i260][nondeterministic computing]]
+- [[i261][nondeterministic computing <1>]]
+- [[i262][normal-order]]
+- [[i263][normal-order evaluation]]
+- [[i264][normal-order evaluation <1>]]
+- [[i265][obarray]]
+- [[i266][object program]]
+- [[i267][objects]]
+- [[i268][open-code]]
+- [[i269][operands]]
+- [[i270][operator]]
+- [[i271][operator <1>]]
+- [[i272][or-gate]]
+- [[i273][order of growth]]
+- [[i274][ordinary]]
+- [[i275][output prompt]]
+- [[i276][package]]
+- [[i277][painter]]
+- [[i278][pair]]
+- [[i279][pair <1>]]
+- [[i280][parse]]
+- [[i281][Pascal's triangle]]
+- [[i282][pattern]]
+- [[i283][pattern matcher]]
+- [[i284][pattern matching]]
+- [[i285][pattern variable]]
+- [[i286][pipelining]]
+- [[i287][pointer]]
+- [[i288][poly]]
+- [[i289][power series]]
+- [[i290][predicate]]
+- [[i291][predicate <1>]]
+- [[i292][prefix]]
+- [[i293][prefix code]]
+- [[i294][prefix notation]]
+- [[i295][pretty-printing]]
+- [[i296][primitive constraints]]
+- [[i297][primitive expressions]]
+- [[i298][probabilistic algorithms]]
+- [[i299][procedural abstraction]]
+- [[i300][procedural epistemology]]
+- [[i301][procedure]]
+- [[i302][procedure definitions]]
+- [[i303][procedures]]
+- [[i304][process]]
+- [[i305][program]]
+- [[i306][programming languages]]
+- [[i307][prompt]]
+- [[i308][pseudo-random]]
+- [[i309][pseudodivision]]
+- [[i310][pseudoremainder]]
+- [[i311][quasiquote]]
+- [[i312][queries]]
+- [[i313][query language]]
+- [[i314][queue]]
+- [[i315][quote]]
+- [[i316][Ramanujan numbers]]
+- [[i317][rational functions]]
+- [[i318][RC circuit]]
+- [[i319][read-eval-print loop]]
+- [[i320][reader macro characters]]
+- [[i321][real numbers]]
+- [[i322][rear]]
+- [[i323][recursion equations]]
+- [[i324][Recursion theory]]
+- [[i325][recursive]]
+- [[i326][recursive <1>]]
+- [[i327][recursive process]]
+- [[i328][red-black trees]]
+- [[i329][referentially transparent]]
+- [[i330][register machine]]
+- [[i331][register table]]
+- [[i332][registers]]
+- [[i333][released]]
+- [[i334][remainder of]]
+- [[i335][resolution principle]]
+- [[i336][ripple-carry adder]]
+- [[i337][robust]]
+- [[i338][RSA algorithm]]
+- [[i339][rules]]
+- [[i340][rules <1>]]
+- [[i341][satisfy]]
+- [[i342][scope]]
+- [[i343][selectors]]
+- [[i344][semaphore]]
+- [[i345][separator code]]
+- [[i346][sequence]]
+- [[i347][sequence accelerator]]
+- [[i348][sequences]]
+- [[i349][serializer]]
+- [[i350][serializers]]
+- [[i351][series RLC circuit]]
+- [[i352][shadow]]
+- [[i353][shared]]
+- [[i354][side-effect bugs]]
+- [[i355][sieve of Eratosthenes]]
+- [[i356][smoothing]]
+- [[i357][source language]]
+- [[i358][source program]]
+- [[i359][sparse]]
+- [[i360][special forms]]
+- [[i361][stack]]
+- [[i362][stack <1>]]
+- [[i363][state variables]]
+- [[i364][state variables <1>]]
+- [[i365][statements]]
+- [[i366][stop-and-copy]]
+- [[i367][stratified design]]
+- [[i368][stream processing]]
+- [[i369][streams]]
+- [[i370][streams <1>]]
+- [[i371][streams <2>]]
+- [[i372][strict]]
+- [[i373][subroutine]]
+- [[i374][substitution]]
+- [[i375][substitution model]]
+- [[i376][subtype]]
+- [[i377][success continuation]]
+- [[i378][summation of a series]]
+- [[i379][summer]]
+- [[i380][supertype]]
+- [[i381][symbolic expressions]]
+- [[i382][syntactic sugar]]
+- [[i383][syntax]]
+- [[i384][systematically search]]
+- [[i385][systems]]
+- [[i386][tableau]]
+- [[i387][tabulation]]
+- [[i388][tabulation <1>]]
+- [[i389][tagged architectures]]
+- [[i390][tail-recursive]]
+- [[i391][tail-recursive <1>]]
+- [[i392][target]]
+- [[i394][thunk]]
+- [[i395][thunks]]
+- [[i396][time]]
+- [[i397][time segments]]
+- [[i398][tower]]
+- [[i399][tree accumulation]]
+- [[i400][tree recursion]]
+- [[i401][trees]]
+- [[i402][truth maintenance]]
+- [[i403][Turing machine]]
+- [[i404][type field]]
+- [[i405][type tag]]
+- [[i406][type tags]]
+- [[i407][type-inferencing]]
+- [[i408][typed pointers]]
+- [[i409][unbound]]
+- [[i410][unification]]
+- [[i411][unification <1>]]
+- [[i412][unification <2>]]
+- [[i413][unification algorithm]]
+- [[i414][univariate polynomials]]
+- [[i415][universal machine]]
+- [[i416][upward-compatible extension]]
+- [[i417][value]]
+- [[i418][value of a variable]]
+- [[i419][values]]
+- [[i420][variable]]
+- [[i421][variable-length]]
+- [[i422][vector]]
+- [[i423][width]]
+- [[i424][wires]]
+- [[i425][wishful thinking]]
+- [[i426][zero crossings]]
