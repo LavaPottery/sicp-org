@@ -1,0 +1,75 @@
+** 5.2 Un simulador de máquina de registros
+:properties:
+:custom_id: section-5.2
+:end:
+
+Para adquirir una buena comprensión del diseño de máquinas de registros, debemos probar las máquinas que diseñamos para ver si funcionan como se espera. Una forma de probar un diseño es simular manualmente la operación del controlador, como en el [[#exercise-5.5][Ejercicio 5.5]]. Pero esto es extremadamente tedioso para todas las máquinas excepto las más simples. En esta sección construimos un simulador para máquinas descritas en el lenguaje de máquina de registros. El simulador es un programa Scheme con cuatro procedimientos de interfaz. El primero usa una descripción de una máquina de registros para construir un modelo de la máquina (una estructura de datos cuyas partes corresponden a las partes de la máquina que se va a simular), y los otros tres nos permiten simular la máquina manipulando el modelo:
+
+#+begin_src scheme
+(make-machine <REGISTER-NAMES> <OPERATIONS> <CONTROLLER>)
+#+end_src
+
+construye y devuelve un modelo de la máquina con los registros, operaciones y controlador dados.
+
+#+begin_src scheme
+(set-register-contents! <MACHINE-MODEL> <REGISTER-NAME> <VALUE>)
+#+end_src
+
+almacena un valor en un registro simulado en la máquina dada.
+
+#+begin_src scheme
+(get-register-contents <MACHINE-MODEL> <REGISTER-NAME>)
+#+end_src
+
+devuelve el contenido de un registro simulado en la máquina dada.
+
+#+begin_src scheme
+(start <MACHINE-MODEL>)
+#+end_src
+
+simula la ejecución de la máquina dada, comenzando desde el principio de la secuencia del controlador y deteniéndose cuando alcanza el final de la secuencia.
+
+Como ejemplo de cómo se usan estos procedimientos, podemos definir ~gcd-machine~ como un modelo de la máquina GCD de la sección [[#section-5.1.1][5.1.1]] de la siguiente manera:
+
+#+begin_src scheme
+(define gcd-machine
+  (make-machine
+   '(a b t)
+   (list (list 'rem remainder) (list '= =))
+   '(test-b
+     (test (op =) (reg b) (const 0))
+     (branch (label gcd-done))
+     (assign t (op rem) (reg a) (reg b))
+     (assign a (reg b))
+     (assign b (reg t))
+     (goto (label test-b))
+     gcd-done)))
+#+end_src
+
+El primer argumento de ~make-machine~ es una lista de nombres de registros. El siguiente argumento es una tabla (una lista de listas de dos elementos) que empareja cada nombre de operación con un procedimiento Scheme que implementa la operación (es decir, produce el mismo valor de salida dado los mismos valores de entrada). El último argumento especifica el controlador como una lista de etiquetas e instrucciones de máquina, como en la sección [[#section-5.1][5.1]].
+
+Para calcular MCD con esta máquina, establecemos los registros de entrada, iniciamos la máquina y examinamos el resultado cuando la simulación termina:
+
+#+begin_src scheme
+(set-register-contents! gcd-machine 'a 206)
+done
+
+(set-register-contents! gcd-machine 'b 40)
+done
+
+(start gcd-machine)
+done
+
+(get-register-contents gcd-machine 'a)
+2
+#+end_src
+
+Esta computación se ejecutará mucho más lentamente que un procedimiento ~gcd~ escrito en Scheme, porque simularemos instrucciones de máquina de bajo nivel, como ~assign~, mediante operaciones mucho más complejas.
+
+**** Ejercicio 5.7
+:properties:
+:custom_id: exercise-5.7
+:end:
+
+Usa el simulador para probar las máquinas que diseñaste en el [[#exercise-5.4][Ejercicio 5.4]].
+

@@ -1,0 +1,127 @@
+*** 5.2.4 Monitoreo del rendimiento de la máquina
+:properties:
+:custom_id: section-5.2.4
+:end:
+
+La simulación es útil no solo para verificar la corrección de un diseño de máquina propuesto sino también para medir el rendimiento de la máquina. Por ejemplo, podemos instalar en nuestro programa de simulación un "medidor" que mida el número de operaciones de pila usadas en un cómputo. Para hacer esto, modificamos nuestra pila simulada para llevar un registro del número de veces que los registros se guardan en la pila y la profundidad máxima alcanzada por la pila, y añadimos un mensaje a la interfaz de la pila que imprime las estadísticas, como se muestra abajo. También añadimos una operación al modelo de máquina básico para imprimir las estadísticas de la pila, inicializando ~the-ops~ en ~make-new-machine~ a
+
+#+begin_src scheme
+(list (list 'initialize-stack
+            (lambda () (stack 'initialize)))
+      (list 'print-stack-statistics
+            (lambda () (stack 'print-statistics))))
+#+end_src
+
+Aquí está la nueva versión de ~make-stack~:
+
+#+begin_src scheme
+(define (make-stack)
+  (let ((s '())
+        (number-pushes 0)
+        (max-depth 0)
+        (current-depth 0))
+    (define (push x)
+      (set! s (cons x s))
+      (set! number-pushes (+ 1 number-pushes))
+      (set! current-depth (+ 1 current-depth))
+      (set! max-depth (max current-depth max-depth)))
+    (define (pop)
+      (if (null? s)
+          (error "Empty stack - POP")
+          (let ((top (car s)))
+            (set! s (cdr s))
+            (set! current-depth (- current-depth 1))
+            top)))
+    (define (initialize)
+      (set! s '())
+      (set! number-pushes 0)
+      (set! max-depth 0)
+      (set! current-depth 0)
+      'done)
+    (define (print-statistics)
+      (newline)
+      (display (list 'total-pushes  '= number-pushes
+                     'maximum-depth '= max-depth)))
+    (define (dispatch message)
+      (cond ((eq? message 'push) push)
+            ((eq? message 'pop) (pop))
+            ((eq? message 'initialize) (initialize))
+            ((eq? message 'print-statistics)
+             (print-statistics))
+            (else
+             (error "Unknown request - STACK" message))))
+    dispatch))
+#+end_src
+
+El [[#exercise-5.15][Ejercicio 5.15]] hasta el [[#exercise-5.19][Ejercicio 5.19]] describen otras características útiles de monitoreo y depuración que pueden añadirse al simulador de máquina de registros.
+
+**** Ejercicio 5.14
+:properties:
+:custom_id: exercise-5.14
+:end:
+
+Mide el número de operaciones push y la profundidad máxima de la pila requerida para calcular n! para varios valores pequeños de n usando la máquina factorial mostrada en la [[figure-5.11][Figura 5.11]]. A partir de tus datos determina fórmulas en términos de n para el número total de operaciones push y la profundidad máxima de la pila usada al calcular n! para cualquier n > 1. Nota que cada una de estas es una función lineal de n y por lo tanto está determinada por dos constantes. Para que se impriman las estadísticas, tendrás que aumentar la máquina factorial con instrucciones para inicializar la pila e imprimir las estadísticas. Puede que también quieras modificar la máquina para que lea repetidamente un valor para n, calcule el factorial e imprima el resultado (como hicimos para la máquina GCD en la [[figure-5.4][Figura 5.4]]), para que no tengas que invocar repetidamente ~get-register-contents~, ~set-register-contents!~ y ~start~.
+
+**** Ejercicio 5.15
+:properties:
+:custom_id: exercise-5.15
+:end:
+
+Añade <<i184>> conteo de instrucciones a la simulación de máquina de registros. Es decir, haz que el modelo de máquina lleve un registro del número de instrucciones ejecutadas. Extiende la interfaz del modelo de máquina para aceptar un nuevo mensaje que imprima el valor del conteo de instrucciones y reinicie el conteo a cero.
+
+**** Ejercicio 5.16
+:properties:
+:custom_id: exercise-5.16
+:end:
+
+Aumenta el simulador para proporcionar <<i187>> rastreo de instrucciones. Es decir, antes de que se ejecute cada instrucción, el simulador debe imprimir el texto de la instrucción. Haz que el modelo de máquina acepte mensajes ~trace-on~ y ~trace-off~ para activar y desactivar el rastreo.
+
+**** Ejercicio 5.17
+:properties:
+:custom_id: exercise-5.17
+:end:
+
+Extiende el rastreo de instrucciones del [[#exercise-5.16][Ejercicio 5.16]] para que antes de imprimir una instrucción, el simulador imprima cualquier etiqueta que preceda inmediatamente a esa instrucción en la secuencia del controlador. Ten cuidado de hacer esto de una manera que no interfiera con el conteo de instrucciones ([[#exercise-5.15][Ejercicio 5.15]]). Tendrás que hacer que el simulador retenga la información de etiqueta necesaria.
+
+**** Ejercicio 5.18
+:properties:
+:custom_id: exercise-5.18
+:end:
+
+Modifica el procedimiento ~make-register~ de la sección [[#section-5.2.1][5.2.1]] para que los registros puedan ser rastreados. Los registros deben aceptar mensajes que activen y desactiven el rastreo. Cuando se rastrea un registro, asignar un valor al registro debe imprimir el nombre del registro, el contenido antiguo del registro y el nuevo contenido que se está asignando. Extiende la interfaz al modelo de máquina para permitirte activar y desactivar el rastreo para registros de máquina designados.
+
+**** Ejercicio 5.19
+:properties:
+:custom_id: exercise-5.19
+:end:
+
+Alyssa P. Hacker quiere una característica de <<i43>> punto de interrupción en el simulador para ayudarla a depurar sus diseños de máquina. Has sido contratado para instalar esta característica para ella. Ella quiere poder especificar un lugar en la secuencia del controlador donde el simulador se detendrá y le permitirá examinar el estado de la máquina. Debes implementar un procedimiento
+
+#+begin_src scheme
+(set-breakpoint <MACHINE> <LABEL> <N>)
+#+end_src
+
+que establezca un punto de interrupción justo antes de la enésima instrucción después de la etiqueta dada. Por ejemplo,
+
+#+begin_src scheme
+(set-breakpoint gcd-machine 'test-b 4)
+#+end_src
+
+instala un punto de interrupción en ~gcd-machine~ justo antes de la asignación al registro ~a~. Cuando el simulador alcanza el punto de interrupción debe imprimir la etiqueta y el desplazamiento del punto de interrupción y detener la ejecución de instrucciones. Alyssa puede entonces usar ~get-register-contents~ y ~set-register-contents!~ para manipular el estado de la máquina simulada. Ella debe entonces poder continuar la ejecución diciendo
+
+#+begin_src scheme
+(proceed-machine <MACHINE>)
+#+end_src
+
+También debe poder eliminar un punto de interrupción específico mediante
+
+#+begin_src scheme
+(cancel-breakpoint <MACHINE> <LABEL> <N>)
+#+end_src
+
+o eliminar todos los puntos de interrupción mediante
+
+#+begin_src scheme
+(cancel-all-breakpoints <MACHINE>)
+#+end_src
+

@@ -1,0 +1,165 @@
+*** 5.2.1 El modelo de máquina
+:properties:
+:custom_id: section-5.2.1
+:end:
+
+El modelo de máquina generado por ~make-machine~ se representa como un procedimiento con estado local usando las técnicas de paso de mensajes desarrolladas en el [[#section-3][Capítulo 3]]. Para construir este modelo, ~make-machine~ comienza llamando al procedimiento ~make-new-machine~ para construir las partes del modelo de máquina que son comunes a todas las máquinas de registros. Este modelo de máquina básico construido por ~make-new-machine~ es esencialmente un contenedor para algunos registros y una pila, junto con un mecanismo de ejecución que procesa las instrucciones del controlador una por una.
+
+~make-machine~ luego extiende este modelo básico (enviándole mensajes) para incluir los registros, operaciones y controlador de la máquina particular que se está definiendo. Primero asigna un registro en la nueva máquina para cada uno de los nombres de registros suministrados e instala las operaciones designadas en la máquina. Luego usa un <<i22>> ensamblador (descrito más adelante en la sección [[#section-5.2.2][5.2.2]]) para transformar la lista del controlador en instrucciones para la nueva máquina e instala estas como la secuencia de instrucciones de la máquina. ~make-machine~ devuelve como su valor el modelo de máquina modificado.
+
+#+begin_src scheme
+(define (make-machine register-names ops controller-text)
+  (let ((machine (make-new-machine)))
+    (for-each (lambda (register-name)
+                ((machine 'allocate-register) register-name))
+              register-names)
+    ((machine 'install-operations) ops)
+    ((machine 'install-instruction-sequence)
+     (assemble controller-text machine))
+    machine))
+#+end_src
+
+*Registros*
+
+Representaremos un registro como un procedimiento con estado local, como en el [[#section-3][Capítulo 3]]. El procedimiento ~make-register~ crea un registro que contiene un valor que puede ser accedido o cambiado:
+
+#+begin_src scheme
+(define (make-register name)
+  (let ((contents '*unassigned*))
+    (define (dispatch message)
+      (cond ((eq? message 'get) contents)
+            ((eq? message 'set)
+             (lambda (value) (set! contents value)))
+            (else
+             (error "Unknown request - REGISTER" message))))
+    dispatch))
+#+end_src
+
+Los siguientes procedimientos se usan para acceder a los registros:
+
+#+begin_src scheme
+(define (get-contents register)
+  (register 'get))
+
+(define (set-contents! register value)
+  ((register 'set) value))
+#+end_src
+
+*La pila*
+
+También podemos representar una pila como un procedimiento con estado local. El procedimiento ~make-stack~ crea una pila cuyo estado local consiste en una lista de los elementos en la pila. Una pila acepta solicitudes para hacer ~push~ de un elemento en la pila, hacer ~pop~ del elemento superior de la pila y devolverlo, y para ~initialize~ la pila a vacía.
+
+#+begin_src scheme
+(define (make-stack)
+  (let ((s '()))
+    (define (push x)
+      (set! s (cons x s)))
+    (define (pop)
+      (if (null? s)
+          (error "Empty stack - POP")
+          (let ((top (car s)))
+            (set! s (cdr s))
+            top)))
+    (define (initialize)
+      (set! s '())
+      'done)
+    (define (dispatch message)
+      (cond ((eq? message 'push) push)
+            ((eq? message 'pop) (pop))
+            ((eq? message 'initialize) (initialize))
+            (else (error "Unknown request - STACK"
+                         message))))
+    dispatch))
+#+end_src
+
+Los siguientes procedimientos se usan para acceder a las pilas:
+
+#+begin_src scheme
+(define (pop stack)
+  (stack 'pop))
+
+(define (push stack value)
+  ((stack 'push) value))
+#+end_src
+
+*La máquina básica*
+
+El procedimiento ~make-new-machine~, mostrado en la [[figure-5.13][Figura 5.13]], construye un objeto cuyo estado local consiste en una pila, una secuencia de instrucciones inicialmente vacía, una lista de operaciones que inicialmente contiene una operación para inicializar la pila, y una <<i331>> tabla de registros que inicialmente contiene dos registros, llamados ~flag~ y ~pc~ (por "program counter", o "contador de programa"). El procedimiento interno ~allocate-register~ añade nuevas entradas a la tabla de registros, y el procedimiento interno ~lookup-register~ busca registros en la tabla.
+
+El registro ~flag~ se usa para controlar la ramificación en la máquina simulada. Las instrucciones ~test~ establecen el contenido de ~flag~ al resultado de la prueba (verdadero o falso). Las instrucciones ~branch~ deciden si ramificar o no examinando el contenido de ~flag~.
+
+El registro ~pc~ determina la secuenciación de instrucciones mientras se ejecuta la máquina. Esta secuenciación se implementa mediante el procedimiento interno ~execute~. En el modelo de simulación, cada instrucción de máquina es una estructura de datos que incluye un procedimiento sin argumentos, llamado el <<i185>> procedimiento de ejecución de instrucción, tal que llamar a este procedimiento simula la ejecución de la instrucción. A medida que se ejecuta la simulación, ~pc~ apunta al lugar en la secuencia de instrucciones que comienza con la siguiente instrucción a ejecutar. ~execute~ obtiene esa instrucción, la ejecuta llamando al procedimiento de ejecución de instrucción, y repite este ciclo hasta que no hay más instrucciones que ejecutar (es decir, hasta que ~pc~ apunta al final de la secuencia de instrucciones).
+
+<<figure-5.13>> El procedimiento ~make-new-machine~, que implementa el modelo de máquina básico.
+
+#+begin_src scheme
+(define (make-new-machine)
+  (let ((pc (make-register 'pc))
+        (flag (make-register 'flag))
+        (stack (make-stack))
+        (the-instruction-sequence '()))
+    (let ((the-ops
+           (list (list 'initialize-stack
+                       (lambda () (stack 'initialize)))))
+          (register-table
+           (list (list 'pc pc) (list 'flag flag))))
+      (define (allocate-register name)
+        (if (assoc name register-table)
+            (error "Multiply defined register: " name)
+            (set! register-table
+              (cons (list name (make-register name))
+                    register-table)))
+        'register-allocated)
+      (define (lookup-register name)
+        (let ((val (assoc name register-table)))
+          (if val
+              (cadr val)
+              (error "Unknown register:" name))))
+      (define (execute)
+        (let ((insts (get-contents pc)))
+          (if (null? insts)
+              'done
+              (begin
+                ((instruction-execution-proc (car insts)))
+                (execute)))))
+      (define (dispatch message)
+        (cond ((eq? message 'start)
+               (set-contents! pc the-instruction-sequence)
+               (execute))
+              ((eq? message 'install-instruction-sequence)
+               (lambda (seq) (set! the-instruction-sequence seq)))
+              ((eq? message 'allocate-register) allocate-register)
+              ((eq? message 'get-register) lookup-register)
+              ((eq? message 'install-operations)
+               (lambda (ops) (set! the-ops (append the-ops ops))))
+              ((eq? message 'stack) stack)
+              ((eq? message 'operations) the-ops)
+              (else (error "Unknown request - MACHINE" message))))
+      dispatch)))
+#+end_src
+
+Como parte de su operación, cada procedimiento de ejecución de instrucción modifica ~pc~ para indicar la siguiente instrucción a ejecutar. Las instrucciones ~branch~ y ~goto~ cambian ~pc~ para apuntar al nuevo destino. Todas las demás instrucciones simplemente avanzan ~pc~, haciéndolo apuntar a la siguiente instrucción en la secuencia. Observa que cada llamada a ~execute~ llama a ~execute~ de nuevo, pero esto no produce un bucle infinito porque ejecutar el procedimiento de ejecución de instrucción cambia el contenido de ~pc~.
+
+~make-new-machine~ devuelve un procedimiento ~dispatch~ que implementa el acceso por paso de mensajes al estado interno. Nota que iniciar la máquina se logra estableciendo ~pc~ al principio de la secuencia de instrucciones y llamando a ~execute~.
+
+Por conveniencia, proporcionamos una interfaz procedimental alternativa para la operación ~start~ de una máquina, así como procedimientos para establecer y examinar el contenido de los registros, como se especifica al principio de la sección [[#section-5.2][5.2]]:
+
+#+begin_src scheme
+(define (start machine)
+  (machine 'start))
+
+(define (get-register-contents machine register-name)
+  (get-contents (get-register machine register-name)))
+
+(define (set-register-contents! machine register-name value)
+  (set-contents! (get-register machine register-name) value)
+  'done)
+#+end_src
+
+Estos procedimientos (y muchos procedimientos en las secciones [[#section-5.2.2][5.2.2]] y [[#section-5.2.3][5.2.3]]) usan lo siguiente para buscar el registro con un nombre dado en una máquina dada:
+
+#+begin_src scheme
+(define (get-register machine reg-name)
+  ((machine 'get-register) reg-name))
+#+end_src
+
