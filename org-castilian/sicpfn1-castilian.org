@@ -1,0 +1,243 @@
+[fn:100] Estrictamente, nuestro uso de la comilla viola la regla general de que todas las expresiones compuestas en nuestro lenguaje deben estar delimitadas por paréntesis y parecer listas. Podemos recuperar esta consistencia introduciendo una forma especial ~quote~, que cumple el mismo propósito que la comilla. Así, escribiríamos ~(quote a)~ en lugar de ~'a~, y escribiríamos ~(quote (a b c))~ en lugar de ~'(a b c)~. Esto es precisamente cómo funciona el intérprete. La comilla es simplemente una abreviatura de un solo carácter para envolver la siguiente expresión completa con ~quote~ para formar '(quote <EXPRESSION>)'. Esto es importante porque mantiene el principio de que cualquier expresión vista por el intérprete puede manipularse como un objeto de datos. Por ejemplo, podríamos construir la expresión ~(car '(a b c))~, que es igual a ~(car (quote (a b c)))~, evaluando ~(list 'car (list 'quote '(a b c)))~.
+
+[fn:101] Podemos considerar que dos símbolos son "iguales" si consisten en los mismos caracteres en el mismo orden. Tal definición elude un tema profundo que aún no estamos listos para abordar: el significado de "igualdad" en un lenguaje de programación. Volveremos a esto en [[#section-3][Chapter 3]] (sección [[#section-3.1.3][3.1.3]]).
+
+[fn:102] En la práctica, los programadores usan ~equal?~ para comparar listas que contienen números así como símbolos. Los números no se consideran símbolos. La cuestión de si dos números numéricamente iguales (según la prueba ~=~) son también ~eq?~ es altamente dependiente de la implementación. Una mejor definición de ~equal?~ (como la que viene como primitiva en Scheme) también estipularía que si ~a~ y ~b~ son ambos números, entonces ~a~ y ~b~ son ~equal?~ si son numéricamente iguales.
+
+[fn:103] Si queremos ser más formales, podemos especificar que "consistente con las interpretaciones dadas anteriormente" significa que las operaciones satisfacen una colección de reglas como estas:
+
+- Para cualquier conjunto ~S~ y cualquier objeto ~x~, ~(element-of-set?  x (adjoin-set x S))~ es verdadero (informalmente: "Adjuntar un objeto a un conjunto produce un conjunto que contiene el objeto").
+
+- Para cualesquiera conjuntos ~S~ y ~T~ y cualquier objeto ~x~, ~(element-of-set?  x (union-set S T))~ es igual a ~(or (element-of-set?  x S) (element-of-set?  x T))~ (informalmente: "Los elementos de ~(union S T)~ son los elementos que están en ~S~ o en ~T~").
+
+- Para cualquier objeto ~x~, ~(element-of-set?  x '())~ es falso (informalmente: "Ningún objeto es un elemento del conjunto vacío").
+
+[fn:104] Reducir a la mitad el tamaño del problema en cada paso es la característica distintiva del crecimiento logarítmico, como vimos con el algoritmo de exponenciación rápida de la sección [[#section-1.2.4][1.2.4]] y el método de búsqueda por intervalo medio de la sección [[#section-1.3.3][1.3.3]].
+
+[fn:105] Estamos representando conjuntos en términos de árboles, y árboles en términos de listas—en efecto, una abstracción de datos construida sobre otra abstracción de datos. Podemos considerar los procedimientos ~entry~, ~left-branch~, ~right-branch~ y ~make-tree~ como una forma de aislar la abstracción de un "árbol binario" de la manera particular en que podríamos desear representar tal árbol en términos de estructura de lista.
+
+[fn:106] Ejemplos de tales estructuras incluyen <<i28>> B-trees y <<i328>> red-black trees. Existe una amplia literatura sobre estructuras de datos dedicada a este problema. Ver Cormen, Leiserson, and Rivest 1990.
+
+[fn:107] [[#exercise-2.63][Exercise 2.63]] a [[#exercise-2.65][Exercise 2.65]] son obra de Paul Hilfinger.
+
+[fn:108] Ver Hamming 1980 para una discusión de las propiedades matemáticas de los códigos de Huffman.
+
+[fn:109] En sistemas computacionales reales, la forma rectangular es preferible a la forma polar la mayor parte del tiempo debido a errores de redondeo en la conversión entre las formas rectangular y polar. Esta es la razón por la que el ejemplo de números complejos no es realista. Sin embargo, proporciona una ilustración clara del diseño de un sistema usando operaciones genéricas y una buena introducción a los sistemas más sustanciales que se desarrollarán más adelante en este capítulo.
+
+[fn:110] La función arcotangente a la que se hace referencia aquí, calculada por el procedimiento ~atan~ de Scheme, está definida para tomar dos argumentos y y x y devolver el ángulo cuya tangente es y/x. Los signos de los argumentos determinan el cuadrante del ángulo.
+
+[fn:111] Usamos la lista ~(rectangular)~ en lugar del símbolo ~rectangular~ para permitir la posibilidad de operaciones con múltiples argumentos, no todos del mismo tipo.
+
+[fn:112] El tipo bajo el cual se instalan los constructores no necesita ser una lista porque un constructor siempre se usa para crear un objeto de un tipo particular.
+
+[fn:113] ~Apply-generic~ usa la notación de cola con puntos descrita en [[#exercise-2.20][Exercise 2.20]], porque diferentes operaciones genéricas pueden tomar diferentes números de argumentos. En ~apply-generic~, ~op~ tiene como su valor el primer argumento de ~apply-generic~ y ~args~ tiene como su valor una lista de los argumentos restantes.
+
+~apply-generic~ también usa el procedimiento primitivo ~apply~, que toma dos argumentos, un procedimiento y una lista. ~apply~ aplica el procedimiento, usando los elementos de la lista como argumentos. Por ejemplo,
+
+#+begin_src scheme
+(apply + (list 1 2 3 4))
+#+end_src
+
+devuelve 10.
+
+[fn:114] Una limitación de esta organización es que permite solo procedimientos genéricos de un argumento.
+
+[fn:115] También tenemos que proporcionar un procedimiento casi idéntico para manejar los tipos ~(scheme-number complex)~.
+
+[fn:116] Ver [[#exercise-2.82][Exercise 2.82]] para generalizaciones.
+
+[fn:117] Si somos inteligentes, usualmente podemos arreglárnoslas con menos de n^2 procedimientos de coerción. Por ejemplo, si sabemos cómo convertir del tipo 1 al tipo 2 y del tipo 2 al tipo 3, entonces podemos usar este conocimiento para convertir del tipo 1 al tipo 3. Esto puede reducir en gran medida el número de procedimientos de coerción que necesitamos proporcionar explícitamente cuando agregamos un nuevo tipo al sistema. Si estamos dispuestos a incorporar la cantidad requerida de sofisticación en nuestro sistema, podemos hacer que busque en el "grafo" de relaciones entre tipos y genere automáticamente aquellos procedimientos de coerción que pueden inferirse de los que se proporcionan explícitamente.
+
+[fn:118] Esta afirmación, que también aparece en la primera edición de este libro, es tan cierta ahora como lo era cuando la escribimos hace doce años. Desarrollar un marco útil y general para expresar las relaciones entre diferentes tipos de entidades (lo que los filósofos llaman "ontología") parece intratablemente difícil. La principal diferencia entre la confusión que existía hace diez años y la confusión que existe ahora es que ahora una variedad de teorías ontológicas inadecuadas se han incorporado en una plétora de lenguajes de programación correspondientemente inadecuados. Por ejemplo, gran parte de la complejidad de los lenguajes de programación orientados a objetos—y las diferencias sutiles y confusas entre los lenguajes orientados a objetos contemporáneos—se centra en el tratamiento de operaciones genéricas sobre tipos interrelacionados. Nuestra propia discusión de objetos computacionales en [[#section-3][Chapter 3]] evita estos temas por completo. Los lectores familiarizados con la programación orientada a objetos notarán que tenemos mucho que decir en [[#section-3][Chapter 3]] sobre el estado local, pero ni siquiera mencionamos "clases" o "herencia". De hecho, sospechamos que estos problemas no pueden abordarse adecuadamente en términos del diseño de lenguajes de computación solamente, sin recurrir también al trabajo en representación del conocimiento y razonamiento automatizado.
+
+[fn:119] Un número real puede proyectarse a un entero usando la primitiva ~round~, que devuelve el entero más cercano a su argumento.
+
+[fn:120] Por otro lado, permitiremos polinomios cuyos coeficientes son ellos mismos polinomios en otras variables. Esto nos dará esencialmente el mismo poder representacional que un sistema multivariable completo, aunque sí conduce a problemas de coerción, como se discute a continuación.
+
+[fn:121] Para polinomios univariados, dar el valor de un polinomio en un conjunto dado de puntos puede ser una representación particularmente buena. Esto hace que la aritmética polinomial sea extremadamente simple. Para obtener, por ejemplo, la suma de dos polinomios representados de esta manera, solo necesitamos sumar los valores de los polinomios en los puntos correspondientes. Para transformar de vuelta a una representación más familiar, podemos usar la fórmula de interpolación de Lagrange, que muestra cómo recuperar los coeficientes de un polinomio de grado n dados los valores del polinomio en n + 1 puntos.
+
+[fn:122] Esta operación es muy similar a la operación ordenada ~union-set~ que desarrollamos en el ejercicio [[#exercise-2.62][Exercise 2.62]]. De hecho, si pensamos en los términos del polinomio como un conjunto ordenado según la potencia de la indeterminada, entonces el programa que produce la lista de términos para una suma es casi idéntico a ~union-set~.
+[fn:123] Para que esto funcione completamente sin problemas, también deberíamos añadir a nuestro sistema aritmético genérico la capacidad de coaccionar un "número" a un polinomio considerándolo como un polinomio de grado cero cuyo coeficiente es el número. Esto es necesario si vamos a realizar operaciones tales como
+
+#+begin_example
+ [x^2 + (y + 1)x + 5] + [x^2 + 2x + 1]
+#+end_example
+
+lo cual requiere sumar el coeficiente y + 1 al coeficiente 2.
+
+[fn:124] En estos ejemplos de polinomios, asumimos que hemos implementado el sistema aritmético genérico usando el mecanismo de tipos sugerido en [[#exercise-2.78][Exercise 2.78]]. Así, los coeficientes que son números ordinarios se representarán como los números mismos en lugar de como pares cuyo ~car~ es el símbolo ~scheme-number~.
+
+[fn:125] Aunque estamos asumiendo que las listas de términos están ordenadas, hemos implementado ~adjoin-term~ para simplemente hacer ~cons~ del nuevo término sobre la lista de términos existente. Podemos salir adelante con esto siempre que garanticemos que los procedimientos (como ~add-terms~) que usan ~adjoin-term~ siempre lo llamen con un término de orden superior al que aparece en la lista. Si no quisiéramos hacer tal garantía, podríamos haber implementado ~adjoin-term~ para que sea similar al constructor ~adjoin-set~ para la representación de lista ordenada de conjuntos ([[#exercise-2.61][Exercise 2.61]]).
+
+[fn:126] El hecho de que el Algoritmo de Euclides funcione para polinomios se formaliza en álgebra diciendo que los polinomios forman un tipo de dominio algebraico llamado <<i127>> anillo euclídeo. Un anillo euclídeo es un dominio que admite adición, sustracción y multiplicación conmutativa, junto con una forma de asignar a cada elemento x del anillo un entero positivo "medida" m(x) con las propiedades de que m(xy)>= m(x) para cualquier x e y no cero y que, dados cualesquiera x e y, existe una q tal que y = qx + r y o bien r = 0 o bien m(r)< m(x). Desde un punto de vista abstracto, esto es lo que se necesita para probar que el Algoritmo de Euclides funciona. Para el dominio de los enteros, la medida m de un entero es el valor absoluto del entero mismo. Para el dominio de los polinomios, la medida de un polinomio es su grado.
+
+[fn:127] En una implementación como MIT Scheme, esto produce un polinomio que es en efecto un divisor de Q_1 y Q_2, pero con coeficientes racionales. En muchos otros sistemas Scheme, en los que la división de enteros puede producir números decimales de precisión limitada, podemos no conseguir un divisor válido.
+
+[fn:128] Un método extremadamente eficiente y elegante para calcular GCDs de polinomios fue descubierto por Richard Zippel (1979). El método es un algoritmo probabilístico, como lo es la prueba rápida de primalidad que discutimos en [[#section-1][Chapter 1]]. El libro de Zippel (1993) describe este método, junto con otras formas de calcular GCDs de polinomios.
+
+[fn:129] En realidad, esto no es del todo cierto. Una excepción fue el generador de números aleatorios en la sección [[#section-1.2.6][1.2.6]]. Otra excepción involucró las tablas de operación/tipo que introdujimos en la sección [[#section-2.4.3][2.4.3]], donde los valores de dos llamadas a ~get~ con los mismos argumentos dependían de las llamadas intermedias a ~put~. Por otro lado, hasta que introducimos la asignación, no tenemos forma de crear tales procedimientos nosotros mismos.
+
+[fn:130] El valor de una expresión ~set!~ es dependiente de la implementación. ~set!~ debe usarse solo por su efecto, no por su valor.
+
+El nombre ~set!~ refleja una convención de nomenclatura usada en Scheme: Las operaciones que cambian los valores de las variables (o que cambian estructuras de datos, como veremos en la sección [[#section-3.3][3.3]]) reciben nombres que terminan con un signo de exclamación. Esto es similar a la convención de designar predicados con nombres que terminan con un signo de interrogación.
+
+[fn:131] Ya hemos usado ~begin~ implícitamente en nuestros programas, porque en Scheme el cuerpo de un procedimiento puede ser una secuencia de expresiones. Además, la parte <CONSEQUENT> de cada cláusula en una expresión ~cond~ puede ser una secuencia de expresiones en lugar de una sola expresión.
+
+[fn:132] En la jerga de lenguajes de programación, se dice que la variable ~balance~ está <<i119>> encapsulada dentro del procedimiento ~new-withdraw~. La encapsulación refleja el principio general de diseño de sistemas conocido como el <<i174>> principio de ocultamiento: Uno puede hacer un sistema más modular y robusto protegiendo partes del sistema entre sí; es decir, proporcionando acceso a la información solo a aquellas partes del sistema que tienen "necesidad de saber".
+
+[fn:133] En contraste con ~new-withdraw~ arriba, no tenemos que usar ~let~ para hacer ~balance~ una variable local, ya que los parámetros formales ya son locales. Esto será más claro después de la discusión del modelo de entorno de evaluación en la sección [[#section-3.2][3.2]]. (Ver también [[#exercise-3.10][Exercise 3.10]].)
+
+[fn:134] Una forma común de implementar ~rand-update~ es usar la regla de que x se actualiza a ax + b módulo m, donde a, b y m son enteros apropiadamente elegidos. El Capítulo 3 de Knuth 1981 incluye una discusión extensa de técnicas para generar secuencias de números aleatorios y establecer sus propiedades estadísticas. Nótese que el procedimiento ~rand-update~ calcula una función matemática: Dado el mismo input dos veces, produce el mismo output. Por lo tanto, la secuencia de números producida por ~rand-update~ ciertamente no es "aleatoria", si por "aleatoria" insistimos en que cada número en la secuencia no está relacionado con el número precedente. La relación entre "aleatoriedad real" y las llamadas <<i308>> secuencias pseudo-aleatorias, que son producidas por cálculos bien determinados y sin embargo tienen propiedades estadísticas adecuadas, es una cuestión compleja que involucra temas difíciles en matemáticas y filosofía. Kolmogorov, Solomonoff y Chaitin han hecho grandes progresos en clarificar estos temas; se puede encontrar una discusión en Chaitin 1975.
+
+[fn:135] Este teorema se debe a E. Cesa`ro. Ver la sección 4.5.2 de Knuth 1981 para una discusión y una demostración.
+
+[fn:136] MIT Scheme proporciona tal procedimiento. Si a ~random~ se le da un entero exacto (como en la sección [[#section-1.2.6][1.2.6]]) devuelve un entero exacto, pero si se le da un valor decimal (como en este ejercicio) devuelve un valor decimal.
+
+[fn:137] No sustituimos la ocurrencia de ~balance~ en la expresión ~set!~ porque el <NAME> en un ~set!~ no se evalúa. Si lo sustituyéramos, obtendríamos ~(set!  25 (- 25 amount))~, lo cual no tiene sentido.
+
+[fn:138] El fenómeno de un único objeto computacional siendo accedido por más de un nombre se conoce como <<i16>> aliasing. La situación de la cuenta bancaria conjunta ilustra un ejemplo muy simple de un alias. En la sección [[#section-3.3][3.3]] veremos ejemplos mucho más complejos, tales como estructuras de datos compuestas "distintas" que comparten partes. Pueden ocurrir bugs en nuestros programas si olvidamos que un cambio a un objeto también puede, como un "efecto secundario", cambiar un objeto "diferente" porque los dos objetos "diferentes" son en realidad un único objeto apareciendo bajo diferentes aliases. Estos llamados <<i354>> bugs de efectos secundarios son tan difíciles de localizar y analizar que algunas personas han propuesto que los lenguajes de programación se diseñen de tal manera que no permitan efectos secundarios o aliasing (Lampson et al.  1981; Morris, Schmidt, and Wadler 1980).
+
+[fn:139] En vista de esto, es irónico que la programación introductoria se enseñe con mayor frecuencia en un estilo altamente imperativo. Esto puede ser un vestigio de una creencia, común durante los años 1960 y 1970, de que los programas que llaman procedimientos deben ser inherentemente menos eficientes que los programas que realizan asignaciones. (Steele (1977) desmiente este argumento.) Alternativamente puede reflejar una visión de que la asignación paso a paso es más fácil de visualizar para los principiantes que la llamada a procedimientos. Cualquiera que sea la razón, a menudo carga a los programadores principiantes con preocupaciones de "¿debería establecer esta variable antes o después de esa otra?" que pueden complicar la programación y oscurecer las ideas importantes.
+
+[fn:140] La asignación introduce una sutileza en el paso 1 de la regla de evaluación. Como se muestra en [[#exercise-3.8][Exercise 3.8]], la presencia de asignación nos permite escribir expresiones que producirán diferentes valores dependiendo del orden en que se evalúan las subexpresiones en una combinación. Así, para ser precisos, deberíamos especificar un orden de evaluación en el paso 1 (por ejemplo, de izquierda a derecha o de derecha a izquierda). Sin embargo, este orden siempre debe considerarse un detalle de implementación, y uno nunca debería escribir programas que dependan de algún orden particular. Por ejemplo, un compilador sofisticado podría optimizar un programa variando el orden en que se evalúan las subexpresiones.
+
+[fn:141] Si ya existe un enlace para la variable en el marco actual, entonces el enlace se cambia. Esto es conveniente porque permite la redefinición de símbolos; sin embargo, también significa que ~define~ puede usarse para cambiar valores, y esto plantea los temas de asignación sin usar explícitamente ~set!~. Debido a esto, algunas personas prefieren que las redefiniciones de símbolos existentes señalen errores o advertencias.
+
+[fn:142] El modelo de entorno no aclarará nuestra afirmación en la sección [[#section-1.2.1][1.2.1]] de que el intérprete puede ejecutar un procedimiento tal como ~fact-iter~ en una cantidad constante de espacio usando recursión de cola. Discutiremos la recursión de cola cuando tratemos con la estructura de control del intérprete en la sección [[#section-5.4][5.4]].
+
+[fn:143] Si ~W1~ y ~W2~ comparten el mismo código físico almacenado en la computadora, o si cada uno mantiene una copia del código, es un detalle de la implementación. Para el intérprete que implementamos en [[#section-4][Chapter 4]], el código de hecho se comparte.
+
+[fn:144] ~Set-car!~ y ~set-cdr!~ devuelven valores dependientes de la implementación. Como ~set!~, deben usarse solo por su efecto.
+
+[fn:145] Vemos de esto que las operaciones de mutación en listas pueden crear "basura" que no es parte de ninguna estructura accesible. Veremos en la sección [[#section-5.3.2][5.3.2]] que los sistemas de gestión de memoria de Lisp incluyen un <<i159>> recolector de basura, que identifica y recicla el espacio de memoria usado por pares innecesarios.
+
+[fn:146] ~Get-new-pair~ es una de las operaciones que debe implementarse como parte de la gestión de memoria requerida por una implementación de Lisp. Discutiremos esto en la sección [[#section-5.3.1][5.3.1]].
+
+[fn:147] Los dos pares son distintos porque cada llamada a ~cons~ devuelve un nuevo par. Los símbolos son compartidos; en Scheme hay un símbolo único con cualquier nombre dado. Dado que Scheme no proporciona forma de mutar un símbolo, este compartir es indetectable. Nótese también que el compartir es lo que nos permite comparar símbolos usando ~eq?~, que simplemente verifica igualdad de punteros.
+
+[fn:148] Las sutilezas de tratar con el compartir de objetos de datos mutables reflejan los temas subyacentes de "igualdad" y "cambio" que se plantearon en la sección [[#section-3.1.3][3.1.3]]. Mencionamos allí que admitir cambio a nuestro lenguaje requiere que un objeto compuesto debe tener una "identidad" que es algo diferente de las piezas de las que está compuesto. En Lisp, consideramos que esta "identidad" es la cualidad que es probada por ~eq?~, es decir, por igualdad de punteros. Dado que en la mayoría de las implementaciones de Lisp un puntero es esencialmente una dirección de memoria, estamos "resolviendo el problema" de definir la identidad de los objetos estipulando que un objeto de datos "en sí mismo" es la información almacenada en algún conjunto particular de ubicaciones de memoria en la computadora. Esto es suficiente para programas simples de Lisp, pero difícilmente es una forma general de resolver el tema de "igualdad" en modelos computacionales.
+[fn:149] Por otro lado, desde el punto de vista de la implementación, la asignación requiere que modifiquemos el entorno, que es en sí mismo una estructura de datos mutable. Así, asignación y mutación son equipotentes: Cada una puede implementarse en términos de la otra.
+
+[fn:150] Si el primer elemento es el elemento final en la cola, el puntero frontal será la lista vacía después de la eliminación, lo cual marcará la cola como vacía; no necesitamos preocuparnos por actualizar el puntero trasero, que seguirá apuntando al elemento eliminado, porque ~empty-queue?~ solo mira el puntero frontal.
+
+[fn:151] Ten cuidado de no hacer que el intérprete intente imprimir una estructura que contiene ciclos. (Ver [[#exercise-3.13][Exercise 3.13]].)
+
+[fn:152] Porque ~assoc~ usa ~equal?~, puede reconocer claves que son símbolos, números o estructura de lista.
+
+[fn:153] Así, el primer par de columna vertebral es el objeto que representa la tabla "en sí misma"; es decir, un puntero a la tabla es un puntero a este par. Este mismo par de columna vertebral siempre inicia la tabla. Si no organizáramos las cosas de esta manera, ~insert!~ tendría que devolver un nuevo valor para el inicio de la tabla cuando añadiera un nuevo registro.
+
+[fn:154] Un sumador completo es un elemento de circuito básico usado para sumar dos números binarios. Aquí A y B son los bits en posiciones correspondientes en los dos números a sumar, y C_(in) es el bit de acarreo de la suma un lugar a la derecha. El circuito genera SUM, que es el bit de suma en la posición correspondiente, y C_(out), que es el bit de acarreo a propagar hacia la izquierda.
+
+[fn:155] Estos procedimientos son simplemente azúcar sintáctico que nos permite usar sintaxis procedural ordinaria para acceder a los procedimientos locales de los objetos. Es sorprendente que podamos intercambiar el rol de "procedimientos" y "datos" de una manera tan simple. Por ejemplo, si escribimos ~(wire 'get-signal)~ pensamos en ~wire~ como un procedimiento que es llamado con el mensaje ~get-signal~ como entrada. Alternativamente, escribir ~(get-signal wire)~ nos anima a pensar en ~wire~ como un objeto de datos que es la entrada a un procedimiento ~get-signal~. La verdad del asunto es que, en un lenguaje en el que podemos tratar con procedimientos como objetos, no hay diferencia fundamental entre "procedimientos" y "datos", y podemos elegir nuestro azúcar sintáctico para permitirnos programar en el estilo que elijamos.
+
+[fn:156] La agenda es una lista encabezada, como las tablas en la sección [[#section-3.3.3][3.3.3]], pero dado que la lista está encabezada por el tiempo, no necesitamos un encabezado ficticio adicional (tal como el símbolo ~*table*~ usado con tablas).
+
+[fn:157] Observa que la expresión ~if~ en este procedimiento no tiene expresión <ALTERNATIVE>. Tal "declaración ~if~ de un brazo" se usa para decidir si hacer algo, en lugar de seleccionar entre dos expresiones. Una expresión ~if~ devuelve un valor no especificado si el predicado es falso y no hay <ALTERNATIVE>.
+
+[fn:158] De esta manera, el tiempo actual siempre será el tiempo de la acción procesada más recientemente. Almacenar este tiempo al inicio de la agenda asegura que seguirá estando disponible incluso si el segmento de tiempo asociado ha sido eliminado.
+
+[fn:159] La propagación de restricciones apareció por primera vez en el increíblemente visionario sistema SKETCHPAD de Ivan Sutherland (1963). Un hermoso sistema de propagación de restricciones basado en el lenguaje Smalltalk fue desarrollado por Alan Borning (1977) en Xerox Palo Alto Research Center. Sussman, Stallman y Steele aplicaron la propagación de restricciones al análisis de circuitos eléctricos (Sussman and Stallman 1975; Sussman and Steele 1980). TK!Solver (Konopasek and Jayaraman 1984) es un extenso entorno de modelado basado en restricciones.
+
+[fn:160] El ~setter~ podría no ser una restricción. En nuestro ejemplo de temperatura, usamos ~user~ como el ~setter~.
+
+[fn:161] El formato orientado a expresiones es conveniente porque evita la necesidad de nombrar las expresiones intermedias en un cálculo. Nuestra formulación original del lenguaje de restricciones es engorrosa de la misma manera que muchos lenguajes son engorrosos al tratar con operaciones sobre datos compuestos. Por ejemplo, si quisiéramos calcular el producto (a + b) * (c + d), donde las variables representan vectores, podríamos trabajar en "estilo imperativo", usando procedimientos que establecen los valores de argumentos vectoriales designados pero no devuelven ellos mismos vectores como valores:
+
+#+begin_src scheme
+(v-sum a b temp1)
+(v-sum c d temp2)
+(v-prod temp1 temp2 answer)
+#+end_src
+
+Alternativamente, podríamos tratar con expresiones, usando procedimientos que devuelven vectores como valores, y así evitar mencionar explícitamente ~temp1~ y ~temp2~:
+
+#+begin_src scheme
+(define answer (v-prod (v-sum a b) (v-sum c d)))
+#+end_src
+
+Dado que Lisp nos permite devolver objetos compuestos como valores de procedimientos, podemos transformar nuestro lenguaje de restricciones de estilo imperativo en un estilo orientado a expresiones como se muestra en este ejercicio. En lenguajes que son pobres en el manejo de objetos compuestos, tales como Algol, Basic y Pascal (a menos que uno use explícitamente variables de puntero de Pascal), uno usualmente está atascado con el estilo imperativo al manipular objetos compuestos. Dada la ventaja del formato orientado a expresiones, uno podría preguntarse si hay alguna razón para haber implementado el sistema en estilo imperativo, como hicimos en esta sección. Una razón es que el lenguaje de restricciones no orientado a expresiones proporciona un control sobre los objetos de restricción (por ejemplo, el valor del procedimiento ~adder~) así como sobre los objetos conectores. Esto es útil si deseamos extender el sistema con nuevas operaciones que se comuniquen con restricciones directamente en lugar de solo indirectamente a través de operaciones sobre conectores. Aunque es fácil implementar el estilo orientado a expresiones en términos de la implementación imperativa, es muy difícil hacer lo contrario.
+
+[fn:162] La mayoría de los procesadores reales en realidad ejecutan unas pocas operaciones a la vez, siguiendo una estrategia llamada <<i286>> segmentación. Aunque esta técnica mejora en gran medida la utilización efectiva del hardware, se usa solo para acelerar la ejecución de un flujo de instrucciones secuencial, mientras se retiene el comportamiento del programa secuencial.
+
+[fn:163] Para citar un grafiti visto en una pared de un edificio de Cambridge: "El tiempo es un dispositivo que fue inventado para evitar que todo suceda a la vez".
+
+[fn:164] Un fallo aún peor para este sistema podría ocurrir si las dos operaciones ~set!~ intentan cambiar el saldo simultáneamente, en cuyo caso los datos reales que aparecen en la memoria podrían terminar siendo una combinación aleatoria de la información siendo escrita por los dos procesos. La mayoría de las computadoras tienen bloqueos en las operaciones primitivas de escritura de memoria, que protegen contra tal acceso simultáneo. Incluso este tipo de protección aparentemente simple, sin embargo, plantea desafíos de implementación en el diseño de computadoras de multiprocesamiento, donde se requieren elaborados <<i46>> protocolos de coherencia de caché para asegurar que los diversos procesadores mantendrán una vista consistente del contenido de la memoria, a pesar del hecho de que los datos pueden replicarse ("cachearse") entre los diferentes procesadores para aumentar la velocidad de acceso a la memoria.
+
+[fn:165] El programa factorial en la sección [[#section-3.1.3][3.1.3]] ilustra esto para un único proceso secuencial.
+
+[fn:166] Las columnas muestran el contenido de la billetera de Peter, la cuenta conjunta (en Bank1), la billetera de Paul y la cuenta privada de Paul (en Bank2), antes y después de cada retiro (W) y depósito (D). Peter retira $10 de Bank1; Paul deposita $5 en Bank2, luego retira $25 de Bank1.
+
+[fn:167] Una forma más formal de expresar esta idea es decir que los programas concurrentes son inherentemente <<i258>> no determinísticos. Es decir, están descritos no por funciones de valor único, sino por funciones cuyos resultados son conjuntos de valores posibles. En la sección [[#section-4.3][4.3]] estudiaremos un lenguaje para expresar cálculos no determinísticos.
+
+[fn:168] ~Parallel-execute~ no es parte del Scheme estándar, pero puede implementarse en MIT Scheme. En nuestra implementación, los nuevos procesos concurrentes también se ejecutan concurrentemente con el proceso Scheme original. Además, en nuestra implementación, el valor devuelto por ~parallel-execute~ es un objeto de control especial que puede usarse para detener los procesos recién creados.
+
+[fn:169] Hemos simplificado ~exchange~ explotando el hecho de que nuestro mensaje ~deposit~ acepta cantidades negativas. (¡Esto es un bug serio en nuestro sistema bancario!)
+
+[fn:170] Si los saldos de las cuentas comienzan como $10, $20 y $30, entonces después de cualquier número de intercambios concurrentes, los saldos aún deberían ser $10, $20 y $30 en algún orden. Serializar los depósitos a cuentas individuales no es suficiente para garantizar esto. Ver [[#exercise-3.43][Exercise 3.43]].
+
+[fn:171] [[#exercise-3.45][Exercise 3.45]] investiga por qué los depósitos y retiros ya no son automáticamente serializados por la cuenta.
+[fn:172] El término "mutex" es una abreviatura de <<i249>> exclusión mutua. El problema general de organizar un mecanismo que permita a procesos concurrentes compartir recursos de forma segura se llama el problema de exclusión mutua. Nuestro mutex es una variante simple del mecanismo de <<i344>> semáforo (ver [[#exercise-3.47][Exercise 3.47]]), que fue introducido en el Sistema Multiprogramación "THE" desarrollado en la Universidad Tecnológica de Eindhoven y nombrado por las iniciales de la universidad en holandés (Dijkstra 1968a). Las operaciones de adquisición y liberación se llamaban originalmente P y V, de las palabras holandesas /passeren/ (pasar) y /vrijgeven/ (liberar), en referencia a los semáforos usados en sistemas ferroviarios. La exposición clásica de Dijkstra (1968b) fue una de las primeras en presentar claramente los temas de control de concurrencia, y mostró cómo usar semáforos para manejar una variedad de problemas de concurrencia.
+
+[fn:173] En la mayoría de los sistemas operativos de tiempo compartido, los procesos que están bloqueados por un mutex no pierden tiempo "esperando ocupadamente" como arriba. En su lugar, el sistema programa otro proceso para ejecutarse mientras el primero está esperando, y el proceso bloqueado se despierta cuando el mutex está disponible.
+
+[fn:174] En MIT Scheme para un solo procesador, que usa un modelo de división de tiempo, ~test-and-set!~ puede implementarse de la siguiente manera:
+
+#+begin_src scheme
+(define (test-and-set! cell)
+  (without-interrupts
+   (lambda ()
+     (if (car cell)
+         true
+         (begin (set-car! cell true)
+                false)))))
+#+end_src
+
+~without-interrupts~ desactiva las interrupciones de división de tiempo mientras se ejecuta su argumento procedimiento.
+
+[fn:175] Hay muchas variantes de tales instrucciones—incluyendo test-and-set, test-and-clear, swap, compare-and-exchange, load-reserve y store-conditional—cuyo diseño debe coincidir cuidadosamente con la interfaz procesador-memoria de la máquina. Un problema que surge aquí es determinar qué sucede si dos procesos intentan adquirir el mismo recurso exactamente al mismo tiempo usando tal instrucción. Esto requiere algún mecanismo para tomar una decisión sobre qué proceso obtiene el control. Tal mecanismo se llama un <<i20>> árbitro. Los árbitros usualmente se reducen a algún tipo de dispositivo de hardware. Desafortunadamente, es posible probar que uno no puede construir físicamente un árbitro justo que funcione el 100% del tiempo a menos que uno permita al árbitro un tiempo arbitrariamente largo para tomar su decisión. El fenómeno fundamental aquí fue observado originalmente por el filósofo francés del siglo catorce Jean Buridan en su comentario sobre De caelo de Aristóteles. Buridan argumentó que un perro perfectamente racional colocado entre dos fuentes de comida igualmente atractivas morirá de hambre, porque es incapaz de decidir a cuál ir primero.
+
+[fn:176] La técnica general para evitar el interbloqueo numerando los recursos compartidos y adquiriéndolos en orden se debe a Havender (1968). Las situaciones donde el interbloqueo no puede evitarse requieren <<i100>> métodos de recuperación de interbloqueo, que implican hacer que los procesos "retrocedan" del estado de interbloqueo e intenten de nuevo. Los mecanismos de recuperación de interbloqueo se usan ampliamente en sistemas de gestión de bases de datos, un tema que se trata en detalle en Gray and Reuter 1993.
+
+[fn:177] Una alternativa tal a la serialización se llama <<i33>> sincronización de barrera. El programador permite que los procesos concurrentes se ejecuten como deseen, pero establece ciertos puntos de sincronización ("barreras") a través de los cuales ningún proceso puede proceder hasta que todos los procesos hayan alcanzado la barrera. Los procesadores modernos proporcionan instrucciones de máquina que permiten a los programadores establecer puntos de sincronización en lugares donde se requiere consistencia. El PowerPC^( TM), por ejemplo, incluye para este propósito dos instrucciones llamadas SYNC y EIEIO (Enforced In-order Execution of Input/Output).
+
+[fn:178] Este puede parecer un punto de vista extraño, pero hay sistemas que funcionan de esta manera. Los cargos internacionales a cuentas de tarjetas de crédito, por ejemplo, normalmente se liquidan por país, y los cargos realizados en diferentes países se reconcilian periódicamente. Así, el saldo de la cuenta puede ser diferente en diferentes países.
+
+[fn:179] Para sistemas distribuidos, esta perspectiva fue perseguida por Lamport (1978), quien mostró cómo usar la comunicación para establecer "relojes globales" que pueden usarse para establecer ordenamientos de eventos en sistemas distribuidos.
+
+[fn:180] Los físicos a veces adoptan esta vista introduciendo las "líneas de mundo" de las partículas como un dispositivo para razonar sobre el movimiento. También ya hemos mencionado (sección [[#section-2.2.3][2.2.3]]) que esta es la forma natural de pensar sobre los sistemas de procesamiento de señales. Exploraremos aplicaciones de flujos al procesamiento de señales en la sección [[#section-3.5.3][3.5.3]].
+
+[fn:181] Asumimos que tenemos un predicado ~prime?~ (por ejemplo, como en la sección [[#section-1.2.6][1.2.6]]) que prueba la primalidad.
+
+[fn:182] En la implementación de MIT, ~the-empty-stream~ es lo mismo que la lista vacía ~'()~, y ~stream-null?~ es lo mismo que ~null?~.
+
+[fn:183] Esto debería molestarte. El hecho de que estemos definiendo procedimientos tan similares para flujos y listas indica que estamos perdiendo alguna abstracción subyacente. Desafortunadamente, para explotar esta abstracción, necesitaremos ejercer un control más fino sobre el proceso de evaluación del que podemos en la actualidad. Discutiremos este punto más adelante al final de la sección [[#section-3.5.4][3.5.4]]. En la sección [[#section-4.2][4.2]], desarrollaremos un marco que unifica listas y flujos.
+
+[fn:184] Aunque ~stream-car~ y ~stream-cdr~ pueden definirse como procedimientos, ~cons-stream~ debe ser una forma especial. Si ~cons-stream~ fuera un procedimiento, entonces, según nuestro modelo de evaluación, evaluar '(cons-stream <A> <B>)' causaría automáticamente que <B> se evalúe, lo cual es precisamente lo que no queremos que suceda. Por la misma razón, ~delay~ debe ser una forma especial, aunque ~force~ puede ser un procedimiento ordinario.
+
+[fn:185] Los números mostrados aquí realmente no aparecen en la expresión retrasada. Lo que realmente aparece es la expresión original, en un entorno en el que las variables están ligadas a los números apropiados. Por ejemplo, ~(+ low 1)~ con ~low~ ligado a 10,000 realmente aparece donde se muestra ~10001~.
+
+[fn:186] Hay muchas implementaciones posibles de flujos distintas de la descrita en esta sección. La evaluación retrasada, que es la clave para hacer prácticos los flujos, era inherente al <<i47>> método de paso de parámetros por nombre de Algol 60. El uso de este mecanismo para implementar flujos fue descrito por primera vez por Landin (1965). La evaluación retrasada para flujos fue introducida en Lisp por Friedman and Wise (1976). En su implementación, ~cons~ siempre retrasa la evaluación de sus argumentos, de modo que las listas automáticamente se comportan como flujos. La optimización de memorización también se conoce como <<i50>> llamada por necesidad. La comunidad Algol se referiría a nuestros objetos retrasados originales como <<i49>> thunks por nombre y a las versiones optimizadas como <<i52>> thunks por necesidad.
+
+[fn:187] Ejercicios como [[#exercise-3.51][Exercise 3.51]] y [[#exercise-3.52][Exercise 3.52]] son valiosos para probar nuestra comprensión de cómo funciona ~delay~. Por otro lado, mezclar evaluación retrasada con impresión—y, aún peor, con asignación—es extremadamente confuso, y los instructores de cursos sobre lenguajes de computación han atormentado tradicionalmente a sus estudiantes con preguntas de examen como las de esta sección. No hace falta decir que escribir programas que dependan de tales sutilezas es un estilo de programación odioso. Parte del poder del procesamiento de flujos es que nos permite ignorar el orden en que los eventos realmente suceden en nuestros programas. Desafortunadamente, esto es precisamente lo que no podemos permitirnos hacer en presencia de asignación, que nos obliga a preocuparnos por el tiempo y el cambio.
+
+[fn:188] Eratóstenes, un filósofo griego alejandrino del siglo III a.C., es famoso por dar la primera estimación precisa de la circunferencia de la Tierra, que calculó observando las sombras proyectadas al mediodía en el día del solsticio de verano. El método de criba de Eratóstenes, aunque antiguo, ha formado la base para "cribas" de hardware de propósito especial que, hasta hace poco, eran las herramientas más poderosas existentes para localizar primos grandes. Desde los años 70, sin embargo, estos métodos han sido superados por ramificaciones de las técnicas probabilísticas discutidas en la sección [[#section-1.2.6][1.2.6]].
+
+[fn:189] Hemos nombrado estas figuras en honor a Peter Henderson, quien fue la primera persona en mostrarnos diagramas de este tipo como una forma de pensar sobre el procesamiento de flujos. Cada línea sólida representa un flujo de valores siendo transmitidos. La línea discontinua del ~car~ al ~cons~ y el ~filter~ indica que este es un valor único en lugar de un flujo.
+
+[fn:190] Esto usa la versión generalizada de ~stream-map~ de [[#exercise-3.50][Exercise 3.50]].
+
+[fn:191] Este último punto es muy sutil y se basa en el hecho de que p_(n+1) <= p_n^2. (Aquí, p_k denota el k-ésimo primo.) Estimaciones como estas son muy difíciles de establecer. La demostración antigua de Euclides de que hay un número infinito de primos muestra que p_(n+1)<= p_1 p_2...p_n + 1, y no se probó ningún resultado sustancialmente mejor hasta 1851, cuando el matemático ruso P. L. Chebyshev estableció que p_(n+1)<= 2p_n para toda n. Este resultado, originalmente conjeturado en 1845, se conoce como <<i35>> hipótesis de Bertrand. Se puede encontrar una demostración en la sección 22.3 de Hardy and Wright 1960.
+
+[fn:192] Este ejercicio muestra cómo la llamada por necesidad está estrechamente relacionada con la memorización ordinaria como se describe en [[#exercise-3.27][Exercise 3.27]]. En ese ejercicio, usamos asignación para construir explícitamente una tabla local. Nuestra optimización de flujo por llamada por necesidad efectivamente construye tal tabla automáticamente, almacenando valores en las partes previamente forzadas del flujo.
+
+[fn:193] No podemos usar ~let~ para ligar la variable local ~guesses~, porque el valor de ~guesses~ depende de ~guesses~ mismo. [[#exercise-3.63][Exercise 3.63]] aborda por qué queremos una variable local aquí.
+
+[fn:194] Como en la sección [[#section-2.2.3][2.2.3]], representamos un par de enteros como una lista en lugar de un par de Lisp.
+
+[fn:195] Ver [[#exercise-3.68][Exercise 3.68]] para obtener cierta comprensión de por qué elegimos esta descomposición.
+[fn:196] La declaración precisa de la propiedad requerida sobre el orden de combinación es la siguiente: Debe haber una función f de dos argumentos tal que el par correspondiente al elemento i del primer flujo y al elemento j del segundo flujo aparecerá como elemento número f(i,j) del flujo de salida. El truco de usar ~interleave~ para lograr esto nos fue mostrado por David Turner, quien lo empleó en el lenguaje KRC (Turner 1981).
+
+[fn:197] Requeriremos que la función de ponderación sea tal que el peso de un par aumente a medida que nos movemos hacia afuera a lo largo de una fila o hacia abajo a lo largo de una columna del arreglo de pares.
+
+[fn:198] Para citar del obituario de Ramanujan de G. H. Hardy (Hardy 1921): "Fue Mr. Littlewood (creo) quien comentó que 'cada entero positivo era uno de sus amigos'. Recuerdo una vez que fui a verlo cuando estaba enfermo en Putney. Había viajado en el taxi No. 1729, y comenté que el número me parecía bastante aburrido, y que esperaba que no fuera un presagio desfavorable. 'No', respondió, 'es un número muy interesante; es el número más pequeño expresable como la suma de dos cubos de dos maneras diferentes'." El truco de usar pares ponderados para generar los números de Ramanujan nos fue mostrado por Charles Leiserson.
+
+[fn:199] No se garantiza que este procedimiento funcione en todas las implementaciones de Scheme, aunque para cualquier implementación hay una variación simple que funcionará. El problema tiene que ver con diferencias sutiles en las formas en que las implementaciones de Scheme manejan las definiciones internas. (Ver sección [[#section-4.1.6][4.1.6]].)
