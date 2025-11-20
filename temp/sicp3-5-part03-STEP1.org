@@ -1,0 +1,494 @@
+*** 3.5.3 Explotando el paradigma de flujos
+:properties:
+:custom_id: section-3.5.3
+:end:
+
+Los flujos con evaluación diferida pueden ser una herramienta de modelado poderosa, proporcionando muchos de los beneficios del estado local y la asignación. Además, evitan algunos de los enredos teóricos que acompañan la introducción de la asignación en un lenguaje de programación.
+
+El enfoque de flujos puede ser esclarecedor porque nos permite construir sistemas con límites de módulos diferentes a los sistemas organizados en torno a la asignación a variables de estado. Por ejemplo, podemos pensar en una serie temporal completa (o señal) como un foco de interés, en lugar de los valores de las variables de estado en momentos individuales. Esto hace conveniente combinar y comparar componentes de estado de diferentes momentos.
+
+*Formulando iteraciones como procesos de flujo*
+
+En la sección [[#section-1.2.1][1.2.1]], introducimos los procesos iterativos, que proceden actualizando variables de estado. Ahora sabemos que podemos representar el estado como un flujo "atemporal" de valores en lugar de como un conjunto de variables a actualizar. Adoptemos esta perspectiva al revisar el procedimiento de raíz cuadrada de la sección [[#section-1.1.7][1.1.7]]. Recuerda que la idea es generar una secuencia de conjeturas cada vez mejores para la raíz cuadrada de x aplicando una y otra vez el procedimiento que mejora las conjeturas:
+
+#+begin_src scheme
+(define (sqrt-improve guess x)
+  (average guess (/ x guess)))
+#+end_src
+
+En nuestro procedimiento ~sqrt~ original, hicimos que estas conjeturas fueran los valores sucesivos de una variable de estado. En su lugar, podemos generar el flujo infinito de conjeturas, comenzando con una conjetura inicial de 1:[fn:193]
+
+#+begin_src scheme
+(define (sqrt-stream x)
+  (define guesses
+    (cons-stream 1.0
+                 (stream-map (lambda (guess)
+                               (sqrt-improve guess x))
+                             guesses)))
+  guesses)
+
+(display-stream (sqrt-stream 2))
+1.
+1.5
+1.4166666666666665
+1.4142156862745097
+1.4142135623746899
+...
+#+end_src
+
+Podemos generar más y más términos del flujo para obtener conjeturas cada vez mejores. Si queremos, podemos escribir un procedimiento que siga generando términos hasta que la respuesta sea lo suficientemente buena. (Ver [[#exercise-3.64][Ejercicio 3.64]].)
+
+Otra iteración que podemos tratar de la misma manera es generar una aproximación a \pi, basada en la serie alternante que vimos en la sección [[#section-1.3.1][1.3.1]]:
+
+#+begin_example
+ \pi        1     1     1
+ --- = 1 - --- + --- - --- + ...
+ 4          3     5     7
+#+end_example
+
+Primero generamos el flujo de sumandos de la serie (los recíprocos de los enteros impares, con signos alternantes). Luego tomamos el flujo de sumas de más y más términos (usando el procedimiento ~partial-sums~ del [[#exercise-3.55][Ejercicio 3.55]]) y escalamos el resultado por 4:
+
+#+begin_src scheme
+(define (pi-summands n)
+  (cons-stream (/ 1.0 n)
+               (stream-map - (pi-summands (+ n 2)))))
+
+(define pi-stream
+  (scale-stream (partial-sums (pi-summands 1)) 4))
+
+(display-stream pi-stream)
+4.
+2.666666666666667
+3.466666666666667
+2.8952380952380956
+3.3396825396825403
+2.9760461760461765
+3.2837384837384844
+3.017071817071818
+...
+#+end_src
+
+Esto nos da un flujo de aproximaciones cada vez mejores a \pi, aunque las aproximaciones convergen bastante lentamente. Ocho términos de la secuencia limitan el valor de \pi entre 3.284 y 3.017.
+
+Hasta ahora, nuestro uso del enfoque de flujo de estados no es muy diferente de actualizar variables de estado. Pero los flujos nos dan la oportunidad de hacer algunos trucos interesantes. Por ejemplo, podemos transformar un flujo con un <<i347>> acelerador de secuencias que convierte una secuencia de aproximaciones en una nueva secuencia que converge al mismo valor que la original, solo que más rápido.
+
+Uno de esos aceleradores, debido al matemático suizo del siglo XVIII Leonhard Euler, funciona bien con secuencias que son sumas parciales de series alternantes (series de términos con signos alternantes). En la técnica de Euler, si S_n es el enésimo término de la secuencia de suma original, entonces la secuencia acelerada tiene términos
+
+#+begin_example
+              (S_(n+1) - S_n)^2
+ S_(n+1) - ------------------------
+           S_(n-1) - 2S_n + S_(n+1)
+#+end_example
+
+Así, si la secuencia original se representa como un flujo de valores, la secuencia transformada está dada por
+
+#+begin_src scheme
+(define (euler-transform s)
+  (let ((s0 (stream-ref s 0))           ; S_(n-1)
+        (s1 (stream-ref s 1))           ; S_n
+        (s2 (stream-ref s 2)))          ; S_(n+1)
+    (cons-stream (- s2 (/ (square (- s2 s1))
+                          (+ s0 (* -2 s1) s2)))
+                 (euler-transform (stream-cdr s)))))
+#+end_src
+
+Podemos demostrar la aceleración de Euler con nuestra secuencia de aproximaciones a \pi:
+
+#+begin_src scheme
+(display-stream (euler-transform pi-stream))
+3.166666666666667
+3.1333333333333337
+3.1452380952380956
+3.13968253968254
+3.1427128427128435
+3.1408813408813416
+3.142071817071818
+3.1412548236077655
+...
+#+end_src
+
+Aún mejor, podemos acelerar la secuencia acelerada, y acelerar recursivamente eso, y así sucesivamente. Es decir, creamos un flujo de flujos (una estructura que llamaremos un <<i386>> tableau) en el que cada flujo es la transformación del anterior:
+
+#+begin_src scheme
+(define (make-tableau transform s)
+  (cons-stream s
+               (make-tableau transform
+                             (transform s))))
+#+end_src
+
+El tableau tiene la forma
+
+#+begin_example
+ s_00   s_01   s_02   s_03   s_04   ...
+        s_10   s_11   s_12   s_13   ...
+               s_20   s_21   s_22   ...
+                             ...
+#+end_example
+
+Finalmente, formamos una secuencia tomando el primer término en cada fila del tableau:
+
+#+begin_src scheme
+(define (accelerated-sequence transform s)
+  (stream-map stream-car
+              (make-tableau transform s)))
+#+end_src
+
+Podemos demostrar este tipo de "súper-aceleración" de la secuencia \pi:
+
+#+begin_src scheme
+(display-stream (accelerated-sequence euler-transform
+                                      pi-stream))
+4.
+3.166666666666667
+3.142105263157895
+3.141599357319005
+3.1415927140337785
+3.1415926539752927
+3.1415926535911765
+3.141592653589778
+...
+#+end_src
+
+El resultado es impresionante. Tomar ocho términos de la secuencia produce el valor correcto de \pi con 14 decimales. Si hubiéramos usado solo la secuencia \pi original, ¡necesitaríamos calcular del orden de 10^13 términos (es decir, expandir la serie lo suficiente para que los términos individuales sean menores que 10^(-13)) para obtener tanta precisión!
+
+Podríamos haber implementado estas técnicas de aceleración sin usar flujos. Pero la formulación de flujos es particularmente elegante y conveniente porque toda la secuencia de estados está disponible para nosotros como una estructura de datos que puede manipularse con un conjunto uniforme de operaciones.
+
+**** Ejercicio 3.63
+:properties:
+:custom_id: exercise-3.63
+:end:
+
+Louis Reasoner pregunta por qué el procedimiento ~sqrt-stream~ no se escribió de la siguiente manera más directa, sin la variable local ~guesses~:
+
+#+begin_src scheme
+(define (sqrt-stream x)
+  (cons-stream 1.0
+               (stream-map (lambda (guess)
+                             (sqrt-improve guess x))
+                           (sqrt-stream x))))
+#+end_src
+
+Alyssa P. Hacker responde que esta versión del procedimiento es considerablemente menos eficiente porque realiza cálculos redundantes. Explica la respuesta de Alyssa. ¿Las dos versiones seguirían difiriendo en eficiencia si nuestra implementación de ~delay~ usara solo ~(lambda () <EXP>)~ sin usar la optimización proporcionada por ~memo-proc~ (sección [[#section-3.5.1][3.5.1]])?
+
+**** Ejercicio 3.64
+:properties:
+:custom_id: exercise-3.64
+:end:
+
+Escribe un procedimiento ~stream-limit~ que tome como argumentos un flujo y un número (la tolerancia). Debe examinar el flujo hasta que encuentre dos elementos sucesivos que difieren en valor absoluto por menos de la tolerancia, y devolver el segundo de los dos elementos. Usando esto, podríamos calcular raíces cuadradas hasta una tolerancia dada mediante
+
+#+begin_src scheme
+(define (sqrt x tolerance)
+  (stream-limit (sqrt-stream x) tolerance))
+#+end_src
+
+**** Ejercicio 3.65
+:properties:
+:custom_id: exercise-3.65
+:end:
+
+Usa la serie
+
+#+begin_example
+             1     1     1
+ ln 2 = 1 - -- + -- - -- + ...
+             2     3     4
+#+end_example
+
+para calcular tres secuencias de aproximaciones al logaritmo natural de 2, de la misma manera que hicimos anteriormente para \pi. ¿Con qué rapidez convergen estas secuencias?
+
+*Flujos infinitos de pares*
+
+En la sección [[#section-2.2.3][2.2.3]], vimos cómo el paradigma de secuencias maneja los bucles anidados tradicionales como procesos definidos en secuencias de pares. Si generalizamos esta técnica a flujos infinitos, entonces podemos escribir programas que no se representan fácilmente como bucles, porque el "bucle" debe abarcar un conjunto infinito.
+
+Por ejemplo, supongamos que queremos generalizar el procedimiento ~prime-sum-pairs~ de la sección [[#section-2.2.3][2.2.3]] para producir el flujo de pares de /todos/ los enteros (i,j) con i <= j tal que i + j es primo. Si ~int-pairs~ es la secuencia de todos los pares de enteros (i,j) con i <= j, entonces nuestro flujo requerido es simplemente[fn:194]
+
+#+begin_src scheme
+(stream-filter (lambda (pair)
+                 (prime? (+ (car pair) (cadr pair))))
+               int-pairs)
+#+end_src
+
+Nuestro problema, entonces, es producir el flujo ~int-pairs~. Más generalmente, supongamos que tenemos dos flujos S = (S_i) y T = (T_j), e imaginemos el arreglo rectangular infinito
+
+#+begin_example
+ (S_0, T_0)  (S_0, T_1)  (S_0, T_2)  ...
+ (S_1, T_0)  (S_1, T_1)  (S_1, T_2)  ...
+ (S_2, T_0)  (S_2, T_1)  (S_2, T_2)  ...
+    ...
+#+end_example
+
+Deseamos generar un flujo que contenga todos los pares en el arreglo que se encuentran sobre o en la diagonal, es decir, los pares
+
+#+begin_example
+ (S_0, T_0)  (S_0, T_1)  (S_0, T_2)  ...
+             (S_1, T_1)  (S_1, T_2)  ...
+                         (S_2, T_2)  ...
+                                     ...
+#+end_example
+
+(Si tomamos tanto S como T como el flujo de enteros, entonces este será nuestro flujo deseado ~int-pairs~.)
+
+Llama al flujo general de pares ~(pairs S T)~, y considera que está compuesto de tres partes: el par (S_0,T_0), el resto de los pares en la primera fila, y los pares restantes:[fn:195]
+
+#+begin_example
+ (S_0, T_0) | (S_0, T_1)  (S_0, T_2)  ...
+ -------+-------------------
+            | (S_1, T_1)  (S_1, T_2)  ...
+            |             (S_2, T_2)  ...
+            |                         ...
+#+end_example
+
+Observa que la tercera pieza en esta descomposición (pares que no están en la primera fila) es (recursivamente) los pares formados de ~(stream-cdr S)~ y ~(stream-cdr T)~. También nota que la segunda pieza (el resto de la primera fila) es
+
+#+begin_src scheme
+(stream-map (lambda (x) (list (stream-car s) x))
+            (stream-cdr t))
+#+end_src
+
+Así podemos formar nuestro flujo de pares de la siguiente manera:
+
+#+begin_src scheme
+(define (pairs s t)
+  (cons-stream
+   (list (stream-car s) (stream-car t))
+   (<COMBINE-IN-SOME-WAY>
+    (stream-map (lambda (x) (list (stream-car s) x))
+                (stream-cdr t))
+    (pairs (stream-cdr s) (stream-cdr t)))))
+#+end_src
+
+Para completar el procedimiento, debemos elegir alguna forma de combinar los dos flujos internos. Una idea es usar el análogo de flujo del procedimiento ~append~ de la sección [[#section-2.2.1][2.2.1]]:
+
+#+begin_src scheme
+(define (stream-append s1 s2)
+  (if (stream-null? s1)
+      s2
+      (cons-stream (stream-car s1)
+                   (stream-append (stream-cdr s1) s2))))
+#+end_src
+
+Sin embargo, esto no es adecuado para flujos infinitos, porque toma todos los elementos del primer flujo antes de incorporar el segundo flujo. En particular, si intentamos generar todos los pares de enteros positivos usando
+
+#+begin_src scheme
+(pairs integers integers)
+#+end_src
+
+nuestro flujo de resultados primero intentará recorrer todos los pares con el primer entero igual a 1, y por lo tanto nunca producirá pares con ningún otro valor del primer entero.
+
+Para manejar flujos infinitos, necesitamos idear un orden de combinación que garantice que cada elemento eventualmente se alcanzará si dejamos que nuestro programa se ejecute el tiempo suficiente. Una forma elegante de lograr esto es con el siguiente procedimiento ~interleave~:[fn:196]
+
+#+begin_src scheme
+(define (interleave s1 s2)
+  (if (stream-null? s1)
+      s2
+      (cons-stream (stream-car s1)
+                   (interleave s2 (stream-cdr s1)))))
+#+end_src
+
+Dado que ~interleave~ toma elementos alternativamente de los dos flujos, cada elemento del segundo flujo eventualmente encontrará su camino en el flujo intercalado, incluso si el primer flujo es infinito.
+
+Así podemos generar el flujo requerido de pares como
+
+#+begin_src scheme
+(define (pairs s t)
+  (cons-stream
+   (list (stream-car s) (stream-car t))
+   (interleave
+    (stream-map (lambda (x) (list (stream-car s) x))
+                (stream-cdr t))
+    (pairs (stream-cdr s) (stream-cdr t)))))
+#+end_src
+
+**** Ejercicio 3.66
+:properties:
+:custom_id: exercise-3.66
+:end:
+
+Examina el flujo ~(pairs integers integers)~. ¿Puedes hacer algún comentario general sobre el orden en que los pares se colocan en el flujo? Por ejemplo, ¿aproximadamente cuántos pares preceden al par (1,100)? ¿al par (99,100)? ¿al par (100,100)? (Si puedes hacer declaraciones matemáticas precisas aquí, tanto mejor. Pero siéntete libre de dar respuestas más cualitativas si te encuentras atascado.)
+
+**** Ejercicio 3.67
+:properties:
+:custom_id: exercise-3.67
+:end:
+
+Modifica el procedimiento ~pairs~ de manera que ~(pairs integers integers)~ produzca el flujo de /todos/ los pares de enteros (i,j) (sin la condición i <= j). Pista: Necesitarás mezclar un flujo adicional.
+
+**** Ejercicio 3.68
+:properties:
+:custom_id: exercise-3.68
+:end:
+
+Louis Reasoner piensa que construir un flujo de pares de tres partes es innecesariamente complicado. En lugar de separar el par (S_0,T_0) del resto de los pares en la primera fila, propone trabajar con toda la primera fila, de la siguiente manera:
+
+#+begin_src scheme
+(define (pairs s t)
+  (interleave
+   (stream-map (lambda (x) (list (stream-car s) x))
+               t)
+   (pairs (stream-cdr s) (stream-cdr t))))
+#+end_src
+
+¿Funciona esto? Considera qué sucede si evaluamos ~(pairs integers integers)~ usando la definición de ~pairs~ de Louis.
+
+**** Ejercicio 3.69
+:properties:
+:custom_id: exercise-3.69
+:end:
+
+Escribe un procedimiento ~triples~ que tome tres flujos infinitos, S, T y U, y produzca el flujo de tripletas (S_i,T_j,U_k) tal que i <= j <= k. Usa ~triples~ para generar el flujo de todas las tripletas pitagóricas de enteros positivos, es decir, las tripletas (i,j,k) tales que i <= j y i^2 + j^2 = k^2.
+
+**** Ejercicio 3.70
+:properties:
+:custom_id: exercise-3.70
+:end:
+
+Sería agradable poder generar flujos en los que los pares aparezcan en algún orden útil, en lugar del orden que resulta de un proceso de intercalación /ad hoc/. Podemos usar una técnica similar al procedimiento ~merge~ del [[#exercise-3.56][Ejercicio 3.56]], si definimos una forma de decir que un par de enteros es "menor que" otro. Una forma de hacer esto es definir una "función de peso" W(i,j) y estipular que (i_1,j_1) es menor que (i_2,j_2) si W(i_1,j_1) < W(i_2,j_2). Escribe un procedimiento ~merge-weighted~ que sea como ~merge~, excepto que ~merge-weighted~ toma un argumento adicional ~weight~, que es un procedimiento que calcula el peso de un par, y se usa para determinar el orden en que los elementos deben aparecer en el flujo fusionado resultante.[fn:197] Usando esto, generaliza ~pairs~ a un procedimiento ~weighted-pairs~ que tome dos flujos, junto con un procedimiento que calcule una función de peso, y genere el flujo de pares, ordenados según el peso. Usa tu procedimiento para generar
+
+a. el flujo de todos los pares de enteros positivos (i,j) con i <= j ordenados según la suma i + j
+
+b. el flujo de todos los pares de enteros positivos (i,j) con i <= j, donde ni i ni j es divisible por 2, 3 o 5, y los pares están ordenados según la suma 2 i + 3 j + 5 i j.
+
+**** Ejercicio 3.71
+:properties:
+:custom_id: exercise-3.71
+:end:
+
+Los números que pueden expresarse como la suma de dos cubos de más de una manera a veces se llaman <<i316>> números de Ramanujan, en honor al matemático Srinivasa Ramanujan.[fn:198] Los flujos ordenados de pares proporcionan una solución elegante al problema de calcular estos números. Para encontrar un número que pueda escribirse como la suma de dos cubos de dos maneras diferentes, solo necesitamos generar el flujo de pares de enteros (i,j) ponderados según la suma i^3 + j^3 (ver [[#exercise-3.70][Ejercicio 3.70]]), luego buscar en el flujo dos pares consecutivos con el mismo peso. Escribe un procedimiento para generar los números de Ramanujan. El primer número de este tipo es 1.729. ¿Cuáles son los siguientes cinco?
+
+**** Ejercicio 3.72
+:properties:
+:custom_id: exercise-3.72
+:end:
+
+De manera similar al [[#exercise-3.71][Ejercicio 3.71]] genera un flujo de todos los números que pueden escribirse como la suma de dos cuadrados de tres maneras diferentes (mostrando cómo pueden escribirse así).
+
+*Flujos como señales*
+
+Comenzamos nuestra discusión de flujos describiéndolos como análogos computacionales de las "señales" en sistemas de procesamiento de señales. De hecho, podemos usar flujos para modelar sistemas de procesamiento de señales de una manera muy directa, representando los valores de una señal en intervalos de tiempo sucesivos como elementos consecutivos de un flujo. Por ejemplo, podemos implementar un <<i192>> integrador o <<i379>> sumador que, para un flujo de entrada x = (x_i), un valor inicial C y un pequeño incremento dt, acumula la suma
+
+#+begin_example
+            i
+           --
+ S_i = C + >   x_j dt
+           --
+           j=1
+#+end_example
+
+y devuelve el flujo de valores S = (S_i). El siguiente procedimiento ~integral~ recuerda la definición de "estilo implícito" del flujo de enteros (sección [[#section-3.5.2][3.5.2]]):
+
+#+begin_src scheme
+(define (integral integrand initial-value dt)
+  (define int
+    (cons-stream initial-value
+                 (add-streams (scale-stream integrand dt)
+                              int)))
+  int)
+#+end_src
+
+La [[figure-3.32][Figura 3.32]] es una imagen de un sistema de procesamiento de señales que corresponde al procedimiento ~integral~. El flujo de entrada se escala por dt y se pasa a través de un sumador, cuya salida se devuelve a través del mismo sumador. La autorreferencia en la definición de ~int~ se refleja en la figura por el bucle de realimentación que conecta la salida del sumador con una de las entradas.
+
+<<figure-3.32>> El procedimiento ~integral~ visto como un sistema de procesamiento de señales.
+
+#+begin_example
+                              initial-value
+                                   |
+        +-----------+              |   |\__
+ input  |           |      |\__    +-->|   \_  integral
+ ------>| scale: dt +----->|   \_      |cons_>--*------->
+        |           |      | add_>---->| __/    |
+        +-----------+  +-->| __/       |/       |
+                       |   |/                   |
+                       |                        |
+                       +------------------------+
+#+end_example
+
+**** Ejercicio 3.73
+:properties:
+:custom_id: exercise-3.73
+:end:
+
+Podemos modelar circuitos eléctricos usando flujos para representar los valores de corrientes o voltajes en una secuencia de tiempos. Por ejemplo, supongamos que tenemos un <<i318>> circuito RC que consiste en un resistor de resistencia R y un capacitor de capacitancia C en serie. La respuesta de voltaje v del circuito a una corriente inyectada i está determinada por la fórmula en la [[figure-3.33][Figura 3.33]], cuya estructura se muestra en el diagrama de flujo de señal adjunto.
+
+Escribe un procedimiento ~RC~ que modele este circuito. ~RC~ debe tomar como entradas los valores de R, C y dt y debe devolver un procedimiento que tome como entradas un flujo que represente la corriente i y un valor inicial para el voltaje del capacitor v_0 y produzca como salida el flujo de voltajes v. Por ejemplo, deberías poder usar ~RC~ para modelar un circuito RC con R = 5 ohmios, C = 1 faradio y un paso de tiempo de 0.5 segundos evaluando ~(define RC1 (RC 5 1 0.5))~. Esto define ~RC1~ como un procedimiento que toma un flujo que representa la secuencia temporal de corrientes y un voltaje inicial del capacitor y produce el flujo de salida de voltajes.
+
+<<figure-3.33>> Un circuito RC y el diagrama de flujo de señal asociado.
+
+#+begin_example
+  +                 -
+ ->----'\/\/\,---| |---
+  i                 C
+
+              / t
+              |  i
+ v  =  v   +  |      dt + R i
+        0     |
+              / 0
+
+         +--------------+
+     +-->|   scale: R   |---------------------+   |\_
+     |   +--------------+                     |   |  \_
+     |                                        +-->|    \   v
+  i  |   +--------------+     +------------+      | add >--->
+ ----+-->|  scale: 1/C  |---->|  integral  |----->|   _/
+         +--------------+     +------------+      | _/
+                                                  |/
+#+end_example
+
+**** Ejercicio 3.74
+:properties:
+:custom_id: exercise-3.74
+:end:
+
+Alyssa P. Hacker está diseñando un sistema para procesar señales provenientes de sensores físicos. Una característica importante que desea producir es una señal que describa los <<i426>> cruces por cero de la señal de entrada. Es decir, la señal resultante debe ser + 1 siempre que la señal de entrada cambie de negativo a positivo, - 1 siempre que la señal de entrada cambie de positivo a negativo, y 0 en caso contrario. (Supón que el signo de una entrada 0 es positivo.) Por ejemplo, una señal de entrada típica con su señal de cruce por cero asociada sería
+
+#+begin_example
+... 1  2  1.5  1  0.5  -0.1  -2  -3  -2  -0.5  0.2  3  4 ...
+...  0  0    0  0    0     -1  0   0   0     0    1  0  0 ...
+#+end_example
+
+En el sistema de Alyssa, la señal del sensor se representa como un flujo ~sense-data~ y el flujo ~zero-crossings~ es el flujo correspondiente de cruces por cero. Alyssa primero escribe un procedimiento ~sign-change-detector~ que toma dos valores como argumentos y compara los signos de los valores para producir un 0, 1 o - 1 apropiado. Luego construye su flujo de cruces por cero de la siguiente manera:
+
+#+begin_src scheme
+(define (make-zero-crossings input-stream last-value)
+  (cons-stream
+   (sign-change-detector (stream-car input-stream) last-value)
+   (make-zero-crossings (stream-cdr input-stream)
+                        (stream-car input-stream))))
+
+(define zero-crossings (make-zero-crossings sense-data 0))
+#+end_src
+
+El jefe de Alyssa, Eva Lu Ator, pasa y sugiere que este programa es aproximadamente equivalente al siguiente, que usa la versión generalizada de ~stream-map~ del [[#exercise-3.50][Ejercicio 3.50]]:
+
+#+begin_src scheme
+(define zero-crossings
+  (stream-map sign-change-detector sense-data <EXPRESSION>))
+#+end_src
+
+Completa el programa suministrando la <EXPRESSION> indicada.
+
+**** Ejercicio 3.75
+:properties:
+:custom_id: exercise-3.75
+:end:
+
+Desafortunadamente, el detector de cruces por cero de Alyssa en el [[#exercise-3.74][Ejercicio 3.74]] resulta ser insuficiente, porque la señal ruidosa del sensor conduce a cruces por cero espurios. Lem E. Tweakit, un especialista en hardware, sugiere que Alyssa suavice la señal para filtrar el ruido antes de extraer los cruces por cero. Alyssa sigue su consejo y decide extraer los cruces por cero de la señal construida promediando cada valor de los datos del sensor con el valor anterior. Explica el problema a su asistente, Louis Reasoner, quien intenta implementar la idea, alterando el programa de Alyssa de la siguiente manera:
+
+#+begin_src scheme
+(define (make-zero-crossings input-stream last-value)
+  (let ((avpt (/ (+ (stream-car input-stream) last-value) 2)))
+    (cons-stream (sign-change-detector avpt last-value)
+                 (make-zero-crossings (stream-cdr input-stream)
+                                      avpt))))
+#+end_src
+
+Esto no implementa correctamente el plan de Alyssa. Encuentra el error que Louis ha instalado y corrígelo sin cambiar la estructura del programa. (Pista: Necesitarás aumentar el número de argumentos a ~make-zero-crossings~.)
+
+**** Ejercicio 3.76
+:properties:
+:custom_id: exercise-3.76
+:end:
+
+Eva Lu Ator tiene una crítica del enfoque de Louis en el [[#exercise-3.75][Ejercicio 3.75]]. El programa que escribió no es modular, porque entremezcla la operación de suavizado con la extracción de cruces por cero. Por ejemplo, el extractor no debería tener que cambiarse si Alyssa encuentra una mejor manera de acondicionar su señal de entrada. Ayuda a Louis escribiendo un procedimiento ~smooth~ que tome un flujo como entrada y produzca un flujo en el que cada elemento sea el promedio de dos elementos de flujo de entrada sucesivos. Luego usa ~smooth~ como un componente para implementar el detector de cruces por cero en un estilo más modular.
+

@@ -1,0 +1,344 @@
+*** 3.5.2 Flujos infinitos
+:properties:
+:custom_id: section-3.5.2
+:end:
+
+Hemos visto cómo mantener la ilusión de manipular flujos como entidades completas aunque, en realidad, solo calculamos la parte del flujo que necesitamos acceder. Podemos explotar esta técnica para representar secuencias eficientemente como flujos, incluso si las secuencias son muy largas. Lo que es más llamativo, podemos usar flujos para representar secuencias infinitamente largas. Por ejemplo, considera la siguiente definición del flujo de enteros positivos:
+
+#+begin_src scheme
+(define (integers-starting-from n)
+  (cons-stream n (integers-starting-from (+ n 1))))
+
+(define integers (integers-starting-from 1))
+#+end_src
+
+Esto tiene sentido porque ~integers~ será un par cuyo ~car~ es 1 y cuyo ~cdr~ es una promesa de producir los enteros comenzando con 2. Este es un flujo infinitamente largo, pero en cualquier momento dado solo podemos examinar una porción finita de él. Por lo tanto, nuestros programas nunca sabrán que el flujo infinito completo no está allí.
+
+Usando ~integers~ podemos definir otros flujos infinitos, como el flujo de enteros que no son divisibles por 7:
+
+#+begin_src scheme
+(define (divisible? x y) (= (remainder x y) 0))
+
+(define no-sevens
+  (stream-filter (lambda (x) (not (divisible? x 7)))
+                 integers))
+#+end_src
+
+Entonces podemos encontrar enteros no divisibles por 7 simplemente accediendo a elementos de este flujo:
+
+#+begin_src scheme
+(stream-ref no-sevens 100)
+117
+#+end_src
+
+En analogía con ~integers~, podemos definir el flujo infinito de números de Fibonacci:
+
+#+begin_src scheme
+(define (fibgen a b)
+  (cons-stream a (fibgen b (+ a b))))
+
+(define fibs (fibgen 0 1))
+#+end_src
+
+~fibs~ es un par cuyo ~car~ es 0 y cuyo ~cdr~ es una promesa de evaluar ~(fibgen 1 1)~. Cuando evaluamos este ~(fibgen 1 1)~ diferido, producirá un par cuyo ~car~ es 1 y cuyo ~cdr~ es una promesa de evaluar ~(fibgen 1 2)~, y así sucesivamente.
+
+Para ver un flujo infinito más emocionante, podemos generalizar el ejemplo ~no-sevens~ para construir el flujo infinito de números primos, usando un método conocido como la <<i355>> criba de Eratóstenes.[fn:188] Comenzamos con los enteros a partir de 2, que es el primer primo. Para obtener el resto de los primos, comenzamos filtrando los múltiplos de 2 del resto de los enteros. Esto deja un flujo que comienza con 3, que es el siguiente primo. Ahora filtramos los múltiplos de 3 del resto de este flujo. Esto deja un flujo que comienza con 5, que es el siguiente primo, y así sucesivamente. En otras palabras, construimos los primos mediante un proceso de cribado, descrito de la siguiente manera: Para cribar un flujo ~S~, forma un flujo cuyo primer elemento es el primer elemento de ~S~ y cuyo resto se obtiene filtrando todos los múltiplos del primer elemento de ~S~ del resto de ~S~ y cribando el resultado. Este proceso se describe fácilmente en términos de operaciones de flujo:
+
+#+begin_src scheme
+(define (sieve stream)
+  (cons-stream
+   (stream-car stream)
+   (sieve (stream-filter
+           (lambda (x)
+             (not (divisible? x (stream-car stream))))
+           (stream-cdr stream)))))
+
+(define primes (sieve (integers-starting-from 2)))
+#+end_src
+
+Ahora para encontrar un primo particular solo necesitamos pedirlo:
+
+#+begin_src scheme
+(stream-ref primes 50)
+233
+#+end_src
+
+Es interesante contemplar el sistema de procesamiento de señales establecido por ~sieve~, mostrado en el "diagrama de Henderson" en la [[figure-3.31][Figura 3.31]].[fn:189] El flujo de entrada alimenta un "des~cons~tructor" que separa el primer elemento del flujo del resto del flujo. El primer elemento se usa para construir un filtro de divisibilidad, a través del cual pasa el resto, y la salida del filtro se alimenta a otra caja de criba. Luego el primer elemento original se ~cons~truye en la salida de la criba interna para formar el flujo de salida. Por lo tanto, no solo el flujo es infinito, sino que el procesador de señales también es infinito, porque la criba contiene una criba dentro de ella.
+
+<<figure-3.31>> La criba de primos vista como un sistema de procesamiento de señales.
+
+#+begin_example
+   +---------------------------------------------------------------+
+   | sieve                                                         |
+   |                                                               |
+   |        __/|                                        |\__       |
+   |     __/car|........................................|   \__    |
+   |   _/      |           :                            |      \_  |
+ ----><_       |           V                            |  cons _>---->
+   |    \__    |    +------------+    +------------+    |    __/   |
+   |       \cdr|--->| filter:    |    | sieve      |--->| __/      |
+   |          \|    |            |--->|            |    |/         |
+   |                | not        |    |            |               |
+   |                | divisible? |    |            |               |
+   |                +------------+    +------------+               |
+   +---------------------------------------------------------------+
+#+end_example
+
+*Definiendo flujos implícitamente*
+
+Los flujos ~integers~ y ~fibs~ anteriores se definieron especificando procedimientos "generadores" que calculan explícitamente los elementos del flujo uno por uno. Una forma alternativa de especificar flujos es aprovechar la evaluación diferida para definir flujos implícitamente. Por ejemplo, la siguiente expresión define el flujo ~ones~ como un flujo infinito de unos:
+
+#+begin_src scheme
+(define ones (cons-stream 1 ones))
+#+end_src
+
+Esto funciona de manera muy similar a la definición de un procedimiento recursivo: ~ones~ es un par cuyo ~car~ es 1 y cuyo ~cdr~ es una promesa de evaluar ~ones~. Evaluar el ~cdr~ nos da nuevamente un 1 y una promesa de evaluar ~ones~, y así sucesivamente.
+
+Podemos hacer cosas más interesantes manipulando flujos con operaciones como ~add-streams~, que produce la suma elemento a elemento de dos flujos dados:[fn:190]
+
+#+begin_src scheme
+(define (add-streams s1 s2)
+  (stream-map + s1 s2))
+#+end_src
+
+Ahora podemos definir los enteros de la siguiente manera:
+
+#+begin_src scheme
+(define integers (cons-stream 1 (add-streams ones integers)))
+#+end_src
+
+Esto define ~integers~ como un flujo cuyo primer elemento es 1 y cuyo resto es la suma de ~ones~ e ~integers~. Por lo tanto, el segundo elemento de ~integers~ es 1 más el primer elemento de ~integers~, o 2; el tercer elemento de ~integers~ es 1 más el segundo elemento de ~integers~, o 3; y así sucesivamente. Esta definición funciona porque, en cualquier punto, se ha generado suficiente del flujo ~integers~ para que podamos realimentarlo en la definición para producir el siguiente entero.
+
+Podemos definir los números de Fibonacci en el mismo estilo:
+
+#+begin_src scheme
+(define fibs
+  (cons-stream 0
+               (cons-stream 1
+                            (add-streams (stream-cdr fibs)
+                                         fibs))))
+#+end_src
+
+Esta definición dice que ~fibs~ es un flujo que comienza con 0 y 1, tal que el resto del flujo puede generarse sumando ~fibs~ a sí mismo desplazado un lugar:
+
+#+begin_example
+       1  1  2  3  5  8   13  21  ... = ~(stream-cdr fibs)~
+       0  1  1  2  3  5   8   13  ... = ~fibs~
+ 0  1  1  2  3  5  8  13  21  34  ... = ~fibs~
+#+end_example
+
+~scale-stream~ es otro procedimiento útil para formular tales definiciones de flujos. Este multiplica cada elemento en un flujo por una constante dada:
+
+#+begin_src scheme
+(define (scale-stream stream factor)
+  (stream-map (lambda (x) (* x factor)) stream))
+#+end_src
+
+Por ejemplo,
+
+#+begin_src scheme
+(define double (cons-stream 1 (scale-stream double 2)))
+#+end_src
+
+produce el flujo de potencias de 2: 1, 2, 4, 8, 16, 32, ....
+
+Se puede dar una definición alternativa del flujo de primos comenzando con los enteros y filtrándolos probando la primalidad. Necesitaremos el primer primo, 2, para comenzar:
+
+#+begin_src scheme
+(define primes
+  (cons-stream
+   2
+   (stream-filter prime? (integers-starting-from 3))))
+#+end_src
+
+Esta definición no es tan directa como parece, porque probaremos si un número n es primo verificando si n es divisible por un primo (no por cualquier entero) menor o igual a [sqrt](n):
+
+#+begin_src scheme
+(define (prime? n)
+  (define (iter ps)
+    (cond ((> (square (stream-car ps)) n) true)
+          ((divisible? n (stream-car ps)) false)
+          (else (iter (stream-cdr ps)))))
+  (iter primes))
+#+end_src
+
+Esta es una definición recursiva, ya que ~primes~ se define en términos del predicado ~prime?~, que en sí mismo usa el flujo ~primes~. La razón por la que este procedimiento funciona es que, en cualquier punto, se ha generado suficiente del flujo ~primes~ para probar la primalidad de los números que necesitamos verificar a continuación. Es decir, para cada n que probamos para primalidad, o n no es primo (en cuyo caso hay un primo ya generado que lo divide) o n es primo (en cuyo caso hay un primo ya generado; es decir, un primo menor que n; que es mayor que [sqrt](n)).[fn:191]
+
+**** Ejercicio 3.53
+:properties:
+:custom_id: exercise-3.53
+:end:
+
+Sin ejecutar el programa, describe los elementos del flujo definido por
+
+#+begin_src scheme
+(define s (cons-stream 1 (add-streams s s)))
+#+end_src
+
+**** Ejercicio 3.54
+:properties:
+:custom_id: exercise-3.54
+:end:
+
+Define un procedimiento ~mul-streams~, análogo a ~add-streams~, que produce el producto elemento a elemento de sus dos flujos de entrada. Úsalo junto con el flujo de ~integers~ para completar la siguiente definición del flujo cuyo enésimo elemento (contando desde 0) es n + 1 factorial:
+
+#+begin_src scheme
+(define factorials (cons-stream 1 (mul-streams <??> <??>)))
+#+end_src
+
+**** Ejercicio 3.55
+:properties:
+:custom_id: exercise-3.55
+:end:
+
+Define un procedimiento ~partial-sums~ que tome como argumento un flujo S y devuelva el flujo cuyos elementos son S_0, S_0 + S_1, S_0 + S_1 + S_2, .... Por ejemplo, ~(partial-sums integers)~ debería ser el flujo 1, 3, 6, 10, 15, ....
+
+**** Ejercicio 3.56
+:properties:
+:custom_id: exercise-3.56
+:end:
+
+Un problema famoso, planteado por primera vez por R. Hamming, es enumerar, en orden ascendente sin repeticiones, todos los enteros positivos sin factores primos distintos de 2, 3 o 5. Una forma obvia de hacer esto es simplemente probar cada entero por turno para ver si tiene algún factor distinto de 2, 3 y 5. Pero esto es muy ineficiente, ya que, a medida que los enteros se hacen más grandes, cada vez menos de ellos cumplen el requisito. Como alternativa, llamemos al flujo requerido de números ~S~ y notemos los siguientes hechos sobre él.
+
+- ~S~ comienza con 1.
+- Los elementos de ~(scale-stream S 2)~ también son elementos de ~S~.
+- Lo mismo es cierto para ~(scale-stream S 3)~ y ~(scale-stream 5 S)~.
+- Estos son todos los elementos de ~S~.
+
+Ahora todo lo que tenemos que hacer es combinar elementos de estas fuentes. Para esto definimos un procedimiento ~merge~ que combina dos flujos ordenados en un flujo de resultado ordenado, eliminando repeticiones:
+
+#+begin_src scheme
+(define (merge s1 s2)
+  (cond ((stream-null? s1) s2)
+        ((stream-null? s2) s1)
+        (else
+         (let ((s1car (stream-car s1))
+               (s2car (stream-car s2)))
+           (cond ((< s1car s2car)
+                  (cons-stream s1car (merge (stream-cdr s1) s2)))
+                 ((> s1car s2car)
+                  (cons-stream s2car (merge s1 (stream-cdr s2))))
+                 (else
+                  (cons-stream s1car
+                               (merge (stream-cdr s1)
+                                      (stream-cdr s2)))))))))
+#+end_src
+
+Entonces el flujo requerido puede construirse con ~merge~, de la siguiente manera:
+
+#+begin_src scheme
+(define S (cons-stream 1 (merge <??> <??>)))
+#+end_src
+
+Completa las expresiones faltantes en los lugares marcados <??> arriba.
+
+**** Ejercicio 3.57
+:properties:
+:custom_id: exercise-3.57
+:end:
+
+¿Cuántas adiciones se realizan cuando calculamos el enésimo número de Fibonacci usando la definición de ~fibs~ basada en el procedimiento ~add-streams~? Muestra que el número de adiciones sería exponencialmente mayor si hubiéramos implementado '(delay <EXP>)' simplemente como '(lambda () <EXP>)', sin usar la optimización proporcionada por el procedimiento ~memo-proc~ descrito en la sección [[#section-3.5.1][3.5.1]].[fn:192]
+
+**** Ejercicio 3.58
+:properties:
+:custom_id: exercise-3.58
+:end:
+
+Da una interpretación del flujo calculado por el siguiente procedimiento:
+
+#+begin_src scheme
+(define (expand num den radix)
+  (cons-stream
+   (quotient (* num radix) den)
+   (expand (remainder (* num radix) den) den radix)))
+#+end_src
+
+(~Quotient~ es una primitiva que devuelve el cociente entero de dos enteros.) ¿Cuáles son los elementos sucesivos producidos por ~(expand 1 7 10)~? ¿Qué produce ~(expand 3 8 10)~?
+
+**** Ejercicio 3.59
+:properties:
+:custom_id: exercise-3.59
+:end:
+
+En la sección [[#section-2.5.3][2.5.3]] vimos cómo implementar un sistema aritmético de polinomios representando polinomios como listas de términos. De manera similar, podemos trabajar con <<i289>> series de potencias, tales como
+
+#+begin_example
+                x^2     x^3       x^4
+ e^x = 1 + x + ----- + ----- + --------- + ...
+                 2     3 * 2   4 * 3 * 2
+
+              x^2       x^4
+ cos x = 1 - ----- + --------- - ...
+               2     4 * 3 * 2
+
+              x^3         x^5
+ sin x = x - ----- + ------------- - ...
+             3 * 2   5 * 4 * 3 * 2
+#+end_example
+
+representadas como flujos infinitos. Representaremos la serie a_0 + a_1 x + a_2 x^2 + a_3 x^3 + ... como el flujo cuyos elementos son los coeficientes a_0, a_1, a_2, a_3, ....
+
+a. La integral de la serie a_0 + a_1 x + a_2 x^2 + a_3 x^3 + ... es la serie
+
+#+begin_example
+              1             1             1
+ c + a_0 x + --- x_1 r^2 + --- a_2 r^3 + --- a_3 r^4 + ...
+              2             3             4
+#+end_example
+
+donde c es cualquier constante. Define un procedimiento ~integrate-series~ que tome como entrada un flujo a_0, a_1, a_2, ... representando una serie de potencias y devuelva el flujo a_0, (1/2)a_1, (1/3)a_2, ... de coeficientes de los términos no constantes de la integral de la serie. (Dado que el resultado no tiene término constante, no representa una serie de potencias; cuando usamos ~integrate-series~, haremos ~cons~ con la constante apropiada.)
+
+b. La función x |-> e^x es su propia derivada. Esto implica que e^x y la integral de e^x son la misma serie, excepto por el término constante, que es e^0 = 1. En consecuencia, podemos generar la serie para e^x como
+
+#+begin_src scheme
+(define exp-series
+  (cons-stream 1 (integrate-series exp-series)))
+#+end_src
+
+Muestra cómo generar las series para seno y coseno, partiendo de los hechos de que la derivada del seno es el coseno y la derivada del coseno es el negativo del seno:
+
+#+begin_src scheme
+(define cosine-series
+  (cons-stream 1 <??>))
+
+(define sine-series
+  (cons-stream 0 <??>))
+#+end_src
+
+**** Ejercicio 3.60
+:properties:
+:custom_id: exercise-3.60
+:end:
+
+Con series de potencias representadas como flujos de coeficientes como en [[#exercise-3.59][Ejercicio 3.59]], la suma de series se implementa mediante ~add-streams~. Completa la definición del siguiente procedimiento para multiplicar series:
+
+#+begin_src scheme
+(define (mul-series s1 s2)
+  (cons-stream <??> (add-streams <??> <??>)))
+#+end_src
+
+Puedes probar tu procedimiento verificando que sin^2 x + cos^2 x = 1, usando las series de [[#exercise-3.59][Ejercicio 3.59]].
+
+**** Ejercicio 3.61
+:properties:
+:custom_id: exercise-3.61
+:end:
+
+Sea S una serie de potencias ([[#exercise-3.59][Ejercicio 3.59]]) cuyo término constante es 1. Supongamos que queremos encontrar la serie de potencias 1/S, es decir, la serie X tal que S * X = 1. Escribe S = 1 + S_R donde S_R es la parte de S después del término constante. Entonces podemos resolver para X de la siguiente manera:
+
+#+begin_example
+         S * X = 1
+ (1 + S_R) * X = 1
+   X + S_R * X = 1
+             X = 1 - S_R * X
+#+end_example
+
+En otras palabras, X es la serie de potencias cuyo término constante es 1 y cuyos términos de orden superior están dados por el negativo de S_R por X. Usa esta idea para escribir un procedimiento ~invert-unit-series~ que calcule 1/S para una serie de potencias S con término constante 1. Necesitarás usar ~mul-series~ de [[#exercise-3.60][Ejercicio 3.60]].
+
+**** Ejercicio 3.62
+:properties:
+:custom_id: exercise-3.62
+:end:
+
+Usa los resultados de [[#exercise-3.60][Ejercicio 3.60]] y [[#exercise-3.61][Ejercicio 3.61]] para definir un procedimiento ~div-series~ que divida dos series de potencias. ~div-series~ debería funcionar para dos series cualesquiera, siempre que la serie denominadora comience con un término constante distinto de cero. (Si el denominador tiene un término constante cero, entonces ~div-series~ debería señalar un error.) Muestra cómo usar ~div-series~ junto con el resultado de [[#exercise-3.59][Ejercicio 3.59]] para generar la serie de potencias para la tangente.
+
