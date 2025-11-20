@@ -1,0 +1,306 @@
+*** 4.2.2 An Interpreter with Lazy Evaluation
+:properties:
+:custom_id: section-4.2.2
+:end:
+
+In this section we will implement a normal-order language that is the same as Scheme except that compound procedures are non-strict in each argument.  Primitive procedures will still be strict.  It is not difficult to modify the evaluator of section [[#section-4.1.1][4.1.1]] so that the language it interprets behaves this way.  Almost all the required changes center around procedure application.
+
+The basic idea is that, when applying a procedure, the interpreter must determine which arguments are to be evaluated and which are to be delayed.  The delayed arguments are not evaluated; instead, they are transformed into objects called <<i395>> thunks.[fn:238] The thunk must contain the information required to produce the value of the argument when it is needed, as if it had been evaluated at the time of the application.  Thus, the thunk must contain the argument expression and the environment in which the procedure application is being evaluated.
+
+The process of evaluating the expression in a thunk is called <<i142>> forcing.[fn:239] In general, a thunk will be forced only when its value is needed: when it is passed to a primitive procedure that will use the value of the thunk; when it is the value of a predicate of a conditional; and when it is the value of an operator that is about to be applied as a procedure.  One design choice we have available is whether or not to <<i231>> memoize thunks, as we did with delayed objects in section [[#section-3.5.1][3.5.1]].  With memoization, the first time a thunk is forced, it stores the value that is computed.  Subsequent forcings simply return the stored value without repeating the computation.  We'll make our interpreter memoize, because this is more efficient for many applications.  There are tricky considerations here, however.[fn:240]
+
+*Modifying the evaluator*
+
+The main difference between the lazy evaluator and the one in section [[#section-4.1][4.1]] is in the handling of procedure applications in ~eval~ and ~apply~.
+
+The ~application?~ clause of ~eval~ becomes
+
+#+begin_src scheme
+((application? exp)
+ (apply (actual-value (operator exp) env)
+        (operands exp)
+        env))
+#+end_src
+
+This is almost the same as the ~application?~ clause of ~eval~ in section [[#section-4.1.1][4.1.1]].  For lazy evaluation, however, we call ~apply~ with the operand expressions, rather than the arguments produced by evaluating them.  Since we will need the environment to construct thunks if the arguments are to be delayed, we must pass this as well.  We still evaluate the operator, because ~apply~ needs the actual procedure to be applied in order to dispatch on its type (primitive versus compound) and apply it.
+
+Whenever we need the actual value of an expression, we use
+
+#+begin_src scheme
+(define (actual-value exp env)
+  (force-it (eval exp env)))
+#+end_src
+
+instead of just ~eval~, so that if the expression's value is a thunk, it will be forced.
+
+Our new version of ~apply~ is also almost the same as the version in section [[#section-4.1.1][4.1.1]].  The difference is that ~eval~ has passed in unevaluated operand expressions: For primitive procedures (which are strict), we evaluate all the arguments before applying the primitive; for compound procedures (which are non-strict) we delay all the arguments before applying the procedure.
+
+#+begin_src scheme
+(define (apply procedure arguments env)
+  (cond ((primitive-procedure? procedure)
+         (apply-primitive-procedure
+          procedure
+          (list-of-arg-values arguments env))) ; changed
+        ((compound-procedure? procedure)
+         (eval-sequence
+          (procedure-body procedure)
+          (extend-environment
+           (procedure-parameters procedure)
+           (list-of-delayed-args arguments env) ; changed
+           (procedure-environment procedure))))
+        (else
+         (error
+          "Unknown procedure type - APPLY" procedure))))
+#+end_src
+
+The procedures that process the arguments are just like ~list-of-values~ from section [[#section-4.1.1][4.1.1]], except that ~list-of-delayed-args~ delays the arguments instead of evaluating them, and ~list-of-arg-values~ uses ~actual-value~ instead of ~eval~:
+
+#+begin_src scheme
+(define (list-of-arg-values exps env)
+  (if (no-operands? exps)
+      '()
+      (cons (actual-value (first-operand exps) env)
+            (list-of-arg-values (rest-operands exps)
+                                env))))
+
+(define (list-of-delayed-args exps env)
+  (if (no-operands? exps)
+      '()
+      (cons (delay-it (first-operand exps) env)
+            (list-of-delayed-args (rest-operands exps)
+                                  env))))
+#+end_src
+
+The other place we must change the evaluator is in the handling of ~if~, where we must use ~actual-value~ instead of ~eval~ to get the value of the predicate expression before testing whether it is true or false:
+
+#+begin_src scheme
+(define (eval-if exp env)
+  (if (true? (actual-value (if-predicate exp) env))
+      (eval (if-consequent exp) env)
+      (eval (if-alternative exp) env)))
+#+end_src
+
+Finally, we must change the ~driver-loop~ procedure (section [[#section-4.1.4][4.1.4]]) to use ~actual-value~ instead of ~eval~, so that if a delayed value is propagated back to the read-eval-print loop, it will be forced before being printed.  We also change the prompts to indicate that this is the lazy evaluator:
+
+#+begin_src scheme
+(define input-prompt ";;; L-Eval input:")
+(define output-prompt ";;; L-Eval value:")
+
+(define (driver-loop)
+  (prompt-for-input input-prompt)
+  (let ((input (read)))
+    (let ((output
+           (actual-value input the-global-environment)))
+      (announce-output output-prompt)
+      (user-print output)))
+  (driver-loop))
+#+end_src
+
+With these changes made, we can start the evaluator and test it.  The successful evaluation of the ~try~ expression discussed in section [[#section-4.2.1][4.2.1]] indicates that the interpreter is performing lazy evaluation:
+
+#+begin_src scheme
+(define the-global-environment (setup-environment))
+
+(driver-loop)
+
+;;; L-Eval input:
+(define (try a b)
+  (if (= a 0) 1 b))
+;;; L-Eval value:
+ok
+
+;;; L-Eval input:
+(try 0 (/ 1 0))
+;;; L-Eval value:
+1
+#+end_src
+
+*Representing thunks*
+
+Our evaluator must arrange to create thunks when procedures are applied to arguments and to force these thunks later.  A thunk must package an expression together with the environment, so that the argument can be produced later.  To force the thunk, we simply extract the expression and environment from the thunk and evaluate the expression in the environment.  We use ~actual-value~ rather than ~eval~ so that in case the value of the expression is itself a thunk, we will force that, and so on, until we reach something that is not a thunk:
+
+#+begin_src scheme
+(define (force-it obj)
+  (if (thunk? obj)
+      (actual-value (thunk-exp obj) (thunk-env obj))
+      obj))
+#+end_src
+
+One easy way to package an expression with an environment is to make a list containing the expression and the environment.  Thus, we create a thunk as follows:
+
+#+begin_src scheme
+(define (delay-it exp env)
+  (list 'thunk exp env))
+
+(define (thunk? obj)
+  (tagged-list? obj 'thunk))
+
+(define (thunk-exp thunk) (cadr thunk))
+
+(define (thunk-env thunk) (caddr thunk))
+#+end_src
+
+Actually, what we want for our interpreter is not quite this, but rather thunks that have been memoized.  When a thunk is forced, we will turn it into an evaluated thunk by replacing the stored expression with its value and changing the ~thunk~ tag so that it can be recognized as already evaluated.[fn:241]
+
+#+begin_src scheme
+(define (evaluated-thunk? obj)
+  (tagged-list? obj 'evaluated-thunk))
+
+(define (thunk-value evaluated-thunk) (cadr evaluated-thunk))
+
+(define (force-it obj)
+  (cond ((thunk? obj)
+         (let ((result (actual-value
+                        (thunk-exp obj)
+                        (thunk-env obj))))
+           (set-car! obj 'evaluated-thunk)
+           (set-car! (cdr obj) result)  ; replace ~exp~ with its value
+           (set-cdr! (cdr obj) '())     ; forget unneeded ~env~
+           result))
+        ((evaluated-thunk? obj)
+         (thunk-value obj))
+        (else obj)))
+#+end_src
+
+Notice that the same ~delay-it~ procedure works both with and without memoization.
+
+**** Exercise 4.27
+:properties:
+:custom_id: exercise-4.27
+:end:
+
+Suppose we type in the following definitions to the lazy evaluator:
+
+#+begin_src scheme
+(define count 0)
+
+(define (id x)
+  (set! count (+ count 1))
+  x)
+#+end_src
+
+Give the missing values in the following sequence of interactions, and explain your answers.[fn:242]
+
+#+begin_src scheme
+(define w (id (id 10)))
+
+;;; L-Eval input:
+count
+;;; L-Eval value:
+<RESPONSE>
+
+;;; L-Eval input:
+w
+;;; L-Eval value:
+<RESPONSE>
+
+;;; L-Eval input:
+count
+;;; L-Eval value:
+<RESPONSE>
+#+end_src
+
+**** Exercise 4.28
+:properties:
+:custom_id: exercise-4.28
+:end:
+
+~eval~ uses ~actual-value~ rather than ~eval~ to evaluate the operator before passing it to ~apply~, in order to force the value of the operator.  Give an example that demonstrates the need for this forcing.
+
+**** Exercise 4.29
+:properties:
+:custom_id: exercise-4.29
+:end:
+
+Exhibit a program that you would expect to run much more slowly without memoization than with memoization.  Also, consider the following interaction, where the ~id~ procedure is defined as in [[#exercise-4.27][Exercise 4.27]] and ~count~ starts at 0:
+
+#+begin_src scheme
+(define (square x)
+  (* x x))
+
+;;; L-Eval input:
+(square (id 10))
+;;; L-Eval value:
+<RESPONSE>
+
+;;; L-Eval input:
+count
+;;; L-Eval value:
+<RESPONSE>
+#+end_src
+
+Give the responses both when the evaluator memoizes and when it does not.
+
+**** Exercise 4.30
+:properties:
+:custom_id: exercise-4.30
+:end:
+
+Cy D. Fect, a reformed C programmer, is worried that some side effects may never take place, because the lazy evaluator doesn't force the expressions in a sequence.  Since the value of an expression in a sequence other than the last one is not used (the expression is there only for its effect, such as assigning to a variable or printing), there can be no subsequent use of this value (e.g., as an argument to a primitive procedure) that will cause it to be forced.  Cy thus thinks that when evaluating sequences, we must force all expressions in the sequence except the final one.  He proposes to modify ~eval-sequence~ from section [[#section-4.1.1][4.1.1]] to use ~actual-value~ rather than ~eval~:
+
+#+begin_src scheme
+(define (eval-sequence exps env)
+  (cond ((last-exp? exps) (eval (first-exp exps) env))
+        (else (actual-value (first-exp exps) env)
+              (eval-sequence (rest-exps exps) env))))
+#+end_src
+
+a. Ben Bitdiddle thinks Cy is wrong.  He shows Cy the ~for-each~ procedure described in [[#exercise-2.23][Exercise 2.23]], which gives an important example of a sequence with side effects:
+
+#+begin_src scheme
+(define (for-each proc items)
+  (if (null? items)
+      'done
+      (begin (proc (car items))
+             (for-each proc (cdr items)))))
+#+end_src
+
+He claims that the evaluator in the text (with the original ~eval-sequence~) handles this correctly:
+
+#+begin_src scheme
+;;; L-Eval input:
+(for-each (lambda (x) (newline) (display x))
+          (list 57 321 88))
+57
+321
+88
+;;; L-Eval value:
+done
+#+end_src
+
+Explain why Ben is right about the behavior of ~for-each~.
+
+b. Cy agrees that Ben is right about the ~for-each~ example, but says that that's not the kind of program he was thinking about when he proposed his change to ~eval-sequence~.  He defines the following two procedures in the lazy evaluator:
+
+#+begin_src scheme
+(define (p1 x)
+  (set! x (cons x '(2)))
+  x)
+
+(define (p2 x)
+  (define (p e)
+    e
+    x)
+  (p (set! x (cons x '(2)))))
+#+end_src
+
+What are the values of ~(p1 1)~ and ~(p2 1)~ with the original ~eval-sequence~?  What would the values be with Cy's proposed change to ~eval-sequence~?
+
+c. Cy also points out that changing ~eval-sequence~ as he proposes does not affect the behavior of the example in part a.  Explain why this is true.
+
+d. How do you think sequences ought to be treated in the lazy evaluator?  Do you like Cy's approach, the approach in the text, or some other approach?
+
+**** Exercise 4.31
+:properties:
+:custom_id: exercise-4.31
+:end:
+
+The approach taken in this section is somewhat unpleasant, because it makes an incompatible change to Scheme.  It might be nicer to implement lazy evaluation as an <<i416>> upward-compatible extension, that is, so that ordinary Scheme programs will work as before.  We can do this by extending the syntax of procedure declarations to let the user control whether or not arguments are to be delayed.  While we're at it, we may as well also give the user the choice between delaying with and without memoization.  For example, the definition
+
+#+begin_src scheme
+(define (f a (b lazy) c (d lazy-memo))
+  ...)
+#+end_src
+
+would define ~f~ to be a procedure of four arguments, where the first and third arguments are evaluated when the procedure is called, the second argument is delayed, and the fourth argument is both delayed and memoized.  Thus, ordinary procedure definitions will produce the same behavior as ordinary Scheme, while adding the ~lazy-memo~ declaration to each parameter of every compound procedure will produce the behavior of the lazy evaluator defined in this section.  Design and implement the changes required to produce such an extension to Scheme.  You will have to implement new syntax procedures to handle the new syntax for ~define~.  You must also arrange for ~eval~ or ~apply~ to determine when arguments are to be delayed, and to force or delay arguments accordingly, and you must arrange for forcing to memoize or not, as appropriate.
+

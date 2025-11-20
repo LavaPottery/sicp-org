@@ -1,0 +1,306 @@
+*** 4.2.2 Un intérprete con evaluación perezosa
+:properties:
+:custom_id: section-4.2.2
+:end:
+
+En esta sección implementaremos un lenguaje de orden normal que es igual que Scheme excepto que los procedimientos compuestos son no estrictos en cada argumento. Los procedimientos primitivos seguirán siendo estrictos. No es difícil modificar el evaluador de la sección [[#section-4.1.1][4.1.1]] para que el lenguaje que interpreta se comporte de esta manera. Casi todos los cambios requeridos se centran en la aplicación de procedimientos.
+
+La idea básica es que, al aplicar un procedimiento, el intérprete debe determinar qué argumentos deben evaluarse y cuáles deben retrasarse. Los argumentos retrasados no se evalúan; en cambio, se transforman en objetos llamados <<i395>> thunks.[fn:238] El thunk debe contener la información requerida para producir el valor del argumento cuando se necesita, como si hubiera sido evaluado en el momento de la aplicación. Por lo tanto, el thunk debe contener la expresión del argumento y el entorno en el que se está evaluando la aplicación del procedimiento.
+
+El proceso de evaluar la expresión en un thunk se llama <<i142>> forcing.[fn:239] En general, un thunk será forzado solo cuando se necesita su valor: cuando se pasa a un procedimiento primitivo que usará el valor del thunk; cuando es el valor de un predicado de un condicional; y cuando es el valor de un operador que está a punto de aplicarse como un procedimiento. Una opción de diseño que tenemos disponible es si memoizar o no los <<i231>> thunks, como hicimos con los objetos retrasados en la sección [[#section-3.5.1][3.5.1]]. Con memoización, la primera vez que se fuerza un thunk, almacena el valor que se calcula. Los forzamientos subsecuentes simplemente devuelven el valor almacenado sin repetir el cálculo. Haremos que nuestro intérprete memorice, porque esto es más eficiente para muchas aplicaciones. Sin embargo, hay consideraciones complicadas aquí.[fn:240]
+
+*Modificando el evaluador*
+
+La principal diferencia entre el evaluador perezoso y el de la sección [[#section-4.1][4.1]] está en el manejo de las aplicaciones de procedimientos en ~eval~ y ~apply~.
+
+La cláusula ~application?~ de ~eval~ se convierte en
+
+#+begin_src scheme
+((application? exp)
+ (apply (actual-value (operator exp) env)
+        (operands exp)
+        env))
+#+end_src
+
+Esto es casi lo mismo que la cláusula ~application?~ de ~eval~ en la sección [[#section-4.1.1][4.1.1]]. Para la evaluación perezosa, sin embargo, llamamos a ~apply~ con las expresiones operandos, en lugar de los argumentos producidos al evaluarlos. Dado que necesitaremos el entorno para construir thunks si los argumentos deben retrasarse, debemos pasar esto también. Todavía evaluamos el operador, porque ~apply~ necesita el procedimiento real que se aplicará para despachar sobre su tipo (primitivo versus compuesto) y aplicarlo.
+
+Siempre que necesitemos el valor real de una expresión, usamos
+
+#+begin_src scheme
+(define (actual-value exp env)
+  (force-it (eval exp env)))
+#+end_src
+
+en lugar de solo ~eval~, de modo que si el valor de la expresión es un thunk, será forzado.
+
+Nuestra nueva versión de ~apply~ también es casi la misma que la versión en la sección [[#section-4.1.1][4.1.1]]. La diferencia es que ~eval~ ha pasado expresiones operandos no evaluadas: Para procedimientos primitivos (que son estrictos), evaluamos todos los argumentos antes de aplicar el primitivo; para procedimientos compuestos (que son no estrictos) retrasamos todos los argumentos antes de aplicar el procedimiento.
+
+#+begin_src scheme
+(define (apply procedure arguments env)
+  (cond ((primitive-procedure? procedure)
+         (apply-primitive-procedure
+          procedure
+          (list-of-arg-values arguments env))) ; changed
+        ((compound-procedure? procedure)
+         (eval-sequence
+          (procedure-body procedure)
+          (extend-environment
+           (procedure-parameters procedure)
+           (list-of-delayed-args arguments env) ; changed
+           (procedure-environment procedure))))
+        (else
+         (error
+          "Unknown procedure type - APPLY" procedure))))
+#+end_src
+
+Los procedimientos que procesan los argumentos son como ~list-of-values~ de la sección [[#section-4.1.1][4.1.1]], excepto que ~list-of-delayed-args~ retrasa los argumentos en lugar de evaluarlos, y ~list-of-arg-values~ usa ~actual-value~ en lugar de ~eval~:
+
+#+begin_src scheme
+(define (list-of-arg-values exps env)
+  (if (no-operands? exps)
+      '()
+      (cons (actual-value (first-operand exps) env)
+            (list-of-arg-values (rest-operands exps)
+                                env))))
+
+(define (list-of-delayed-args exps env)
+  (if (no-operands? exps)
+      '()
+      (cons (delay-it (first-operand exps) env)
+            (list-of-delayed-args (rest-operands exps)
+                                  env))))
+#+end_src
+
+El otro lugar donde debemos cambiar el evaluador es en el manejo de ~if~, donde debemos usar ~actual-value~ en lugar de ~eval~ para obtener el valor de la expresión predicado antes de probar si es verdadero o falso:
+
+#+begin_src scheme
+(define (eval-if exp env)
+  (if (true? (actual-value (if-predicate exp) env))
+      (eval (if-consequent exp) env)
+      (eval (if-alternative exp) env)))
+#+end_src
+
+Finalmente, debemos cambiar el procedimiento ~driver-loop~ (sección [[#section-4.1.4][4.1.4]]) para usar ~actual-value~ en lugar de ~eval~, de modo que si un valor retrasado se propaga de vuelta al bucle leer-evaluar-imprimir, será forzado antes de imprimirse. También cambiamos los prompts para indicar que este es el evaluador perezoso:
+
+#+begin_src scheme
+(define input-prompt ";;; L-Eval input:")
+(define output-prompt ";;; L-Eval value:")
+
+(define (driver-loop)
+  (prompt-for-input input-prompt)
+  (let ((input (read)))
+    (let ((output
+           (actual-value input the-global-environment)))
+      (announce-output output-prompt)
+      (user-print output)))
+  (driver-loop))
+#+end_src
+
+Con estos cambios hechos, podemos iniciar el evaluador y probarlo. La evaluación exitosa de la expresión ~try~ discutida en la sección [[#section-4.2.1][4.2.1]] indica que el intérprete está realizando evaluación perezosa:
+
+#+begin_src scheme
+(define the-global-environment (setup-environment))
+
+(driver-loop)
+
+;;; L-Eval input:
+(define (try a b)
+  (if (= a 0) 1 b))
+;;; L-Eval value:
+ok
+
+;;; L-Eval input:
+(try 0 (/ 1 0))
+;;; L-Eval value:
+1
+#+end_src
+
+*Representando thunks*
+
+Nuestro evaluador debe arreglarse para crear thunks cuando se aplican procedimientos a argumentos y para forzar estos thunks más tarde. Un thunk debe empaquetar una expresión junto con el entorno, de modo que el argumento pueda producirse más tarde. Para forzar el thunk, simplemente extraemos la expresión y el entorno del thunk y evaluamos la expresión en el entorno. Usamos ~actual-value~ en lugar de ~eval~ de modo que en caso de que el valor de la expresión sea en sí mismo un thunk, forzaremos eso, y así sucesivamente, hasta que alcancemos algo que no sea un thunk:
+
+#+begin_src scheme
+(define (force-it obj)
+  (if (thunk? obj)
+      (actual-value (thunk-exp obj) (thunk-env obj))
+      obj))
+#+end_src
+
+Una manera fácil de empaquetar una expresión con un entorno es hacer una lista que contenga la expresión y el entorno. Por lo tanto, creamos un thunk de la siguiente manera:
+
+#+begin_src scheme
+(define (delay-it exp env)
+  (list 'thunk exp env))
+
+(define (thunk? obj)
+  (tagged-list? obj 'thunk))
+
+(define (thunk-exp thunk) (cadr thunk))
+
+(define (thunk-env thunk) (caddr thunk))
+#+end_src
+
+En realidad, lo que queremos para nuestro intérprete no es exactamente esto, sino más bien thunks que han sido memoizados. Cuando se fuerza un thunk, lo convertiremos en un thunk evaluado reemplazando la expresión almacenada con su valor y cambiando la etiqueta ~thunk~ para que pueda reconocerse como ya evaluado.[fn:241]
+
+#+begin_src scheme
+(define (evaluated-thunk? obj)
+  (tagged-list? obj 'evaluated-thunk))
+
+(define (thunk-value evaluated-thunk) (cadr evaluated-thunk))
+
+(define (force-it obj)
+  (cond ((thunk? obj)
+         (let ((result (actual-value
+                        (thunk-exp obj)
+                        (thunk-env obj))))
+           (set-car! obj 'evaluated-thunk)
+           (set-car! (cdr obj) result)  ; reemplaza ~exp~ con su valor
+           (set-cdr! (cdr obj) '())     ; olvida ~env~ innecesario
+           result))
+        ((evaluated-thunk? obj)
+         (thunk-value obj))
+        (else obj)))
+#+end_src
+
+Nota que el mismo procedimiento ~delay-it~ funciona tanto con como sin memoización.
+
+**** Ejercicio 4.27
+:properties:
+:custom_id: exercise-4.27
+:end:
+
+Supón que tecleamos las siguientes definiciones en el evaluador perezoso:
+
+#+begin_src scheme
+(define count 0)
+
+(define (id x)
+  (set! count (+ count 1))
+  x)
+#+end_src
+
+Da los valores faltantes en la siguiente secuencia de interacciones, y explica tus respuestas.[fn:242]
+
+#+begin_src scheme
+(define w (id (id 10)))
+
+;;; L-Eval input:
+count
+;;; L-Eval value:
+<RESPONSE>
+
+;;; L-Eval input:
+w
+;;; L-Eval value:
+<RESPONSE>
+
+;;; L-Eval input:
+count
+;;; L-Eval value:
+<RESPONSE>
+#+end_src
+
+**** Ejercicio 4.28
+:properties:
+:custom_id: exercise-4.28
+:end:
+
+~eval~ usa ~actual-value~ en lugar de ~eval~ para evaluar el operador antes de pasarlo a ~apply~, con el fin de forzar el valor del operador. Da un ejemplo que demuestre la necesidad de este forzamiento.
+
+**** Ejercicio 4.29
+:properties:
+:custom_id: exercise-4.29
+:end:
+
+Exhibe un programa que esperarías que se ejecute mucho más lentamente sin memoización que con memoización. Además, considera la siguiente interacción, donde el procedimiento ~id~ se define como en [[#exercise-4.27][Ejercicio 4.27]] y ~count~ comienza en 0:
+
+#+begin_src scheme
+(define (square x)
+  (* x x))
+
+;;; L-Eval input:
+(square (id 10))
+;;; L-Eval value:
+<RESPONSE>
+
+;;; L-Eval input:
+count
+;;; L-Eval value:
+<RESPONSE>
+#+end_src
+
+Da las respuestas tanto cuando el evaluador memoiza como cuando no lo hace.
+
+**** Ejercicio 4.30
+:properties:
+:custom_id: exercise-4.30
+:end:
+
+Cy D. Fect, un programador reformado de C, está preocupado de que algunos efectos secundarios nunca ocurran, porque el evaluador perezoso no fuerza las expresiones en una secuencia. Dado que el valor de una expresión en una secuencia distinta de la última no se usa (la expresión está ahí solo por su efecto, como asignar a una variable o imprimir), no puede haber uso subsecuente de este valor (por ejemplo, como argumento de un procedimiento primitivo) que cause que sea forzado. Cy piensa por lo tanto que al evaluar secuencias, debemos forzar todas las expresiones en la secuencia excepto la final. Propone modificar ~eval-sequence~ de la sección [[#section-4.1.1][4.1.1]] para usar ~actual-value~ en lugar de ~eval~:
+
+#+begin_src scheme
+(define (eval-sequence exps env)
+  (cond ((last-exp? exps) (eval (first-exp exps) env))
+        (else (actual-value (first-exp exps) env)
+              (eval-sequence (rest-exps exps) env))))
+#+end_src
+
+a. Ben Bitdiddle piensa que Cy está equivocado. Le muestra a Cy el procedimiento ~for-each~ descrito en [[#exercise-2.23][Ejercicio 2.23]], que da un ejemplo importante de una secuencia con efectos secundarios:
+
+#+begin_src scheme
+(define (for-each proc items)
+  (if (null? items)
+      'done
+      (begin (proc (car items))
+             (for-each proc (cdr items)))))
+#+end_src
+
+Afirma que el evaluador en el texto (con el ~eval-sequence~ original) maneja esto correctamente:
+
+#+begin_src scheme
+;;; L-Eval input:
+(for-each (lambda (x) (newline) (display x))
+          (list 57 321 88))
+57
+321
+88
+;;; L-Eval value:
+done
+#+end_src
+
+Explica por qué Ben tiene razón sobre el comportamiento de ~for-each~.
+
+b. Cy está de acuerdo en que Ben tiene razón sobre el ejemplo ~for-each~, pero dice que ese no es el tipo de programa en el que estaba pensando cuando propuso su cambio a ~eval-sequence~. Define los siguientes dos procedimientos en el evaluador perezoso:
+
+#+begin_src scheme
+(define (p1 x)
+  (set! x (cons x '(2)))
+  x)
+
+(define (p2 x)
+  (define (p e)
+    e
+    x)
+  (p (set! x (cons x '(2)))))
+#+end_src
+
+¿Cuáles son los valores de ~(p1 1)~ y ~(p2 1)~ con el ~eval-sequence~ original? ¿Cuáles serían los valores con el cambio propuesto por Cy a ~eval-sequence~?
+
+c. Cy también señala que cambiar ~eval-sequence~ como él propone no afecta el comportamiento del ejemplo en la parte a. Explica por qué esto es cierto.
+
+d. ¿Cómo crees que las secuencias deberían tratarse en el evaluador perezoso? ¿Te gusta el enfoque de Cy, el enfoque en el texto, o algún otro enfoque?
+
+**** Ejercicio 4.31
+:properties:
+:custom_id: exercise-4.31
+:end:
+
+El enfoque tomado en esta sección es algo desagradable, porque hace un cambio incompatible a Scheme. Podría ser mejor implementar la evaluación perezosa como una <<i416>> extensión compatible hacia arriba, es decir, de modo que los programas ordinarios de Scheme funcionen como antes. Podemos hacer esto extendiendo la sintaxis de las declaraciones de procedimientos para permitir al usuario controlar si los argumentos deben retrasarse o no. Ya que estamos en ello, también podemos dar al usuario la opción entre retrasar con y sin memoización. Por ejemplo, la definición
+
+#+begin_src scheme
+(define (f a (b lazy) c (d lazy-memo))
+  ...)
+#+end_src
+
+definiría ~f~ como un procedimiento de cuatro argumentos, donde el primer y tercer argumentos se evalúan cuando se llama al procedimiento, el segundo argumento se retrasa, y el cuarto argumento se retrasa y memoiza. Por lo tanto, las definiciones de procedimientos ordinarias producirán el mismo comportamiento que Scheme ordinario, mientras que agregar la declaración ~lazy-memo~ a cada parámetro de cada procedimiento compuesto producirá el comportamiento del evaluador perezoso definido en esta sección. Diseña e implementa los cambios requeridos para producir tal extensión a Scheme. Tendrás que implementar nuevos procedimientos de sintaxis para manejar la nueva sintaxis para ~define~. También debes arreglar que ~eval~ o ~apply~ determinen cuándo los argumentos deben retrasarse, y forzar o retrasar argumentos en consecuencia, y debes arreglar que el forzamiento memorice o no, según sea apropiado.
+
