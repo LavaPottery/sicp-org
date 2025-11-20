@@ -1,0 +1,112 @@
+*** 5.1.2 Abstracción en el Diseño de Máquinas
+:properties:
+:custom_id: section-5.1.2
+:end:
+
+A menudo definiremos una máquina para incluir operaciones "primitivas" que en realidad son muy complejas. Por ejemplo, en las secciones [[#section-5.4][5.4]] y [[#section-5.5][5.5]] trataremos las manipulaciones de entornos de Scheme como primitivas. Tal abstracción es valiosa porque nos permite ignorar los detalles de partes de una máquina para que podamos concentrarnos en otros aspectos del diseño. El hecho de que hayamos barrido mucha complejidad debajo de la alfombra, sin embargo, no significa que un diseño de máquina sea poco realista. Siempre podemos reemplazar las "primitivas" complejas por operaciones primitivas más simples.
+
+Consideremos la máquina GCD. La máquina tiene una instrucción que calcula el resto del contenido de los registros ~a~ y ~b~ y asigna el resultado al registro ~t~. Si queremos construir la máquina GCD sin usar una operación de resto primitiva, debemos especificar cómo calcular restos en términos de operaciones más simples, como la resta. De hecho, podemos escribir un procedimiento Scheme que encuentre restos de esta manera:
+
+#+begin_src scheme
+(define (remainder n d)
+  (if (< n d)
+      n
+      (remainder (- n d) d)))
+#+end_src
+
+Podemos así reemplazar la operación de resto en las rutas de datos de la máquina GCD con una operación de resta y una prueba de comparación. La [[figure-5.5][Figura 5.5]] muestra las rutas de datos y el controlador para la máquina elaborada. La instrucción
+
+<<figure-5.5>> Rutas de datos y controlador para la máquina GCD elaborada.
+
+#+begin_example
+                                     ___
+ +-----+         +-----+            /   \
+ |  a  |<--(X)---+  b  +-------*-->|  =  |
+ +--+--+   a<-b  +-+---+       |    \___/
+    |              |  ^        |
+   (X) t<-a        |  |        |
+    |              | (X) b<-t  |
+    V              |  |       _V_
+ +-----+           |  |      /   \
+ |  t  +-------*---|--*-----|  <  |
+ +-----+       |   |         \___/
+    ^          V   V
+    |        ---------
+   (X) t<-d   \  -  /
+    |          --+--
+    |            |
+    +------------+
+
+
+    start
+      |
+      V
+     / \ yes            +-------+
+ +->< = >----> done     | t<-d  |<--+
+ |   \ /                +---+---+   |
+ |    | no                  |       |
+ |    |                     V       |
+ |    |   +------+         / \ no   |
+ |    +-->| t<-a +------->< < >-----+
+ |        +------+         \ /
+ |                          | yes
+ |      +-------------------+
+ |      V
+ |  +-------+
+ |  | a<-b  |
+ |  +---+---+
+ |      |
+ |      V
+ |  +-------+
+ +--+ b<-t  |
+    +-------+
+#+end_example
+
+#+begin_src scheme
+(assign t (op rem) (reg a) (reg b))
+#+end_src
+
+en la definición del controlador GCD es reemplazada por una secuencia de instrucciones que contiene un bucle, como se muestra en la [[figure-5.6][Figura 5.6]].
+
+<<figure-5.6>> Secuencia de instrucciones del controlador para la máquina GCD en la [[figure-5.5][Figura 5.5]].
+
+#+begin_src scheme
+(controller
+ test-b
+ (test (op =) (reg b) (const 0))
+ (branch (label gcd-done))
+ (assign t (reg a))
+ rem-loop
+ (test (op <) (reg t) (reg b))
+ (branch (label rem-done))
+ (assign t (op -) (reg t) (reg b))
+ (goto (label rem-loop))
+ rem-done
+ (assign a (reg b))
+ (assign b (reg t))
+ (goto (label test-b))
+ gcd-done)
+#+end_src
+
+**** Ejercicio 5.3
+:properties:
+:custom_id: exercise-5.3
+:end:
+
+Diseñe una máquina para calcular raíces cuadradas usando el método de Newton, como se describe en la sección [[#section-1.1.7][1.1.7]]:
+
+#+begin_src scheme
+(define (sqrt x)
+  (define (good-enough? guess)
+    (< (abs (- (square guess) x)) 0.001))
+  (define (improve guess)
+    (average guess (/ x guess)))
+  (define (sqrt-iter guess)
+    (if (good-enough? guess)
+        guess
+        (sqrt-iter (improve guess))))
+  (sqrt-iter 1.0))
+#+end_src
+
+Comience asumiendo que las operaciones ~good-enough?~ e ~improve~ están disponibles como primitivas. Luego muestre cómo expandir estas en términos de operaciones aritméticas. Describa cada versión del diseño de la máquina ~sqrt~ dibujando un diagrama de rutas de datos y escribiendo una definición de controlador en el lenguaje de máquina de registros.
+

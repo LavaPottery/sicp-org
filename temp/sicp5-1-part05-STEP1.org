@@ -1,0 +1,187 @@
+*** 5.1.4 Uso de una Pila para Implementar Recursión
+:properties:
+:custom_id: section-5.1.4
+:end:
+
+Con las ideas ilustradas hasta ahora, podemos implementar cualquier proceso iterativo especificando una máquina de registros que tenga un registro correspondiente a cada variable de estado del proceso. La máquina ejecuta repetidamente un bucle de controlador, cambiando el contenido de los registros, hasta que se satisfaga alguna condición de terminación. En cada punto de la secuencia del controlador, el estado de la máquina (que representa el estado del proceso iterativo) está completamente determinado por el contenido de los registros (los valores de las variables de estado).
+
+Sin embargo, implementar procesos recursivos requiere un mecanismo adicional. Consideremos el siguiente método recursivo para calcular factoriales, que examinamos por primera vez en la sección [[#section-1.2.1][1.2.1]]:
+
+#+begin_src scheme
+(define (factorial n)
+  (if (= n 1)
+      1
+      (* (factorial (- n 1)) n)))
+#+end_src
+
+Como vemos del procedimiento, calcular n! requiere calcular (n - 1)!. Nuestra máquina GCD, modelada en el procedimiento
+
+#+begin_src scheme
+(define (gcd a b)
+  (if (= b 0)
+      a
+      (gcd b (remainder a b))))
+#+end_src
+
+de manera similar tuvo que calcular otro GCD. Pero hay una diferencia importante entre el procedimiento ~gcd~, que reduce el cálculo original a un nuevo cálculo GCD, y ~factorial~, que requiere calcular otro factorial como un subproblema. En GCD, la respuesta al nuevo cálculo GCD es la respuesta al problema original. Para calcular el siguiente GCD, simplemente colocamos los nuevos argumentos en los registros de entrada de la máquina GCD y reutilizamos las rutas de datos de la máquina ejecutando la misma secuencia del controlador. Cuando la máquina termina de resolver el problema GCD final, ha completado todo el cálculo.
+
+En el caso del factorial (o cualquier proceso recursivo) la respuesta al nuevo subproblema factorial no es la respuesta al problema original. El valor obtenido para (n - 1)! debe multiplicarse por n para obtener la respuesta final. Si intentamos imitar el diseño GCD, y resolver el subproblema factorial decrementando el registro ~n~ y volviendo a ejecutar la máquina factorial, ya no tendremos disponible el valor antiguo de ~n~ por el cual multiplicar el resultado. Por lo tanto, necesitamos una segunda máquina factorial para trabajar en el subproblema. Este segundo cálculo factorial en sí mismo tiene un subproblema factorial, que requiere una tercera máquina factorial, y así sucesivamente. Dado que cada máquina factorial contiene otra máquina factorial dentro de ella, la máquina total contiene un anidamiento infinito de máquinas similares y por lo tanto no puede construirse a partir de un número fijo y finito de partes.
+
+Sin embargo, podemos implementar el proceso factorial como una máquina de registros si podemos arreglárnoslas para usar los mismos componentes para cada instancia anidada de la máquina. Específicamente, la máquina que calcula n! debe usar los mismos componentes para trabajar en el subproblema de calcular (n - 1)!, en el subproblema para (n - 2)!, y así sucesivamente. Esto es plausible porque, aunque el proceso factorial dicta que se necesita un número ilimitado de copias de la misma máquina para realizar un cálculo, solo una de estas copias necesita estar activa en cualquier momento dado. Cuando la máquina encuentra un subproblema recursivo, puede suspender el trabajo en el problema principal, reutilizar las mismas partes físicas para trabajar en el subproblema y luego continuar el cálculo suspendido.
+
+En el subproblema, el contenido de los registros será diferente de lo que era en el problema principal. (En este caso el registro ~n~ se decrementa.) Para poder continuar el cálculo suspendido, la máquina debe guardar el contenido de cualquier registro que se necesitará después de que se resuelva el subproblema para que estos puedan restaurarse para continuar el cálculo suspendido. En el caso del factorial, guardaremos el valor antiguo de ~n~, para ser restaurado cuando hayamos terminado de calcular el factorial del registro ~n~ decrementado.[fn:287]
+
+Dado que no hay un límite /a priori/ en la profundidad de las llamadas recursivas anidadas, es posible que necesitemos guardar un número arbitrario de valores de registro. Estos valores deben restaurarse en el orden inverso al que fueron guardados, ya que en un anidamiento de recursiones el último subproblema en ser ingresado es el primero en ser finalizado. Esto dicta el uso de una <<i361>> pila, o estructura de datos "último en entrar, primero en salir", para guardar valores de registro. Podemos extender el lenguaje de máquina de registros para incluir una pila agregando dos tipos de instrucciones: Los valores se colocan en la pila usando una instrucción ~save~ y se restauran de la pila usando una instrucción ~restore~. Después de que una secuencia de valores ha sido guardada (~save~) en la pila, una secuencia de ~restore~ recuperará estos valores en orden inverso.[fn:288]
+
+Con la ayuda de la pila, podemos reutilizar una sola copia de las rutas de datos de la máquina factorial para cada subproblema factorial. Hay un problema de diseño similar en la reutilización de la secuencia del controlador que opera las rutas de datos. Para reejecutar el cálculo factorial, el controlador no puede simplemente volver al principio, como con un proceso iterativo, porque después de resolver el subproblema (n - 1)! la máquina todavía debe multiplicar el resultado por n. El controlador debe suspender su cálculo de n!, resolver el subproblema (n - 1)! y luego continuar su cálculo de n!. Esta vista del cálculo factorial sugiere el uso del mecanismo de subrutina descrito en la sección [[#section-5.1.3][5.1.3]], que hace que el controlador use un registro ~continue~ para transferir a la parte de la secuencia que resuelve un subproblema y luego continuar donde lo dejó en el problema principal. Por lo tanto, podemos hacer una subrutina factorial que retorne al punto de entrada almacenado en el registro ~continue~. Alrededor de cada llamada a subrutina, guardamos y restauramos ~continue~ tal como hacemos con el registro ~n~, ya que cada "nivel" del cálculo factorial usará el mismo registro ~continue~. Es decir, la subrutina factorial debe poner un nuevo valor en ~continue~ cuando se llama a sí misma para un subproblema, pero necesitará el valor antiguo para retornar al lugar que la llamó para resolver un subproblema.
+
+La [[figure-5.11][Figura 5.11]] muestra las rutas de datos y el controlador para una máquina que implementa el procedimiento ~factorial~ recursivo. La máquina tiene una pila y tres registros, llamados ~n~, ~val~ y ~continue~. Para simplificar el diagrama de rutas de datos, no hemos nombrado los botones de asignación de registro, solo los botones de operación de pila (~sc~ y ~sn~ para guardar registros, ~rc~ y ~rn~ para restaurar registros). Para operar la máquina, colocamos en el registro ~n~ el número cuyo factorial deseamos calcular e iniciamos la máquina. Cuando la máquina alcanza ~fact-done~, el cálculo ha terminado y la respuesta se encontrará en el registro ~val~. En la secuencia del controlador, ~n~ y ~continue~ se guardan antes de cada llamada recursiva y se restauran al retornar de la llamada. Retornar de una llamada se logra ramificando a la ubicación almacenada en ~continue~. ~continue~ se inicializa cuando la máquina arranca de modo que el último retorno irá a ~fact-done~. El registro ~val~, que contiene el resultado del cálculo factorial, no se guarda antes de la llamada recursiva, porque el contenido antiguo de ~val~ no es útil después de que la subrutina retorna. Solo se necesita el nuevo valor, que es el valor producido por el subcálculo.
+
+Aunque en principio el cálculo factorial requiere una máquina infinita, la máquina en la [[figure-5.11][Figura 5.11]] es en realidad finita excepto por la pila, que es potencialmente ilimitada. Sin embargo, cualquier implementación física particular de una pila será de tamaño finito, y esto limitará la profundidad de llamadas recursivas que puede manejar la máquina. Esta implementación del factorial ilustra la estrategia general para realizar algoritmos recursivos como máquinas de registros ordinarias aumentadas con pilas. Cuando se encuentra un subproblema recursivo, guardamos en la pila los registros cuyos valores actuales se requerirán después de que se resuelva el subproblema, resolvemos el subproblema recursivo, luego restauramos los registros guardados y continuamos la ejecución en el problema principal. El registro ~continue~ siempre debe guardarse. Si hay otros registros que necesitan guardarse depende de la máquina particular, ya que no todos los cálculos recursivos necesitan los valores originales de los registros que se modifican durante la solución del subproblema (ver [[#exercise-5.4][Ejercicio 5.4]]).
+
+*Una doble recursión*
+
+Examinemos un proceso recursivo más complejo, el cálculo recursivo en árbol de los números de Fibonacci, que introdujimos en la sección [[#section-1.2.2][1.2.2]]:
+
+#+begin_src scheme
+(define (fib n)
+  (if (< n 2)
+      n
+      (+ (fib (- n 1)) (fib (- n 2)))))
+#+end_src
+
+Al igual que con el factorial, podemos implementar el cálculo de Fibonacci recursivo como una máquina de registros con registros ~n~, ~val~ y ~continue~. La máquina es más compleja que la del factorial, porque hay dos lugares en la secuencia del controlador donde necesitamos realizar llamadas recursivas: una vez para calcular Fib(n - 1) y una vez para calcular Fib(n - 2). Para prepararnos para cada una de estas llamadas, guardamos los registros cuyos valores se necesitarán más tarde, establecemos el registro ~n~ al número cuyo Fib necesitamos calcular recursivamente (n - 1 o n - 2), y asignamos a ~continue~ el punto de entrada en la secuencia principal al cual retornar (~afterfib-n-1~ o ~afterfib-n-2~, respectivamente). Luego vamos a ~fib-loop~. Cuando retornamos de la llamada recursiva, la respuesta está en ~val~. La [[figure-5.12][Figura 5.12]] muestra la secuencia del controlador para esta máquina.
+
+<<figure-5.11>> Una máquina factorial recursiva.
+
+#+begin_example
+                              ___
+                             /   \
+     +----------*-----------|  =  |
+     |          |            \___/
+    (X)         |              ^
+     |          |              |
+     V          |          +---+---+   sn    +-------+
+ +-------+      |          |       +---(X)-->|       |
+ |  val  |<-(X)-|----------+   n   |         | stack |
+ +-----+-+      |          |       |<--(X)---+       |
+   ^   |        |          +-------+   rn    +-+-----+
+   |   |        |            ^                 |   ^
+  (X)  |        |            |                 |   |
+   |   |   +----|--------*  (X)                |  (X) sc
+   |   |   |    |        |   |             rc (X)  |
+   |   |   |    *----.   |   |                 |   |
+   |   V   V    |    V   V   |                 V   |
+   |  -------   |   -------  |              +------+-+
+   |  \  *  /   |   \  -  /  |              |continue+--> controller
+   |   --+--    |    --+--   |              +--------+
+   |     |      |      |     |               ^      ^
+   +-----+      |      +-----+               |      |
+                |                           (X)    (X)
+                |                            |      |
+               / \                   after- / \    / \  fact-
+              /_1_\                  fact  /___\  /___\ done
+#+end_example
+
+#+begin_src scheme
+(controller
+ (assign continue (label fact-done))    ; set up final return address
+ fact-loop
+ (test (op =) (reg n) (const 1))
+ (branch (label base-case))
+ ;; Set up for the recursive call by saving ~n~ and ~continue~.
+ ;; Set up ~continue~ so that the computation will continue
+ ;; at ~after-fact~ when the subroutine returns.
+ (save continue)
+ (save n)
+ (assign n (op -) (reg n) (const 1))
+ (assign continue (label after-fact))
+ (goto (label fact-loop))
+ after-fact
+ (restore n)
+ (restore continue)
+ (assign val (op *) (reg n) (reg val))  ; ~val~ now contains n(n - 1)!
+ (goto (reg continue))                  ; return to caller
+ base-case
+ (assign val (const 1))                 ; base case: 1! = 1
+ (goto (reg continue))                  ; return to caller
+ fact-done)
+#+end_src
+
+<<figure-5.12>> Controlador para una máquina que calcula números de Fibonacci.
+
+#+begin_src scheme
+(controller
+ (assign continue (label fib-done))
+ fib-loop
+ (test (op <) (reg n) (const 2))
+ (branch (label immediate-answer))
+ ;; set up to compute Fib(n - 1)
+ (save continue)
+ (assign continue (label afterfib-n-1))
+ (save n)                             ; save old value of ~n~
+ (assign n (op -) (reg n) (const 1))  ; clobber ~n~ to n - 1
+ (goto (label fib-loop))              ; perform recursive call
+ afterfib-n-1                         ; upon return, ~val~ contains Fib(n - 1)
+ (restore n)
+ (restore continue)
+ ;; set up to compute Fib(n - 2)
+ (assign n (op -) (reg n) (const 2))
+ (save continue)
+ (assign continue (label afterfib-n-2))
+ (save val)                           ; save Fib(n - 1)
+ (goto (label fib-loop))
+ afterfib-n-2                         ; upon return, ~val~ contains Fib(n - 2)
+ (assign n (reg val))                 ; ~n~ now contains Fib(n - 2)
+ (restore val)                        ; ~val~ now contains Fib(n - 1)
+ (restore continue)
+ (assign val                          ;  Fib(n - 1) +  Fib(n - 2)
+         (op +) (reg val) (reg n))
+ (goto (reg continue))                ; return to caller, answer is in ~val~
+ immediate-answer
+ (assign val (reg n))                 ; base case:  Fib(n) = n
+ (goto (reg continue))
+ fib-done)
+#+end_src
+
+**** Ejercicio 5.4
+:properties:
+:custom_id: exercise-5.4
+:end:
+
+Especifique máquinas de registros que implementen cada uno de los siguientes procedimientos. Para cada máquina, escriba una secuencia de instrucciones del controlador y dibuje un diagrama mostrando las rutas de datos.
+
+a. Exponenciación recursiva:
+
+#+begin_src scheme
+(define (expt b n)
+  (if (= n 0)
+      1
+      (* b (expt b (- n 1)))))
+#+end_src
+
+b. Exponenciación iterativa:
+
+#+begin_src scheme
+(define (expt b n)
+  (define (expt-iter counter product)
+    (if (= counter 0)
+        product
+        (expt-iter (- counter 1) (* b product))))
+  (expt-iter n 1))
+#+end_src
+
+**** Ejercicio 5.5
+:properties:
+:custom_id: exercise-5.5
+:end:
+
+Simule manualmente las máquinas factorial y Fibonacci, usando alguna entrada no trivial (que requiera la ejecución de al menos una llamada recursiva). Muestre el contenido de la pila en cada punto significativo de la ejecución.
+
+**** Ejercicio 5.6
+:properties:
+:custom_id: exercise-5.6
+:end:
+
+Ben Bitdiddle observa que la secuencia del controlador de la máquina de Fibonacci tiene un ~save~ extra y un ~restore~ extra, que pueden eliminarse para hacer una máquina más rápida. ¿Dónde están estas instrucciones?
+

@@ -1,0 +1,133 @@
+*** 5.1.3 Subrutinas
+:properties:
+:custom_id: section-5.1.3
+:end:
+
+Al diseñar una máquina para realizar un cálculo, a menudo preferiríamos organizar que los componentes sean compartidos por diferentes partes del cálculo en lugar de duplicar los componentes. Consideremos una máquina que incluye dos cálculos GCD: uno que encuentra el GCD del contenido de los registros ~a~ y ~b~ y uno que encuentra el GCD del contenido de los registros ~c~ y ~d~. Podríamos comenzar asumiendo que tenemos una operación ~gcd~ primitiva, luego expandir las dos instancias de ~gcd~ en términos de operaciones más primitivas. La [[figure-5.7][Figura 5.7]] muestra solo las porciones GCD de las rutas de datos de la máquina resultante, sin mostrar cómo se conectan al resto de la máquina. La figura también muestra las porciones correspondientes de la secuencia del controlador de la máquina.
+
+<<figure-5.7>> Porciones de las rutas de datos y la secuencia del controlador para una máquina con dos cálculos GCD.
+
+#+begin_example
+                             ___                                 ___
+ +-----+        +-----+     /   \    +-----+        +-----+     /   \
+ |  a  |<-(X)---+  b  |--->|  =  |   |  c  |<-(X)---+  d  |--->|  =  |
+ +--+--+  a<-b  ++----+     \___/    +--+--+  c<-d  ++----+     \___/
+    |            |  ^         ^         |            |  ^         ^
+    `----.   .---'  |         |         `----.   .---'  |         |
+         V   V     (X) b<-t   |              V   V     (X) d<-t   |
+        -------     |        / \            -------     |        / \
+        \ rem /     |       /_0_\           \ rem /     |       /_0_\
+         --+--      |                        --+--      |
+           |        |                          |        |
+          (X) t<-r  |                         (X) s<-r  |
+           |        |                          |        |
+           V        |                          V        |
+        +-----+     |                       +-----+     |
+        |  t  +-----'                       |  s  +-----'
+        +-----+                             +-----+
+#+end_example
+
+#+begin_src scheme
+gcd-1
+ (test (op =) (reg b) (const 0))
+ (branch (label after-gcd-1))
+ (assign t (op rem) (reg a) (reg b))
+ (assign a (reg b))
+ (assign b (reg t))
+ (goto (label gcd-1))
+after-gcd-1
+   ...
+gcd-2
+ (test (op =) (reg d) (const 0))
+ (branch (label after-gcd-2))
+ (assign s (op rem) (reg c) (reg d))
+ (assign c (reg d))
+ (assign d (reg s))
+ (goto (label gcd-2))
+after-gcd-2
+#+end_src
+
+Esta máquina tiene dos cajas de operación de resto y dos cajas para probar igualdad. Si los componentes duplicados son complicados, como es la caja de resto, esta no será una forma económica de construir la máquina. Podemos evitar duplicar los componentes de ruta de datos usando los mismos componentes para ambos cálculos GCD, siempre que hacerlo no afecte el resto del cálculo de la máquina más grande. Si los valores en los registros ~a~ y ~b~ no se necesitan para cuando el controlador llega a ~gcd-2~ (o si estos valores pueden moverse a otros registros para su custodia), podemos cambiar la máquina para que use los registros ~a~ y ~b~, en lugar de los registros ~c~ y ~d~, al calcular el segundo GCD así como el primero. Si hacemos esto, obtenemos la secuencia del controlador mostrada en la [[figure-5.8][Figura 5.8]].
+
+Hemos eliminado los componentes de ruta de datos duplicados (de modo que las rutas de datos son nuevamente como en la [[figure-5.1][Figura 5.1]]), pero el controlador ahora tiene dos secuencias GCD que difieren solo en sus etiquetas de punto de entrada. Sería mejor reemplazar estas dos secuencias por ramas a una sola secuencia: una <<i373>> subrutina ~gcd~, al final de la cual ramificamos de vuelta al lugar correcto en la secuencia de instrucciones principal. Podemos lograr esto de la siguiente manera: Antes de ramificar a ~gcd~, colocamos un valor distintivo (como 0 o 1) en un registro especial, ~continue~. Al final de la subrutina ~gcd~ retornamos ya sea a ~after-gcd-1~ o a ~after-gcd-2~, dependiendo del valor del registro ~continue~. La [[figure-5.9][Figura 5.9]] muestra la porción relevante de la secuencia del controlador resultante, que incluye solo una copia única de las instrucciones ~gcd~.
+
+<<figure-5.8>> Porciones de la secuencia del controlador para una máquina que usa los mismos componentes de ruta de datos para dos cálculos GCD diferentes.
+
+#+begin_src scheme
+gcd-1
+ (test (op =) (reg b) (const 0))
+ (branch (label after-gcd-1))
+ (assign t (op rem) (reg a) (reg b))
+ (assign a (reg b))
+ (assign b (reg t))
+ (goto (label gcd-1))
+after-gcd-1
+  ...
+gcd-2
+ (test (op =) (reg b) (const 0))
+ (branch (label after-gcd-2))
+ (assign t (op rem) (reg a) (reg b))
+ (assign a (reg b))
+ (assign b (reg t))
+ (goto (label gcd-2))
+after-gcd-2
+#+end_src
+
+<<figure-5.9>> Uso de un registro ~continue~ para evitar la secuencia de controlador duplicada en la [[figure-5.8][Figura 5.8]].
+
+#+begin_src scheme
+gcd
+ (test (op =) (reg b) (const 0))
+ (branch (label gcd-done))
+ (assign t (op rem) (reg a) (reg b))
+ (assign a (reg b))
+ (assign b (reg t))
+ (goto (label gcd))
+gcd-done
+ (test (op =) (reg continue) (const 0))
+ (branch (label after-gcd-1))
+ (goto (label after-gcd-2))
+  ...
+;; Antes de ramificar a ~gcd~ desde el primer lugar donde
+;; se necesita, colocamos 0 en el registro ~continue~
+ (assign continue (const 0))
+ (goto (label gcd))
+after-gcd-1
+  ...
+;; Antes del segundo uso de ~gcd~, colocamos 1 en el registro ~continue~
+ (assign continue (const 1))
+ (goto (label gcd))
+after-gcd-2
+#+end_src
+
+<<figure-5.10>> Asignar etiquetas al registro ~continue~ simplifica y generaliza la estrategia mostrada en la [[figure-5.9][Figura 5.9]].
+
+#+begin_src scheme
+gcd
+ (test (op =) (reg b) (const 0))
+ (branch (label gcd-done))
+ (assign t (op rem) (reg a) (reg b))
+ (assign a (reg b))
+ (assign b (reg t))
+ (goto (label gcd))
+gcd-done
+ (goto (reg continue))
+   ...
+;; Antes de llamar a ~gcd~, asignamos a ~continue~
+;; la etiqueta a la cual ~gcd~ debe retornar.
+ (assign continue (label after-gcd-1))
+ (goto (label gcd))
+after-gcd-1
+   ...
+;; Aquí está la segunda llamada a ~gcd~, con una continuación diferente.
+ (assign continue (label after-gcd-2))
+ (goto (label gcd))
+after-gcd-2
+#+end_src
+
+Este es un enfoque razonable para manejar problemas pequeños, pero sería incómodo si hubiera muchas instancias de cálculos GCD en la secuencia del controlador. Para decidir dónde continuar ejecutando después de la subrutina ~gcd~, necesitaríamos pruebas en las rutas de datos e instrucciones de ramificación en el controlador para todos los lugares que usan ~gcd~. Un método más poderoso para implementar subrutinas es hacer que el registro ~continue~ contenga la etiqueta del punto de entrada en la secuencia del controlador en el cual debe continuar la ejecución cuando la subrutina termine. Implementar esta estrategia requiere un nuevo tipo de conexión entre las rutas de datos y el controlador de una máquina de registros: Debe haber una manera de asignar a un registro una etiqueta en la secuencia del controlador de tal manera que este valor pueda ser recuperado del registro y usado para continuar la ejecución en el punto de entrada designado.
+
+Para reflejar esta capacidad, extenderemos la instrucción ~assign~ del lenguaje de máquina de registros para permitir que un registro reciba como valor una etiqueta de la secuencia del controlador (como un tipo especial de constante). También extenderemos la instrucción ~goto~ para permitir que la ejecución continúe en el punto de entrada descrito por el contenido de un registro en lugar de solo en un punto de entrada descrito por una etiqueta constante. Usando estas nuevas construcciones podemos terminar la subrutina ~gcd~ con una rama a la ubicación almacenada en el registro ~continue~. Esto conduce a la secuencia del controlador mostrada en la [[figure-5.10][Figura 5.10]].
+
+Una máquina con más de una subrutina podría usar múltiples registros de continuación (por ejemplo, ~gcd-continue~, ~factorial-continue~) o podríamos hacer que todas las subrutinas compartan un solo registro ~continue~. Compartir es más económico, pero debemos tener cuidado si tenemos una subrutina (~sub1~) que llama a otra subrutina (~sub2~). A menos que ~sub1~ guarde el contenido de ~continue~ en algún otro registro antes de configurar ~continue~ para la llamada a ~sub2~, ~sub1~ no sabrá a dónde ir cuando termine. El mecanismo desarrollado en la siguiente sección para manejar la recursión también proporciona una mejor solución a este problema de llamadas a subrutinas anidadas.
+
