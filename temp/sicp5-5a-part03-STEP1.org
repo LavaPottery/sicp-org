@@ -1,0 +1,103 @@
+
+Para generar este código, compilamos el predicado, el consecuente y la alternativa, y combinamos el código resultante con instrucciones para probar el resultado del predicado y con etiquetas recién generadas para marcar las ramas verdadera y falsa y el final del condicional.[fn:322] En esta disposición de código, debemos bifurcar alrededor de la rama verdadera si la prueba es falsa. La única complicación leve es en cómo debe manejarse el enlazamiento para la rama verdadera. Si el enlazamiento para el condicional es ~return~ o una etiqueta, entonces las ramas verdadera y falsa usarán ambas este mismo enlazamiento. Si el enlazamiento es ~next~, la rama verdadera termina con un salto alrededor del código para la rama falsa hacia la etiqueta al final del condicional.
+
+#+begin_src scheme
+(define (compile-if exp target linkage)
+  (let ((t-branch (make-label 'true-branch))
+        (f-branch (make-label 'false-branch))
+        (after-if (make-label 'after-if)))
+    (let ((consequent-linkage
+           (if (eq? linkage 'next) after-if linkage)))
+      (let ((p-code (compile (if-predicate exp) 'val 'next))
+            (c-code
+             (compile
+              (if-consequent exp) target consequent-linkage))
+            (a-code
+             (compile (if-alternative exp) target linkage)))
+        (preserving '(env continue)
+                    p-code
+                    (append-instruction-sequences
+                     (make-instruction-sequence
+                      '(val) '()
+                      '((test (op false?) (reg val))
+                        (branch (label ,f-branch))))
+                     (parallel-instruction-sequences
+                      (append-instruction-sequences t-branch c-code)
+                      (append-instruction-sequences f-branch a-code))
+                     after-if))))))
+#+end_src
+
+~env~ se preserva alrededor del código del predicado porque podría ser necesitado por las ramas verdadera y falsa, y ~continue~ se preserva porque podría ser necesitado por el código de enlazamiento en esas ramas. El código para las ramas verdadera y falsa (que no se ejecutan secuencialmente) se concatena usando un combinador especial ~parallel-instruction-sequences~ descrito en la sección [[#section-5.5.4][5.5.4]].
+
+Nota que ~cond~ es una expresión derivada, así que todo lo que el compilador necesita hacer para manejarlo es aplicar el transformador ~cond->if~ (de la sección [[#section-4.1.2][4.1.2]]) y compilar la expresión ~if~ resultante.
+
+*Compilación de secuencias*
+
+La compilación de secuencias (de cuerpos de procedimientos o expresiones ~begin~ explícitas) es paralela a su evaluación. Cada expresión de la secuencia se compila--la última expresión con el enlazamiento especificado para la secuencia, y las otras expresiones con enlazamiento ~next~ (para ejecutar el resto de la secuencia). Las secuencias de instrucciones para las expresiones individuales se concatenan para formar una única secuencia de instrucciones, de tal manera que ~env~ (necesitado para el resto de la secuencia) y ~continue~ (posiblemente necesitado para el enlazamiento al final de la secuencia) se preservan.
+
+#+begin_src scheme
+(define (compile-sequence seq target linkage)
+  (if (last-exp? seq)
+      (compile (first-exp seq) target linkage)
+      (preserving '(env continue)
+                  (compile (first-exp seq) target 'next)
+                  (compile-sequence (rest-exps seq) target linkage))))
+#+end_src
+
+*Compilación de expresiones ~lambda~*
+
+Las expresiones ~lambda~ construyen procedimientos. El código objeto para una expresión ~lambda~ debe tener la forma
+
+#+begin_src scheme
+<construct procedure object and assign it to target register>
+<LINKAGE>
+#+end_src
+
+Cuando compilamos la expresión ~lambda~, también generamos el código para el cuerpo del procedimiento. Aunque el cuerpo no será ejecutado en el momento de construcción del procedimiento, es conveniente insertarlo en el código objeto justo después del código para el ~lambda~. Si el enlazamiento para la expresión ~lambda~ es una etiqueta o ~return~, esto está bien. Pero si el enlazamiento es ~next~, necesitaremos saltar alrededor del código para el cuerpo del procedimiento usando un enlazamiento que salta a una etiqueta que se inserta después del cuerpo. El código objeto así tiene la forma
+
+#+begin_src scheme
+<construct procedure object and assign it to target register>
+ <code for given linkage> or '(goto (label after-lambda))'
+ <compilation of procedure body>
+after-lambda
+#+end_src
+
+~compile-lambda~ genera el código para construir el objeto procedimiento seguido por el código para el cuerpo del procedimiento. El objeto procedimiento será construido en tiempo de ejecución combinando el entorno actual (el entorno en el punto de definición) con el punto de entrada al cuerpo del procedimiento compilado (una etiqueta recién generada).[fn:323]
+
+#+begin_src scheme
+(define (compile-lambda exp target linkage)
+  (let ((proc-entry (make-label 'entry))
+        (after-lambda (make-label 'after-lambda)))
+    (let ((lambda-linkage
+           (if (eq? linkage 'next) after-lambda linkage)))
+      (append-instruction-sequences
+       (tack-on-instruction-sequence
+        (end-with-linkage lambda-linkage
+                          (make-instruction-sequence
+                           '(env) (list target)
+                           '((assign ,target
+                                     (op make-compiled-procedure)
+                                     (label ,proc-entry)
+                                     (reg env)))))
+        (compile-lambda-body exp proc-entry))
+       after-lambda))))
+#+end_src
+
+~compile-lambda~ usa el combinador especial ~tack-on-instruction-sequence~ (sección [[#section-5.5.4][5.5.4]]) en lugar de ~append-instruction-sequences~ para concatenar el cuerpo del procedimiento al código de la expresión ~lambda~, porque el cuerpo no es parte de la secuencia de instrucciones que será ejecutada cuando se entre a la secuencia combinada; más bien, está en la secuencia solo porque ese era un lugar conveniente para ponerlo.
+
+~compile-lambda-body~ construye el código para el cuerpo del procedimiento. Este código comienza con una etiqueta para el punto de entrada. A continuación vienen instrucciones que harán que el entorno de evaluación en tiempo de ejecución cambie al entorno correcto para evaluar el cuerpo del procedimiento--a saber, el entorno de definición del procedimiento, extendido para incluir los enlaces de los parámetros formales a los argumentos con los que se llama al procedimiento. Después de esto viene el código para la secuencia de expresiones que constituye el cuerpo del procedimiento. La secuencia se compila con enlazamiento ~return~ y objetivo ~val~ de manera que terminará retornando del procedimiento con el resultado del procedimiento en ~val~.
+
+#+begin_src scheme
+(define (compile-lambda-body exp proc-entry)
+  (let ((formals (lambda-parameters exp)))
+    (append-instruction-sequences
+     (make-instruction-sequence '(env proc argl) '(env)
+                                '(,proc-entry
+                                  (assign env (op compiled-procedure-env) (reg proc))
+                                  (assign env
+                                          (op extend-environment)
+                                          (const ,formals)
+                                          (reg argl)
+                                          (reg env))))
+     (compile-sequence (lambda-body exp) 'val 'return))))
+#+end_src

@@ -1,0 +1,151 @@
+*** 5.5.3 Compilación de combinaciones
+:properties:
+:custom_id: section-5.5.3
+:end:
+
+La esencia del proceso de compilación es la compilación de aplicaciones de procedimientos. El código para una combinación compilada con un objetivo y enlazamiento dados tiene la forma
+
+#+begin_src scheme
+<compilation of operator, target 'proc', linkage 'next'>
+<evaluate operands and construct argument list in 'argl'>
+<compilation of procedure call with given target and linkage>
+#+end_src
+
+Los registros ~env~, ~proc~ y ~argl~ pueden tener que ser guardados y restaurados durante la evaluación del operador y los operandos. Nota que este es el único lugar en el compilador donde se especifica un objetivo diferente de ~val~.
+
+El código requerido es generado por ~compile-application~. Esto compila recursivamente el operador, para producir código que pone el procedimiento a aplicar en ~proc~, y compila los operandos, para producir código que evalúa los operandos individuales de la aplicación. Las secuencias de instrucciones para los operandos se combinan (mediante ~construct-arglist~) con código que construye la lista de argumentos en ~argl~, y el código de lista de argumentos resultante se combina con el código del procedimiento y el código que realiza la llamada al procedimiento (producido por ~compile-procedure-call~). Al concatenar las secuencias de código, el registro ~env~ debe preservarse alrededor de la evaluación del operador (ya que evaluar el operador podría modificar ~env~, que se necesitará para evaluar los operandos), y el registro ~proc~ debe preservarse alrededor de la construcción de la lista de argumentos (ya que evaluar los operandos podría modificar ~proc~, que se necesitará para la aplicación real del procedimiento). ~continue~ también debe preservarse en todo momento, ya que se necesita para el enlazamiento en la llamada al procedimiento.
+
+#+begin_src scheme
+(define (compile-application exp target linkage)
+  (let ((proc-code (compile (operator exp) 'proc 'next))
+        (operand-codes
+         (map (lambda (operand) (compile operand 'val 'next))
+              (operands exp))))
+    (preserving '(env continue)
+                proc-code
+                (preserving '(proc continue)
+                            (construct-arglist operand-codes)
+                            (compile-procedure-call target linkage)))))
+#+end_src
+
+El código para construir la lista de argumentos evaluará cada operando en ~val~ y luego hará ~cons~ de ese valor sobre la lista de argumentos que se está acumulando en ~argl~. Dado que hacemos ~cons~ de los argumentos sobre ~argl~ en secuencia, debemos comenzar con el último argumento y terminar con el primero, de manera que los argumentos aparezcan en orden de primero a último en la lista resultante. En lugar de desperdiciar una instrucción inicializando ~argl~ a la lista vacía para preparar esta secuencia de evaluaciones, hacemos que la primera secuencia de código construya el ~argl~ inicial. La forma general de la construcción de lista de argumentos es por lo tanto la siguiente:
+
+#+begin_src scheme
+<compilation of last operand, targeted to 'val'>
+(assign argl (op list) (reg val))
+<compilation of next operand, targeted to 'val'>
+(assign argl (op cons) (reg val) (reg argl))
+...
+<compilation of first operand, targeted to 'val'>
+(assign argl (op cons) (reg val) (reg argl))
+#+end_src
+
+~argl~ debe preservarse alrededor de cada evaluación de operando excepto la primera (para que los argumentos acumulados hasta ahora no se pierdan), y ~env~ debe preservarse alrededor de cada evaluación de operando excepto la última (para uso por evaluaciones de operandos subsiguientes).
+
+Compilar este código de argumentos es un poco complicado, debido al tratamiento especial del primer operando a evaluar y la necesidad de preservar ~argl~ y ~env~ en diferentes lugares. El procedimiento ~construct-arglist~ toma como argumentos el código que evalúa los operandos individuales. Si no hay operandos en absoluto, simplemente emite la instrucción
+
+#+begin_src scheme
+(assign argl (const ()))
+#+end_src
+
+De lo contrario, ~construct-arglist~ crea código que inicializa ~argl~ con el último argumento, y concatena código que evalúa el resto de los argumentos y los adjunta a ~argl~ en sucesión. Para procesar los argumentos de último a primero, debemos invertir la lista de secuencias de código de operandos del orden suministrado por ~compile-application~.
+
+#+begin_src scheme
+(define (construct-arglist operand-codes)
+  (let ((operand-codes (reverse operand-codes)))
+    (if (null? operand-codes)
+        (make-instruction-sequence
+         '() '(argl)
+         '((assign argl (const ()))))
+        (let ((code-to-get-last-arg
+               (append-instruction-sequences
+                (car operand-codes)
+                (make-instruction-sequence
+                 '(val) '(argl)
+                 '((assign argl (op list) (reg val)))))))
+          (if (null? (cdr operand-codes))
+              code-to-get-last-arg
+              (preserving '(env)
+                          code-to-get-last-arg
+                          (code-to-get-rest-args
+                           (cdr operand-codes))))))))
+
+(define (code-to-get-rest-args operand-codes)
+  (let ((code-for-next-arg
+         (preserving '(argl)
+                     (car operand-codes)
+                     (make-instruction-sequence
+                      '(val argl) '(argl)
+                      '((assign argl
+                                (op cons) (reg val) (reg argl)))))))
+    (if (null? (cdr operand-codes))
+        code-for-next-arg
+        (preserving '(env)
+                    code-for-next-arg
+                    (code-to-get-rest-args (cdr operand-codes))))))
+#+end_src
+
+*Aplicación de procedimientos*
+
+Después de evaluar los elementos de una combinación, el código compilado debe aplicar el procedimiento en ~proc~ a los argumentos en ~argl~. El código realiza esencialmente el mismo despacho que el procedimiento ~apply~ en el evaluador metacircular de la sección [[#section-4.1.1][4.1.1]] o el punto de entrada ~apply-dispatch~ en el evaluador de control explícito de la sección [[#section-5.4.1][5.4.1]]. Verifica si el procedimiento a aplicar es un procedimiento primitivo o un procedimiento compilado. Para un procedimiento primitivo, usa ~apply-primitive-procedure~; veremos en breve cómo maneja los procedimientos compilados. El código de aplicación de procedimiento tiene la siguiente forma:
+
+#+begin_src scheme
+(test (op primitive-procedure?) (reg proc))
+ (branch (label primitive-branch))
+compiled-branch
+ <code to apply compiled procedure with given target and appropriate linkage>
+primitive-branch
+ (assign <TARGET>
+         (op apply-primitive-procedure)
+         (reg proc)
+         (reg argl))
+ <LINKAGE>
+after-call
+#+end_src
+
+Observa que la rama compilada debe saltar alrededor de la rama primitiva. Por lo tanto, si el enlazamiento para la llamada al procedimiento original era ~next~, la rama compuesta debe usar un enlazamiento que salte a una etiqueta que se inserta después de la rama primitiva. (Esto es similar al enlazamiento usado para la rama verdadera en ~compile-if~.)
+
+#+begin_src scheme
+(define (compile-procedure-call target linkage)
+  (let ((primitive-branch (make-label 'primitive-branch))
+        (compiled-branch (make-label 'compiled-branch))
+        (after-call (make-label 'after-call)))
+    (let ((compiled-linkage
+           (if (eq? linkage 'next) after-call linkage)))
+      (append-instruction-sequences
+       (make-instruction-sequence
+        '(proc) '()
+        '((test (op primitive-procedure?) (reg proc))
+          (branch (label ,primitive-branch))))
+       (parallel-instruction-sequences
+        (append-instruction-sequences
+         compiled-branch
+         (compile-proc-appl target compiled-linkage))
+        (append-instruction-sequences
+         primitive-branch
+         (end-with-linkage
+          linkage
+          (make-instruction-sequence
+           '(proc argl)
+           (list target)
+           '((assign ,target
+                     (op apply-primitive-procedure)
+                     (reg proc)
+                     (reg argl)))))))
+       after-call))))
+#+end_src
+
+Las ramas primitiva y compuesta, como las ramas verdadera y falsa en ~compile-if~, se concatenan usando ~parallel-instruction-sequences~ en lugar del ~append-instruction-sequences~ ordinario, porque no se ejecutarán secuencialmente.
+
+*Aplicación de procedimientos compilados*
+
+El código que maneja la aplicación de procedimientos es la parte más sutil del compilador, aunque las secuencias de instrucciones que genera son muy cortas. Un procedimiento compilado (como se construye mediante ~compile-lambda~) tiene un punto de entrada, que es una etiqueta que designa dónde comienza el código para el procedimiento. El código en este punto de entrada calcula un resultado en ~val~ y retorna ejecutando la instrucción ~(goto (reg continue))~. Así, podríamos esperar que el código para una aplicación de procedimiento compilado (a ser generado por ~compile-proc-appl~) con un objetivo y enlazamiento dados se vea así si el enlazamiento es una etiqueta
+
+#+begin_src scheme
+(assign continue (label proc-return))
+ (assign val (op compiled-procedure-entry) (reg proc))
+ (goto (reg val))
+proc-return
+ (assign <TARGET> (reg val))   ; included if target is not ~val~
+ (goto (label <LINKAGE>))   ; linkage code
+#+end_src

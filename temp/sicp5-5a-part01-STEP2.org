@@ -1,0 +1,157 @@
+** 5.5 Compilación
+:properties:
+:custom_id: section-5.5
+:end:
+
+El evaluador de control explícito de la sección [[#section-5.4][5.4]] es una máquina de registros cuyo controlador interpreta programas Scheme. En esta sección veremos cómo ejecutar programas Scheme en una máquina de registros cuyo controlador no es un intérprete Scheme.
+
+La máquina evaluadora de control explícito es universal--puede llevar a cabo cualquier proceso computacional que se pueda describir en Scheme. El controlador del evaluador orquesta el uso de sus caminos de datos para realizar el cálculo deseado. Por lo tanto, los caminos de datos del evaluador son universales: son suficientes para realizar cualquier cálculo que deseemos, dado un controlador apropiado.[fn:318]
+
+Los ordenadores comerciales de propósito general son máquinas de registros organizadas alrededor de una colección de registros y operaciones que constituyen un conjunto universal de caminos de datos eficiente y conveniente. El controlador de una máquina de propósito general es un intérprete para un lenguaje de máquina de registros como el que hemos estado usando. Este lenguaje se llama el <<i251>> lenguaje nativo de la máquina, o simplemente <<i223>> lenguaje de máquina. Los programas escritos en lenguaje de máquina son secuencias de instrucciones que usan los caminos de datos de la máquina. Por ejemplo, la secuencia de instrucciones del evaluador de control explícito puede considerarse como un programa en lenguaje de máquina para un ordenador de propósito general en lugar de como el controlador de una máquina intérprete especializada.
+
+Hay dos estrategias comunes para cerrar la brecha entre lenguajes de alto nivel y lenguajes de máquina de registros. El evaluador de control explícito ilustra la estrategia de interpretación. Un intérprete escrito en el lenguaje nativo de una máquina configura la máquina para ejecutar programas escritos en un lenguaje (llamado el <<i357>> lenguaje fuente) que puede diferir del lenguaje nativo de la máquina que realiza la evaluación. Los procedimientos primitivos del lenguaje fuente se implementan como una biblioteca de subrutinas escritas en el lenguaje nativo de la máquina dada. Un programa a interpretar (llamado el <<i358>> programa fuente) se representa como una estructura de datos. El intérprete recorre esta estructura de datos, analizando el programa fuente. Al hacerlo, simula el comportamiento previsto del programa fuente llamando a las subrutinas primitivas apropiadas de la biblioteca.
+
+En esta sección, exploramos la estrategia alternativa de <<i70>> compilación. Un compilador para un lenguaje fuente y máquina dados traduce un programa fuente en un programa equivalente (llamado el <<i266>> programa objeto) escrito en el lenguaje nativo de la máquina. El compilador que implementamos en esta sección traduce programas escritos en Scheme en secuencias de instrucciones a ejecutar usando los caminos de datos de la máquina evaluadora de control explícito.[fn:319]
+
+Comparada con la interpretación, la compilación puede proporcionar un gran aumento en la eficiencia de la ejecución del programa, como explicaremos a continuación en la descripción general del compilador. Por otro lado, un intérprete proporciona un entorno más potente para el desarrollo y depuración interactivos de programas, porque el programa fuente que se está ejecutando está disponible en tiempo de ejecución para ser examinado y modificado. Además, dado que toda la biblioteca de primitivas está presente, se pueden construir nuevos programas y agregarlos al sistema durante la depuración.
+
+En vista de las ventajas complementarias de la compilación y la interpretación, los entornos modernos de desarrollo de programas siguen una estrategia mixta. Los intérpretes Lisp generalmente están organizados de manera que los procedimientos interpretados y los procedimientos compilados pueden llamarse entre sí. Esto permite a un programador compilar aquellas partes de un programa que se supone están depuradas, obteniendo así la ventaja de eficiencia de la compilación, mientras retiene el modo de ejecución interpretativo para aquellas partes del programa que están en el flujo del desarrollo y depuración interactivos. En la sección [[#section-5.5.7][5.5.7]], después de haber implementado el compilador, mostraremos cómo interfazarlo con nuestro intérprete para producir un sistema de desarrollo integrado intérprete-compilador.
+
+*Una descripción general del compilador*
+
+Nuestro compilador es muy parecido a nuestro intérprete, tanto en su estructura como en la función que realiza. En consecuencia, los mecanismos usados por el compilador para analizar expresiones serán similares a los usados por el intérprete. Además, para facilitar la interfaz entre código compilado e interpretado, diseñaremos el compilador para generar código que obedezca las mismas convenciones de uso de registros que el intérprete: el entorno se mantendrá en el registro ~env~, las listas de argumentos se acumularán en ~argl~, un procedimiento a aplicar estará en ~proc~, los procedimientos devolverán sus respuestas en ~val~, y la ubicación a la que un procedimiento debe retornar se mantendrá en ~continue~. En general, el compilador traduce un programa fuente en un programa objeto que realiza esencialmente las mismas operaciones de registro que haría el intérprete al evaluar el mismo programa fuente.
+
+Esta descripción sugiere una estrategia para implementar un compilador rudimentario: recorremos la expresión de la misma manera que lo hace el intérprete. Cuando encontramos una instrucción de registro que el intérprete realizaría al evaluar la expresión, no ejecutamos la instrucción sino que la acumulamos en una secuencia. La secuencia resultante de instrucciones será el código objeto. Observa la ventaja de eficiencia de la compilación sobre la interpretación. Cada vez que el intérprete evalúa una expresión--por ejemplo, ~(f 84 96)~--realiza el trabajo de clasificar la expresión (descubrir que esto es una aplicación de procedimiento) y probar el final de la lista de operandos (descubrir que hay dos operandos). Con un compilador, la expresión se analiza solo una vez, cuando la secuencia de instrucciones se genera en tiempo de compilación. El código objeto producido por el compilador contiene solo las instrucciones que evalúan el operador y los dos operandos, ensamblan la lista de argumentos, y aplican el procedimiento (en ~proc~) a los argumentos (en ~argl~).
+
+Este es el mismo tipo de optimización que implementamos en el evaluador analizador de la sección [[#section-4.1.7][4.1.7]]. Pero hay más oportunidades para ganar eficiencia en código compilado. Cuando el intérprete se ejecuta, sigue un proceso que debe ser aplicable a cualquier expresión en el lenguaje. En contraste, un segmento dado de código compilado está destinado a ejecutar alguna expresión particular. Esto puede hacer una gran diferencia, por ejemplo en el uso de la pila para guardar registros. Cuando el intérprete evalúa una expresión, debe estar preparado para cualquier contingencia. Antes de evaluar una subexpresión, el intérprete guarda todos los registros que se necesitarán más adelante, porque la subexpresión podría requerir una evaluación arbitraria. Un compilador, por otro lado, puede explotar la estructura de la expresión particular que está procesando para generar código que evite operaciones de pila innecesarias.
+
+Como caso concreto, considera la combinación ~(f 84 96)~. Antes de que el intérprete evalúe el operador de la combinación, se prepara para esta evaluación guardando los registros que contienen los operandos y el entorno, cuyos valores se necesitarán más adelante. El intérprete entonces evalúa el operador para obtener el resultado en ~val~, restaura los registros guardados, y finalmente mueve el resultado de ~val~ a ~proc~. Sin embargo, en la expresión particular con la que estamos tratando, el operador es el símbolo ~f~, cuya evaluación se logra mediante la operación de máquina ~lookup-variable-value~, que no altera ningún registro. El compilador que implementamos en esta sección aprovechará este hecho y generará código que evalúa el operador usando la instrucción
+
+#+begin_src scheme
+(assign proc (op lookup-variable-value) (const f) (reg env))
+#+end_src
+
+Este código no solo evita los guardados y restauraciones innecesarios sino que también asigna el valor de la búsqueda directamente a ~proc~, mientras que el intérprete obtendría el resultado en ~val~ y luego movería esto a ~proc~.
+
+Un compilador también puede optimizar el acceso al entorno. Habiendo analizado el código, el compilador puede en muchos casos saber en qué marco estará ubicada una variable particular y acceder a ese marco directamente, en lugar de realizar la búsqueda ~lookup-variable-value~. Discutiremos cómo implementar tal acceso a variables en la sección [[#section-5.5.6][5.5.6]]. Sin embargo, hasta entonces, nos enfocaremos en el tipo de optimizaciones de registro y pila descritas arriba. Hay muchas otras optimizaciones que pueden ser realizadas por un compilador, como codificar operaciones primitivas "en línea" en lugar de usar un mecanismo ~apply~ general (véase [[#exercise-5.38][Exercise 5.38]]); pero no enfatizaremos estas aquí. Nuestro objetivo principal en esta sección es ilustrar el proceso de compilación en un contexto simplificado (pero aún interesante).
+
+*** 5.5.1 Estructura del compilador
+:properties:
+:custom_id: section-5.5.1
+:end:
+
+En la sección [[#section-4.1.7][4.1.7]] modificamos nuestro intérprete metacircular original para separar el análisis de la ejecución. Analizamos cada expresión para producir un procedimiento de ejecución que tomaba un entorno como argumento y realizaba las operaciones requeridas. En nuestro compilador, haremos esencialmente el mismo análisis. Sin embargo, en lugar de producir procedimientos de ejecución, generaremos secuencias de instrucciones para ser ejecutadas por nuestra máquina de registros.
+
+El procedimiento ~compile~ es el despachador de nivel superior en el compilador. Corresponde al procedimiento ~eval~ de la sección [[#section-4.1.1][4.1.1]], al procedimiento ~analyze~ de la sección [[#section-4.1.7][4.1.7]], y al punto de entrada ~eval-dispatch~ del evaluador de control explícito en la sección [[#section-5.4.1][5.4.1]]. El compilador, como los intérpretes, usa los procedimientos de sintaxis de expresiones definidos en la sección [[#section-4.1.2][4.1.2]].[fn:320] ~compile~ realiza un análisis de casos sobre el tipo sintáctico de la expresión a compilar. Para cada tipo de expresión, despacha a un <<i64>> generador de código especializado:
+
+#+begin_src scheme
+(define (compile exp target linkage)
+  (cond ((self-evaluating? exp)
+         (compile-self-evaluating exp target linkage))
+        ((quoted? exp) (compile-quoted exp target linkage))
+        ((variable? exp)
+         (compile-variable exp target linkage))
+        ((assignment? exp)
+         (compile-assignment exp target linkage))
+        ((definition? exp)
+         (compile-definition exp target linkage))
+        ((if? exp) (compile-if exp target linkage))
+        ((lambda? exp) (compile-lambda exp target linkage))
+        ((begin? exp)
+         (compile-sequence (begin-actions exp)
+                           target
+                           linkage))
+        ((cond? exp) (compile (cond->if exp) target linkage))
+        ((application? exp)
+         (compile-application exp target linkage))
+        (else
+         (error "Unknown expression type - COMPILE" exp))))
+#+end_src
+
+*Objetivos y enlazamientos*
+
+~compile~ y los generadores de código que llama toman dos argumentos además de la expresión a compilar. Hay un <<i392>> objetivo, que especifica el registro en el que el código compilado debe devolver el valor de la expresión. También hay un <<i209>> descriptor de enlazamiento, que describe cómo el código resultante de la compilación de la expresión debe proceder cuando ha terminado su ejecución. El descriptor de enlazamiento puede requerir que el código haga una de las siguientes tres cosas:
+
+- continuar en la siguiente instrucción en secuencia (esto se especifica mediante el descriptor de enlazamiento ~next~),
+
+- retornar del procedimiento que se está compilando (esto se especifica mediante el descriptor de enlazamiento ~return~), o
+
+- saltar a un punto de entrada nombrado (esto se especifica usando la etiqueta designada como el descriptor de enlazamiento).
+
+Por ejemplo, compilar la expresión ~5~ (que es auto-evaluable) con un objetivo del registro ~val~ y un enlazamiento de ~next~ debe producir la instrucción
+
+#+begin_src scheme
+(assign val (const 5))
+#+end_src
+
+Compilar la misma expresión con un enlazamiento de ~return~ debe producir las instrucciones
+
+#+begin_src scheme
+(assign val (const 5))
+(goto (reg continue))
+#+end_src
+
+En el primer caso, la ejecución continuará con la siguiente instrucción en la secuencia. En el segundo caso, retornaremos de una llamada a procedimiento. En ambos casos, el valor de la expresión se colocará en el registro objetivo ~val~.
+
+*Secuencias de instrucciones y uso de la pila*
+
+Cada generador de código devuelve una <<i186>> secuencia de instrucciones que contiene el código objeto que ha generado para la expresión. La generación de código para una expresión compuesta se logra combinando la salida de generadores de código más simples para expresiones componentes, al igual que la evaluación de una expresión compuesta se logra evaluando las expresiones componentes.
+
+El método más simple para combinar secuencias de instrucciones es un procedimiento llamado ~append-instruction-sequences~. Toma como argumentos cualquier número de secuencias de instrucciones que deben ejecutarse secuencialmente; las concatena y devuelve la secuencia combinada. Es decir, si <SEQ_1> y <SEQ_2> son secuencias de instrucciones, entonces evaluar
+
+#+begin_src scheme
+(append-instruction-sequences <SEQ_1> <SEQ_2>)
+#+end_src
+
+produce la secuencia
+
+#+begin_src scheme
+<SEQ_1>
+<SEQ_2>
+#+end_src
+
+Cuando los registros podrían necesitar ser guardados, los generadores de código del compilador usan ~preserving~, que es un método más sutil para combinar secuencias de instrucciones. ~preserving~ toma tres argumentos: un conjunto de registros y dos secuencias de instrucciones que deben ejecutarse secuencialmente. Concatena las secuencias de tal manera que el contenido de cada registro en el conjunto se preserve sobre la ejecución de la primera secuencia, si esto es necesario para la ejecución de la segunda secuencia. Es decir, si la primera secuencia modifica el registro y la segunda secuencia realmente necesita el contenido original del registro, entonces ~preserving~ envuelve un ~save~ y un ~restore~ del registro alrededor de la primera secuencia antes de concatenar las secuencias. De lo contrario, ~preserving~ simplemente devuelve las secuencias de instrucciones concatenadas. Así, por ejemplo,
+
+#+begin_src scheme
+(preserving (list <REG_1> <REG_2>) <SEQ_1> <SEQ_2>)
+#+end_src
+
+produce una de las siguientes cuatro secuencias de instrucciones, dependiendo de cómo <SEQ_1> y <SEQ_2> usen <REG_1> y <REG_2>:
+
+#+begin_example
+ <seq_1> | (save <reg_1>)    | (save <reg_2>)    | (save <reg_2>)
+ <seq_2> | <seq_1>           | <seq_1>           | (save <reg_1>)
+         | (restore <reg_1>) | (restore <reg_2>) | <seq_1>
+         | <seq_2>           | <seq_2>           | (restore <reg_1>)
+         |                   |                   | (restore <reg_2>)
+         |                   |                   | <seq_2>
+#+end_example
+
+Al usar ~preserving~ para combinar secuencias de instrucciones, el compilador evita operaciones de pila innecesarias. Esto también aísla los detalles de si generar o no instrucciones ~save~ y ~restore~ dentro del procedimiento ~preserving~, separándolos de las preocupaciones que surgen al escribir cada uno de los generadores de código individuales. De hecho, ninguna instrucción ~save~ o ~restore~ es producida explícitamente por los generadores de código.
+
+En principio, podríamos representar una secuencia de instrucciones simplemente como una lista de instrucciones. ~append-instruction-sequences~ podría entonces combinar secuencias de instrucciones realizando un ~append~ de lista ordinario. Sin embargo, ~preserving~ sería entonces una operación compleja, porque tendría que analizar cada secuencia de instrucciones para determinar cómo la secuencia usa sus registros. ~preserving~ sería ineficiente además de compleja, porque tendría que analizar cada uno de sus argumentos de secuencia de instrucciones, aunque estas secuencias mismas podrían haber sido construidas por llamadas a ~preserving~, en cuyo caso sus partes ya habrían sido analizadas. Para evitar tal análisis repetitivo asociaremos con cada secuencia de instrucciones alguna información sobre su uso de registros. Cuando construyamos una secuencia de instrucciones básica proporcionaremos esta información explícitamente, y los procedimientos que combinan secuencias de instrucciones derivarán información de uso de registros para la secuencia combinada a partir de la información asociada con las secuencias componentes.
+
+Una secuencia de instrucciones contendrá tres piezas de información:
+
+- el conjunto de registros que deben inicializarse antes de que se ejecuten las instrucciones en la secuencia (se dice que estos registros son <<i252>> necesitados por la secuencia),
+
+- el conjunto de registros cuyos valores son modificados por las instrucciones en la secuencia, y
+
+- las instrucciones reales (también llamadas <<i365>> sentencias) en la secuencia.
+
+Representaremos una secuencia de instrucciones como una lista de sus tres partes. El constructor para secuencias de instrucciones es por lo tanto
+
+#+begin_src scheme
+(define (make-instruction-sequence needs modifies statements)
+  (list needs modifies statements))
+#+end_src
+
+Por ejemplo, la secuencia de dos instrucciones que busca el valor de la variable ~x~ en el entorno actual, asigna el resultado a ~val~, y luego retorna, requiere que los registros ~env~ y ~continue~ hayan sido inicializados, y modifica el registro ~val~. Esta secuencia por lo tanto sería construida como
+
+#+begin_src scheme
+(make-instruction-sequence
+ '(env continue) '(val)
+ '((assign val
+           (op lookup-variable-value) (const x) (reg env))
+   (goto (reg continue))))
+#+end_src
