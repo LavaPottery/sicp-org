@@ -1,0 +1,117 @@
+**** 4.4.4.5 Mantenimiento de la Base de Datos
+:properties:
+:custom_id: section-4.4.4.5
+:end:
+
+Un problema importante en el diseño de lenguajes de programación lógica es el de organizar las cosas de manera que se examinen tan pocas entradas de base de datos irrelevantes como sea posible al verificar un patrón dado. En nuestro sistema, además de almacenar todas las aserciones en un gran flujo, almacenamos todas las aserciones cuyos 'car's son símbolos constantes en flujos separados, en una tabla indexada por el símbolo. Para obtener una aserción que pueda coincidir con un patrón, primero verificamos si el ~car~ del patrón es un símbolo constante. Si es así, devolvemos (para ser probadas usando el emparejador) todas las aserciones almacenadas que tienen el mismo ~car~. Si el ~car~ del patrón no es un símbolo constante, devolvemos todas las aserciones almacenadas. Métodos más inteligentes también podrían aprovechar la información en el marco, o tratar también de optimizar el caso donde el ~car~ del patrón no es un símbolo constante. Evitamos construir nuestros criterios para indexar (usando el ~car~, manejando solo el caso de símbolos constantes) en el programa; en su lugar llamamos a predicados y selectores que incorporan nuestros criterios.
+
+#+begin_src scheme
+(define THE-ASSERTIONS the-empty-stream)
+
+(define (fetch-assertions pattern frame)
+  (if (use-index? pattern)
+      (get-indexed-assertions pattern)
+      (get-all-assertions)))
+
+(define (get-all-assertions) THE-ASSERTIONS)
+
+(define (get-indexed-assertions pattern)
+  (get-stream (index-key-of pattern) 'assertion-stream))
+#+end_src
+
+~get-stream~ busca un flujo en la tabla y devuelve un flujo vacío si no hay nada almacenado allí.
+
+#+begin_src scheme
+(define (get-stream key1 key2)
+  (let ((s (get key1 key2)))
+    (if s s the-empty-stream)))
+#+end_src
+
+Las reglas se almacenan de manera similar, usando el ~car~ de la conclusión de la regla. Las conclusiones de reglas son patrones arbitrarios, sin embargo, por lo que difieren de las aserciones en que pueden contener variables. Un patrón cuyo ~car~ es un símbolo constante puede coincidir con reglas cuyas conclusiones comienzan con una variable así como reglas cuyas conclusiones tienen el mismo ~car~. Por lo tanto, al obtener reglas que podrían coincidir con un patrón cuyo ~car~ es un símbolo constante obtenemos todas las reglas cuyas conclusiones comienzan con una variable así como aquellas cuyas conclusiones tienen el mismo ~car~ que el patrón. Para este propósito almacenamos todas las reglas cuyas conclusiones comienzan con una variable en un flujo separado en nuestra tabla, indexado por el símbolo ~?~.
+
+#+begin_src scheme
+(define THE-RULES the-empty-stream)
+
+(define (fetch-rules pattern frame)
+  (if (use-index? pattern)
+      (get-indexed-rules pattern)
+      (get-all-rules)))
+
+(define (get-all-rules) THE-RULES)
+
+(define (get-indexed-rules pattern)
+  (stream-append
+   (get-stream (index-key-of pattern) 'rule-stream)
+   (get-stream '? 'rule-stream)))
+#+end_src
+
+~add-rule-or-assertion!~ es usado por ~query-driver-loop~ para añadir aserciones y reglas a la base de datos. Cada elemento se almacena en el índice, si es apropiado, y en un flujo de todas las aserciones o reglas en la base de datos.
+
+#+begin_src scheme
+(define (add-rule-or-assertion! assertion)
+  (if (rule? assertion)
+      (add-rule! assertion)
+      (add-assertion! assertion)))
+
+(define (add-assertion! assertion)
+  (store-assertion-in-index assertion)
+  (let ((old-assertions THE-ASSERTIONS))
+    (set! THE-ASSERTIONS
+      (cons-stream assertion old-assertions))
+    'ok))
+
+(define (add-rule! rule)
+  (store-rule-in-index rule)
+  (let ((old-rules THE-RULES))
+    (set! THE-RULES (cons-stream rule old-rules))
+    'ok))
+#+end_src
+
+Para realmente almacenar una aserción o una regla, verificamos si puede ser indexada. Si es así, la almacenamos en el flujo apropiado.
+
+#+begin_src scheme
+(define (store-assertion-in-index assertion)
+  (if (indexable? assertion)
+      (let ((key (index-key-of assertion)))
+        (let ((current-assertion-stream
+               (get-stream key 'assertion-stream)))
+          (put key
+               'assertion-stream
+               (cons-stream assertion
+                            current-assertion-stream))))))
+
+(define (store-rule-in-index rule)
+  (let ((pattern (conclusion rule)))
+    (if (indexable? pattern)
+        (let ((key (index-key-of pattern)))
+          (let ((current-rule-stream
+                 (get-stream key 'rule-stream)))
+            (put key
+                 'rule-stream
+                 (cons-stream rule
+                              current-rule-stream)))))))
+#+end_src
+
+Los siguientes procedimientos definen cómo se usa el índice de la base de datos. Un patrón (una aserción o una conclusión de regla) se almacenará en la tabla si comienza con una variable o un símbolo constante.
+
+#+begin_src scheme
+(define (indexable? pat)
+  (or (constant-symbol? (car pat))
+      (var? (car pat))))
+#+end_src
+
+La clave bajo la cual se almacena un patrón en la tabla es o bien ~?~ (si comienza con una variable) o el símbolo constante con el que comienza.
+
+#+begin_src scheme
+(define (index-key-of pat)
+  (let ((key (car pat)))
+    (if (var? key) '? key)))
+#+end_src
+
+El índice se usará para recuperar elementos que podrían coincidir con un patrón si el patrón comienza con un símbolo constante.
+
+#+begin_src scheme
+(define (use-index? pat)
+  (constant-symbol? (car pat)))
+#+end_src
+
