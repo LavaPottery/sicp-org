@@ -1,159 +1,37 @@
-# Trans-Castilian Assembly Line
+# Trans-Castilian Assembly Line 
 
-## DIRECT COMMANDS - READ THIS FIRST
+## DIRECT COMMANDS
 
-### Splitting Command
-```
-1. Read the org file
-2. Parse into blocks: paragraph = 1 block, code block = 1 block, heading = 1 block, list = 1 block
-3. Split into files containing exactly 3 blocks each
-4. Save as: part1.org (blocks 1-3), part2.org (blocks 4-6), part3.org (blocks 7-9), etc.
-5. Handle remainder: if 1 block left, go back and split last 4 blocks into 2+2
-6. If 2 blocks left, save as final part with 2 blocks
-```
+### Phase 1: The Split
+1. **Identify** the target file in `org-castilian/` (e.g., `sicp1-1.org`).
+2. **Define** the `BASENAME` (the filename without the `.org` extension, e.g., `sicp1-1`).
+3. **Execute**:
+   ```bash
+   python3 scripts/smart_split.py "org-castilian/[basename].org"
+   ```
+4. **Safekeeping**: Move the original file from `org-castilian/` to `trash/`:
+   ```bash
+   mv "org-castilian/[basename].org" "trash/[basename].org"
+   ```
 
-### Processing Command
-```
-For each part file:
-- Apply Step 1 skill → save as [filename]-part#-trans-castilian-1.org
-- Apply Step 2 skill → save as [filename]-part#-trans-castilian-2.org
-```
+### Phase 2: The Translation Loop
+**Process every file in `temp/` matching `[basename]-part*.org` (in sorted order):**
 
-### Cleanup Command
-```
-After saving [filename]-castilian.org to org-castilian/:
-1. DELETE ALL intermediate files from assembly-line/ for this filename
-2. DELETE the original [filename].org from org-castilian/
-This is mandatory.
-```
+1. **Step 1 (Translation)**:
+   - Apply `skills/castilian-translation_OPTIMIZED.md`.
+   - Save result to: `temp/[partname]-STEP1.org`
+   
+2. **Step 2 (Code Comments)**:
+   - Read `temp/[partname]-STEP1.org`.
+   - Apply `skills/translate-code-comments_OPTIMIZED.md`.
+   - Save result to: `temp/[partname]-STEP2.org`
 
----
+**Constraint**: Do not delete files in `temp/`.
 
-## Assembly Line Steps
-
-0. **Pre-Processing**: Split file into 3-block parts
-1. **Step 1**: Apply `castilian-translation_OPTIMIZED.md` to each part
-2. **Step 2**: Apply `translate-code-comments_OPTIMIZED.md` to each part
-3. **Post-Processing**: Merge all parts back together
-4. **Cleanup**: Delete all intermediate files
-
-## Process Flow
-
-### Pre-Processing: 3-Block Split
-
-**FIRST: Check `assembly-line/` directory for existing work!**
-- If parts already exist for this file (e.g., `[filename]-part#.org`), skip splitting
-- Only split if no parts exist
-
-**DO NOT USE CODE OR SCRIPTS TO SPLIT FILES. Do the splitting manually using file_create tool for each part.**
-
-**Splitting Process:**
-
-1. **Move** the org file from `org-castilian/` to `assembly-line/`
-2. **Parse into blocks**:
-   - Each paragraph = 1 block
-   - Each code block = 1 block (don't split mid-code-block)
-   - Each heading = 1 block
-   - Each list = 1 block
-3. **Create part files with 3 blocks each**:
-   - `[filename]-part1.org` = blocks 1-3
-   - `[filename]-part2.org` = blocks 4-6
-   - `[filename]-part3.org` = blocks 7-9
-   - Continue...
-4. **Handle remainder**:
-   - 0 blocks left → perfect, done
-   - 1 block left → go back, split last 4 blocks into 2+2 instead
-   - 2 blocks left → save as final part with 2 blocks
-5. **Delete** the original file from `assembly-line/` after splitting
-6. **Git commit immediately** - commit all part files to prevent data loss
-
-**IMPORTANT**: Original file is deleted from `org-castilian/` when processing begins and only returns (with `-castilian` suffix) when fully complete.
-
-### Main Processing: Translation Pipeline
-
-**For each part file (part1.org, part2.org, etc.):**
-
-**Step 1: Castilian Translation**
-1. Read `[filename]-part#.org`
-2. Apply skill: `castilian-translation_OPTIMIZED.md`
-3. Save result as: `[filename]-part#-trans-castilian-1.org`
-4. Delete `[filename]-part#.org`
-5. **Git commit immediately** - commit the translation to prevent data loss
-
-**Step 2: Code Comment Translation**
-1. Read `[filename]-part#-trans-castilian-1.org`
-2. Apply skill: `translate-code-comments_OPTIMIZED.md`
-3. Save result as: `[filename]-part#-trans-castilian-2.org`
-4. Delete `[filename]-part#-trans-castilian-1.org`
-5. **Git commit immediately** - commit the completed part to prevent data loss
-
-### Post-Processing: Merge and Finalize
-
-1. **Concatenate** all `[filename]-part#-trans-castilian-2.org` files in numerical order (part1, part2, part3...)
-2. **Ensure proper spacing** between merged parts (blank line between parts)
-3. **Save** final result to: `org-castilian/[filename]-castilian.org`
-4. **Git commit immediately** - commit the final merged file to prevent data loss
-
-### Cleanup (MANDATORY)
-
-After successfully saving `[filename]-castilian.org` to `org-castilian/`:
-
-**DELETE from `assembly-line/`:**
-- All `[filename]-part#-trans-castilian-2.org` files
-
-**DELETE from `org-castilian/`:**
-- The original `[filename].org` file (without `-castilian` suffix)
-
-**Git commit immediately** - commit the cleanup to prevent data loss
-
-The `assembly-line/` directory should be empty for this filename after cleanup, and only `[filename]-castilian.org` should remain in `org-castilian/`.
-
-## Example Workflow
-
-**Input:** `org-castilian/chapter1.org` (30 blocks total)
-
-**After Split:**
-```
-assembly-line/chapter1-part1.org     (blocks 1-3)
-assembly-line/chapter1-part2.org     (blocks 4-6)
-...
-assembly-line/chapter1-part10.org    (blocks 28-30)
-```
-
-**After Step 1:**
-```
-assembly-line/chapter1-part1-trans-castilian-1.org
-...
-```
-
-**After Step 2:**
-```
-assembly-line/chapter1-part1-trans-castilian-2.org
-...
-```
-
-**After Merge:**
-```
-org-castilian/chapter1-castilian.org
-```
-
-**After Cleanup:**
-```
-assembly-line/  (empty)
-org-castilian/chapter1-castilian.org  (only this remains - original chapter1.org is deleted)
-```
-```
-
-## Trigger Prompt
-
-```
-Process the first org file that does NOT have `-castilian` in its filename from org-castilian/ through the trans-castilian assembly line.
-
-Follow the instructions in assembly-line/trans-castilian.md.
-```
-
-## Skills Location
-
-The translation skills are located in the `skills/` directory:
-- `skills/castilian-translation_OPTIMIZED.md`
-- `skills/translate-code-comments_OPTIMIZED.md`
+### Phase 3: Finalization
+**Merge (Python Sorted Method)**:
+- Use Python to ensure parts are merged in strict numerical order and only match the current file's parts.
+- Execute (replace `[basename]` with the actual name):
+  ```bash
+  python3 -c "import glob, sys; [sys.stdout.write(open(f).read()) for f in sorted(glob.glob('temp/[basename]-part*-STEP2.org'))]" > "org-castilian/[basename]-castilian.org"
+  ```
