@@ -1,0 +1,116 @@
+*** 5.2.2 El ensamblador
+:properties:
+:custom_id: section-5.2.2
+:end:
+
+El ensamblador transforma la secuencia de expresiones del controlador para una máquina en una lista correspondiente de instrucciones de máquina, cada una con su procedimiento de ejecución. En general, el ensamblador es muy parecido a los evaluadores que estudiamos en el [[#section-4][Capítulo 4]]--hay un lenguaje de entrada (en este caso, el lenguaje de máquina de registros) y debemos realizar una acción apropiada para cada tipo de expresión en el lenguaje.
+
+La técnica de producir un procedimiento de ejecución para cada instrucción es justo lo que usamos en la sección [[#section-4.1.7][4.1.7]] para acelerar el evaluador separando el análisis de la ejecución en tiempo de ejecución. Como vimos en el [[#section-4][Capítulo 4]], mucho análisis útil de expresiones Scheme podría realizarse sin conocer los valores reales de las variables. Aquí, de manera análoga, mucho análisis útil de expresiones del lenguaje de máquina de registros puede realizarse sin conocer el contenido real de los registros de la máquina. Por ejemplo, podemos reemplazar referencias a registros por punteros a los objetos de registro, y podemos reemplazar referencias a etiquetas por punteros al lugar en la secuencia de instrucciones que la etiqueta designa.
+
+Antes de que pueda generar los procedimientos de ejecución de instrucción, el ensamblador debe saber a qué se refieren todas las etiquetas, por lo que comienza escaneando el texto del controlador para separar las etiquetas de las instrucciones. Mientras escanea el texto, construye tanto una lista de instrucciones como una tabla que asocia cada etiqueta con un puntero en esa lista. Luego el ensamblador aumenta la lista de instrucciones insertando el procedimiento de ejecución para cada instrucción.
+
+El procedimiento ~assemble~ es la entrada principal al ensamblador. Toma el texto del controlador y el modelo de máquina como argumentos y devuelve la secuencia de instrucciones que se almacenará en el modelo. ~assemble~ llama a ~extract-labels~ para construir la lista de instrucciones inicial y la tabla de etiquetas a partir del texto del controlador suministrado. El segundo argumento de ~extract-labels~ es un procedimiento que se llamará para procesar estos resultados: Este procedimiento usa ~update-insts!~ para generar los procedimientos de ejecución de instrucción e insertarlos en la lista de instrucciones, y devuelve la lista modificada.
+
+#+begin_src scheme
+(define (assemble controller-text machine)
+  (extract-labels controller-text
+                  (lambda (insts labels)
+                    (update-insts! insts labels machine)
+                    insts)))
+#+end_src
+
+~extract-labels~ toma como argumentos una lista ~text~ (la secuencia de expresiones de instrucciones del controlador) y un procedimiento ~receive~. ~receive~ será llamado con dos valores: (1) una lista ~insts~ de estructuras de datos de instrucciones, cada una conteniendo una instrucción de ~text~; y (2) una tabla llamada ~labels~, que asocia cada etiqueta de ~text~ con la posición en la lista ~insts~ que la etiqueta designa.
+
+#+begin_src scheme
+(define (extract-labels text receive)
+  (if (null? text)
+      (receive '() '())
+      (extract-labels (cdr text)
+                      (lambda (insts labels)
+                        (let ((next-inst (car text)))
+                          (if (symbol? next-inst)
+                              (receive insts
+                                  (cons (make-label-entry next-inst
+                                                          insts)
+                                        labels))
+                              (receive (cons (make-instruction next-inst)
+                                             insts)
+                                  labels)))))))
+#+end_src
+
+~extract-labels~ funciona escaneando secuencialmente los elementos del ~text~ y acumulando los ~insts~ y las ~labels~. Si un elemento es un símbolo (y por tanto una etiqueta) se añade una entrada apropiada a la tabla ~labels~. De lo contrario, el elemento se acumula en la lista ~insts~.[fn:289]
+
+~update-insts!~ modifica la lista de instrucciones, que inicialmente contiene solo el texto de las instrucciones, para incluir los procedimientos de ejecución correspondientes:
+
+#+begin_src scheme
+(define (update-insts! insts labels machine)
+  (let ((pc (get-register machine 'pc))
+        (flag (get-register machine 'flag))
+        (stack (machine 'stack))
+        (ops (machine 'operations)))
+    (for-each
+     (lambda (inst)
+       (set-instruction-execution-proc!
+        inst
+        (make-execution-procedure
+         (instruction-text inst) labels machine
+         pc flag stack ops)))
+     insts)))
+#+end_src
+
+La estructura de datos de instrucción de máquina simplemente empareja el texto de la instrucción con el procedimiento de ejecución correspondiente. El procedimiento de ejecución aún no está disponible cuando ~extract-labels~ construye la instrucción, y se inserta más tarde por ~update-insts!~.
+
+#+begin_src scheme
+(define (make-instruction text)
+  (cons text '()))
+
+(define (instruction-text inst)
+  (car inst))
+
+(define (instruction-execution-proc inst)
+  (cdr inst))
+
+(define (set-instruction-execution-proc! inst proc)
+  (set-cdr! inst proc))
+#+end_src
+
+El texto de la instrucción no es usado por nuestro simulador, pero es útil mantenerlo para depuración (ver [[#exercise-5.16][Ejercicio 5.16]]).
+
+Los elementos de la tabla de etiquetas son pares:
+
+#+begin_src scheme
+(define (make-label-entry label-name insts)
+  (cons label-name insts))
+#+end_src
+
+Las entradas se buscarán en la tabla con
+
+#+begin_src scheme
+(define (lookup-label labels label-name)
+  (let ((val (assoc label-name labels)))
+    (if val
+        (cdr val)
+        (error "Undefined label - ASSEMBLE" label-name))))
+#+end_src
+
+**** Ejercicio 5.8
+:properties:
+:custom_id: exercise-5.8
+:end:
+
+El siguiente código de máquina de registros es ambiguo, porque la etiqueta ~here~ está definida más de una vez:
+
+#+begin_src scheme
+start
+  (goto (label here))
+here
+  (assign a (const 3))
+  (goto (label there))
+here
+  (assign a (const 4))
+  (goto (label there))
+there
+#+end_src
+
+Con el simulador tal como está escrito, ¿cuál será el contenido del registro ~a~ cuando el control alcance ~there~? Modifica el procedimiento ~extract-labels~ para que el ensamblador señale un error si el mismo nombre de etiqueta se usa para indicar dos ubicaciones diferentes.
+
