@@ -1,0 +1,582 @@
+** 5.4 El evaluador de control explícito
+:properties:
+:custom_id: section-5.4
+:end:
+
+En la sección [[#section-5.1][5.1]] vimos cómo transformar programas simples de Scheme en descripciones de máquinas de registros.  Ahora realizaremos esta transformación en un programa más complejo, el evaluador metacircular de las secciones [[#section-4.1.1][4.1.1]]-[[#section-4.1.4][4.1.4]], que muestra cómo el comportamiento de un intérprete de Scheme puede describirse en términos de los procedimientos ~eval~ y ~apply~.  El <<i133>> evaluador de control explícito que desarrollamos en esta sección muestra cómo los mecanismos subyacentes de llamada a procedimientos y paso de argumentos utilizados en el proceso de evaluación pueden describirse en términos de operaciones sobre registros y pilas.  Además, el evaluador de control explícito puede servir como una implementación de un intérprete de Scheme, escrito en un lenguaje muy similar al lenguaje de máquina nativo de las computadoras convencionales.  El evaluador puede ejecutarse mediante el simulador de máquina de registros de la sección [[#section-5.2][5.2]].  Alternativamente, puede usarse como punto de partida para construir una implementación en lenguaje de máquina de un evaluador de Scheme, o incluso una máquina de propósito especial para evaluar expresiones de Scheme.  La [[figure-5.16][Figura 5.16]] muestra tal implementación en hardware: un chip de silicio que actúa como evaluador para Scheme.  Los diseñadores del chip comenzaron con las especificaciones de ruta de datos y controlador para una máquina de registros similar al evaluador descrito en esta sección y usaron programas de automatización de diseño para construir el diseño del circuito integrado.[fn:304]
+
+*Registros y operaciones*
+
+Al diseñar el evaluador de control explícito, debemos especificar las operaciones que se usarán en nuestra máquina de registros.  Describimos el evaluador metacircular en términos de sintaxis abstracta, usando procedimientos como ~quoted?~ y ~make-procedure~.  Al implementar la máquina de registros, podríamos expandir estos procedimientos en secuencias de operaciones elementales de memoria de estructura de listas, e implementar estas operaciones en nuestra máquina de registros.  Sin embargo, esto haría nuestro evaluador muy largo, oscureciendo la estructura básica con detalles.  Para aclarar la presentación, incluiremos como operaciones primitivas de la máquina de registros los procedimientos de sintaxis dados en la sección [[#section-4.1.2][4.1.2]] y los procedimientos para representar entornos y otros datos en tiempo de ejecución dados en las secciones [[#section-4.1.3][4.1.3]] y [[#section-4.1.4][4.1.4]].  Para especificar completamente un evaluador que pueda programarse en un lenguaje de máquina de bajo nivel o implementarse en hardware, reemplazaríamos estas operaciones por operaciones más elementales, usando la implementación de estructura de listas que describimos en la sección [[#section-5.3][5.3]].
+
+<<figure-5.16>> Una implementación en chip de silicio de un evaluador para Scheme.
+
+[This figure is missing.]
+
+Nuestra máquina de registros evaluadora de Scheme incluye una pila y siete registros: ~exp~, ~env~, ~val~, ~continue~, ~proc~, ~argl~ y ~unev~.  ~exp~ se usa para mantener la expresión a evaluar, y ~env~ contiene el entorno en el que se realizará la evaluación.  Al final de una evaluación, ~val~ contiene el valor obtenido al evaluar la expresión en el entorno designado.  El registro ~continue~ se usa para implementar recursión, como se explica en la sección [[#section-5.1.4][5.1.4]].  (El evaluador necesita llamarse a sí mismo recursivamente, ya que evaluar una expresión requiere evaluar sus subexpresiones.)  Los registros ~proc~, ~argl~ y ~unev~ se usan en la evaluación de combinaciones.
+
+No proporcionaremos un diagrama de ruta de datos para mostrar cómo los registros y operaciones del evaluador están conectados, ni daremos la lista completa de operaciones de máquina.  Estos están implícitos en el controlador del evaluador, que se presentará en detalle.
+
+*** 5.4.1 El núcleo del evaluador de control explícito
+:properties:
+:custom_id: section-5.4.1
+:end:
+
+El elemento central en el evaluador es la secuencia de instrucciones que comienza en ~eval-dispatch~.  Esto corresponde al procedimiento ~eval~ del evaluador metacircular descrito en la sección [[#section-4.1.1][4.1.1]].  Cuando el controlador comienza en ~eval-dispatch~, evalúa la expresión especificada por ~exp~ en el entorno especificado por ~env~.  Cuando la evaluación está completa, el controlador irá al punto de entrada almacenado en ~continue~, y el registro ~val~ contendrá el valor de la expresión.  Como con el ~eval~ metacircular, la estructura de ~eval-dispatch~ es un análisis de casos sobre el tipo sintáctico de la expresión a evaluar.[fn:305]
+
+#+begin_src scheme
+eval-dispatch
+  (test (op self-evaluating?) (reg exp))
+  (branch (label ev-self-eval))
+  (test (op variable?) (reg exp))
+  (branch (label ev-variable))
+  (test (op quoted?) (reg exp))
+  (branch (label ev-quoted))
+  (test (op assignment?) (reg exp))
+  (branch (label ev-assignment))
+  (test (op definition?) (reg exp))
+  (branch (label ev-definition))
+  (test (op if?) (reg exp))
+  (branch (label ev-if))
+  (test (op lambda?) (reg exp))
+  (branch (label ev-lambda))
+  (test (op begin?) (reg exp))
+  (branch (label ev-begin))
+  (test (op application?) (reg exp))
+  (branch (label ev-application))
+  (goto (label unknown-expression-type))
+#+end_src
+
+*Evaluación de expresiones simples*
+
+Los números y cadenas (que se autoevalúan), variables, citas y expresiones ~lambda~ no tienen subexpresiones a evaluar.  Para estas, el evaluador simplemente coloca el valor correcto en el registro ~val~ y continúa la ejecución en el punto de entrada especificado por ~continue~.  La evaluación de expresiones simples se realiza mediante el siguiente código del controlador:
+
+#+begin_src scheme
+ev-self-eval
+  (assign val (reg exp))
+  (goto (reg continue))
+ev-variable
+  (assign val (op lookup-variable-value) (reg exp) (reg env))
+  (goto (reg continue))
+ev-quoted
+  (assign val (op text-of-quotation) (reg exp))
+  (goto (reg continue))
+ev-lambda
+  (assign unev (op lambda-parameters) (reg exp))
+  (assign exp (op lambda-body) (reg exp))
+  (assign val (op make-procedure)
+              (reg unev) (reg exp) (reg env))
+  (goto (reg continue))
+#+end_src
+
+Observa cómo ~ev-lambda~ usa los registros ~unev~ y ~exp~ para mantener los parámetros y cuerpo de la expresión lambda de modo que puedan pasarse a la operación ~make-procedure~, junto con el entorno en ~env~.
+
+*Evaluación de aplicaciones de procedimientos*
+
+Una aplicación de procedimiento se especifica mediante una combinación que contiene un operador y operandos.  El operador es una subexpresión cuyo valor es un procedimiento, y los operandos son subexpresiones cuyos valores son los argumentos a los que debe aplicarse el procedimiento.  El ~eval~ metacircular maneja aplicaciones llamándose a sí mismo recursivamente para evaluar cada elemento de la combinación, y luego pasando los resultados a ~apply~, que realiza la aplicación real del procedimiento.  El evaluador de control explícito hace lo mismo; estas llamadas recursivas se implementan mediante instrucciones ~goto~, junto con el uso de la pila para guardar registros que se restaurarán después de que la llamada recursiva retorne.  Antes de cada llamada tendremos cuidado de identificar qué registros deben guardarse (porque sus valores se necesitarán más tarde).[fn:306]
+
+Comenzamos la evaluación de una aplicación evaluando el operador para producir un procedimiento, que luego se aplicará a los operandos evaluados.  Para evaluar el operador, lo movemos al registro ~exp~ y vamos a ~eval-dispatch~.  El entorno en el registro ~env~ ya es el correcto en el cual evaluar el operador.  Sin embargo, guardamos ~env~ porque lo necesitaremos más tarde para evaluar los operandos.  También extraemos los operandos en ~unev~ y guardamos esto en la pila.  Configuramos ~continue~ de modo que ~eval-dispatch~ se reanudará en ~ev-appl-did-operator~ después de que el operador haya sido evaluado.  Primero, sin embargo, guardamos el valor antiguo de ~continue~, que le dice al controlador dónde continuar después de la aplicación.
+
+#+begin_src scheme
+ev-application
+  (save continue)
+  (save env)
+  (assign unev (op operands) (reg exp))
+  (save unev)
+  (assign exp (op operator) (reg exp))
+  (assign continue (label ev-appl-did-operator))
+  (goto (label eval-dispatch))
+#+end_src
+
+Al regresar de evaluar la subexpresión operador, procedemos a evaluar los operandos de la combinación y a acumular los argumentos resultantes en una lista, mantenida en ~argl~.  Primero restauramos los operandos no evaluados y el entorno.  Inicializamos ~argl~ a una lista vacía.  Luego asignamos al registro ~proc~ el procedimiento que fue producido al evaluar el operador.  Si no hay operandos, vamos directamente a ~apply-dispatch~.  De lo contrario, guardamos ~proc~ en la pila y comenzamos el bucle de evaluación de argumentos:[fn:307]
+
+#+begin_src scheme
+ev-appl-did-operator
+  (restore unev)                  ; los operandos
+  (restore env)
+  (assign argl (op empty-arglist))
+  (assign proc (reg val))         ; el operador
+  (test (op no-operands?) (reg unev))
+  (branch (label apply-dispatch))
+  (save proc)
+#+end_src
+
+Cada ciclo del bucle de evaluación de argumentos evalúa un operando de la lista en ~unev~ y acumula el resultado en ~argl~.  Para evaluar un operando, lo colocamos en el registro ~exp~ y vamos a ~eval-dispatch~, después de configurar ~continue~ de modo que la ejecución se reanudará con la fase de acumulación de argumentos.  Pero primero guardamos los argumentos acumulados hasta ahora (mantenidos en ~argl~), el entorno (mantenido en ~env~), y los operandos restantes a evaluar (mantenidos en ~unev~).  Se hace un caso especial para la evaluación del último operando, que se maneja en ~ev-appl-last-arg~.
+
+#+begin_src scheme
+ev-appl-operand-loop
+  (save argl)
+  (assign exp (op first-operand) (reg unev))
+  (test (op last-operand?) (reg unev))
+  (branch (label ev-appl-last-arg))
+  (save env)
+  (save unev)
+  (assign continue (label ev-appl-accumulate-arg))
+  (goto (label eval-dispatch))
+#+end_src
+
+Cuando un operando ha sido evaluado, el valor se acumula en la lista mantenida en ~argl~.  El operando se elimina entonces de la lista de operandos no evaluados en ~unev~, y la evaluación de argumentos continúa.
+
+#+begin_src scheme
+ev-appl-accumulate-arg
+  (restore unev)
+  (restore env)
+  (restore argl)
+  (assign argl (op adjoin-arg) (reg val) (reg argl))
+  (assign unev (op rest-operands) (reg unev))
+  (goto (label ev-appl-operand-loop))
+#+end_src
+
+La evaluación del último argumento se maneja de manera diferente.  No hay necesidad de guardar el entorno o la lista de operandos no evaluados antes de ir a ~eval-dispatch~, ya que no se requerirán después de que el último operando sea evaluado.  Por lo tanto, regresamos de la evaluación a un punto de entrada especial ~ev-appl-accum-last-arg~, que restaura la lista de argumentos, acumula el nuevo argumento, restaura el procedimiento guardado, y procede a realizar la aplicación.[fn:308]
+
+#+begin_src scheme
+ev-appl-last-arg
+  (assign continue (label ev-appl-accum-last-arg))
+  (goto (label eval-dispatch))
+ev-appl-accum-last-arg
+  (restore argl)
+  (assign argl (op adjoin-arg) (reg val) (reg argl))
+  (restore proc)
+  (goto (label apply-dispatch))
+#+end_src
+
+Los detalles del bucle de evaluación de argumentos determinan el orden en que el intérprete evalúa los operandos de una combinación (por ejemplo, de izquierda a derecha o de derecha a izquierda--ver [[#exercise-3.8][Ejercicio 3.8]]).  Este orden no está determinado por el evaluador metacircular, que hereda su estructura de control del Scheme subyacente en el que está implementado.[fn:309] Debido a que el selector ~first-operand~ (usado en ~ev-appl-operand-loop~ para extraer operandos sucesivos de ~unev~) está implementado como ~car~ y el selector ~rest-operands~ está implementado como ~cdr~, el evaluador de control explícito evaluará los operandos de una combinación en orden de izquierda a derecha.
+
+*Aplicación de procedimientos*
+
+El punto de entrada ~apply-dispatch~ corresponde al procedimiento ~apply~ del evaluador metacircular.  Para el momento en que llegamos a ~apply-dispatch~, el registro ~proc~ contiene el procedimiento a aplicar y ~argl~ contiene la lista de argumentos evaluados a los que debe aplicarse.  El valor guardado de ~continue~ (originalmente pasado a ~eval-dispatch~ y guardado en ~ev-application~), que indica dónde retornar con el resultado de la aplicación del procedimiento, está en la pila.  Cuando la aplicación está completa, el controlador se transfiere al punto de entrada especificado por el ~continue~ guardado, con el resultado de la aplicación en ~val~.  Como con el ~apply~ metacircular, hay dos casos a considerar.  O bien el procedimiento a aplicar es primitivo o es un procedimiento compuesto.
+
+#+begin_src scheme
+apply-dispatch
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-apply))
+  (test (op compound-procedure?) (reg proc))
+  (branch (label compound-apply))
+  (goto (label unknown-procedure-type))
+#+end_src
+
+Asumimos que cada primitiva está implementada de manera que obtenga sus argumentos de ~argl~ y coloque su resultado en ~val~.  Para especificar cómo la máquina maneja primitivas, tendríamos que proporcionar una secuencia de instrucciones del controlador para implementar cada primitiva y hacer que ~primitive-apply~ despache a las instrucciones para la primitiva identificada por el contenido de ~proc~.  Dado que estamos interesados en la estructura del proceso de evaluación en lugar de los detalles de las primitivas, en su lugar simplemente usaremos una operación ~apply-primitive-procedure~ que aplica el procedimiento en ~proc~ a los argumentos en ~argl~.  Con el propósito de simular el evaluador con el simulador de la sección [[#section-5.2][5.2]] usamos el procedimiento ~apply-primitive-procedure~, que invoca al sistema Scheme subyacente para realizar la aplicación, tal como hicimos para el evaluador metacircular en la sección [[#section-4.1.4][4.1.4]].  Después de calcular el valor de la aplicación primitiva, restauramos ~continue~ y vamos al punto de entrada designado.
+
+#+begin_src scheme
+primitive-apply
+  (assign val (op apply-primitive-procedure)
+              (reg proc)
+              (reg argl))
+  (restore continue)
+  (goto (reg continue))
+#+end_src
+
+Para aplicar un procedimiento compuesto, procedemos tal como con el evaluador metacircular.  Construimos un marco que vincula los parámetros del procedimiento a los argumentos, usamos este marco para extender el entorno transportado por el procedimiento, y evaluamos en este entorno extendido la secuencia de expresiones que forma el cuerpo del procedimiento.  ~ev-sequence~, descrito más adelante en la sección [[#section-5.4.2][5.4.2]], maneja la evaluación de la secuencia.
+
+#+begin_src scheme
+compound-apply
+  (assign unev (op procedure-parameters) (reg proc))
+  (assign env (op procedure-environment) (reg proc))
+  (assign env (op extend-environment)
+              (reg unev) (reg argl) (reg env))
+  (assign unev (op procedure-body) (reg proc))
+  (goto (label ev-sequence))
+#+end_src
+
+~compound-apply~ es el único lugar en el intérprete donde al registro ~env~ se le asigna un nuevo valor.  Tal como en el evaluador metacircular, el nuevo entorno se construye a partir del entorno transportado por el procedimiento, junto con la lista de argumentos y la lista correspondiente de variables a vincular.
+
+*** 5.4.2 Evaluación de secuencias y recursión de cola
+:properties:
+:custom_id: section-5.4.2
+:end:
+
+La porción del evaluador de control explícito en ~ev-sequence~ es análoga al procedimiento ~eval-sequence~ del evaluador metacircular.  Maneja secuencias de expresiones en cuerpos de procedimientos o en expresiones ~begin~ explícitas.
+
+Las expresiones ~begin~ explícitas se evalúan colocando la secuencia de expresiones a evaluar en ~unev~, guardando ~continue~ en la pila, y saltando a ~ev-sequence~.
+
+#+begin_src scheme
+ev-begin
+  (assign unev (op begin-actions) (reg exp))
+  (save continue)
+  (goto (label ev-sequence))
+#+end_src
+
+Las secuencias implícitas en cuerpos de procedimientos se manejan saltando a ~ev-sequence~ desde ~compound-apply~, en cuyo punto ~continue~ ya está en la pila, habiendo sido guardado en ~ev-application~.
+
+Las entradas en ~ev-sequence~ y ~ev-sequence-continue~ forman un bucle que evalúa sucesivamente cada expresión en una secuencia.  La lista de expresiones no evaluadas se mantiene en ~unev~.  Antes de evaluar cada expresión, verificamos si hay expresiones adicionales a evaluar en la secuencia.  Si es así, guardamos el resto de las expresiones no evaluadas (mantenidas en ~unev~) y el entorno en el que estas deben evaluarse (mantenido en ~env~) y llamamos a ~eval-dispatch~ para evaluar la expresión.  Los dos registros guardados se restauran al retornar de esta evaluación, en ~ev-sequence-continue~.
+
+La expresión final en la secuencia se maneja de manera diferente, en el punto de entrada ~ev-sequence-last-exp~.  Dado que no hay más expresiones a evaluar después de esta, no necesitamos guardar ~unev~ o ~env~ antes de ir a ~eval-dispatch~.  El valor de toda la secuencia es el valor de la última expresión, por lo que después de la evaluación de la última expresión no queda nada por hacer excepto continuar en el punto de entrada actualmente mantenido en la pila (que fue guardado por ~ev-application~ o ~ev-begin~.)  En lugar de configurar ~continue~ para hacer que ~eval-dispatch~ retorne aquí y luego restaurar ~continue~ de la pila y continuar en ese punto de entrada, restauramos ~continue~ de la pila antes de ir a ~eval-dispatch~, de modo que ~eval-dispatch~ continuará en ese punto de entrada después de evaluar la expresión.
+
+#+begin_src scheme
+ev-sequence
+  (assign exp (op first-exp) (reg unev))
+  (test (op last-exp?) (reg unev))
+  (branch (label ev-sequence-last-exp))
+  (save unev)
+  (save env)
+  (assign continue (label ev-sequence-continue))
+  (goto (label eval-dispatch))
+ev-sequence-continue
+  (restore env)
+  (restore unev)
+  (assign unev (op rest-exps) (reg unev))
+  (goto (label ev-sequence))
+ev-sequence-last-exp
+  (restore continue)
+  (goto (label eval-dispatch))
+#+end_src
+
+*Recursión de cola*
+
+En el [[#section-1][Capítulo 1]] dijimos que el proceso descrito por un procedimiento tal como
+
+#+begin_src scheme
+(define (sqrt-iter guess x)
+  (if (good-enough? guess x)
+      guess
+      (sqrt-iter (improve guess x)
+                 x)))
+#+end_src
+
+es un proceso iterativo.  Aunque el procedimiento es sintácticamente recursivo (definido en términos de sí mismo), no es lógicamente necesario que un evaluador guarde información al pasar de una llamada a ~sqrt-iter~ a la siguiente.[fn:310] Un evaluador que puede ejecutar un procedimiento tal como ~sqrt-iter~ sin requerir almacenamiento creciente a medida que el procedimiento continúa llamándose a sí mismo se denomina <<i391>> evaluador de recursión de cola.  La implementación metacircular del evaluador en el [[#section-4][Capítulo 4]] no especifica si el evaluador es de recursión de cola, porque ese evaluador hereda su mecanismo para guardar estado del Scheme subyacente.  Con el evaluador de control explícito, sin embargo, podemos rastrear el proceso de evaluación para ver cuándo las llamadas a procedimientos causan una acumulación neta de información en la pila.
+
+Nuestro evaluador es de recursión de cola, porque para evaluar la expresión final de una secuencia nos transferimos directamente a ~eval-dispatch~ sin guardar ninguna información en la pila.  Por lo tanto, evaluar la expresión final en una secuencia--incluso si es una llamada a procedimiento (como en ~sqrt-iter~, donde la expresión ~if~, que es la última expresión en el cuerpo del procedimiento, se reduce a una llamada a ~sqrt-iter~)--no causará que se acumule ninguna información en la pila.[fn:311]
+
+Si no hubiéramos pensado en aprovechar el hecho de que era innecesario guardar información en este caso, podríamos haber implementado ~eval-sequence~ tratando todas las expresiones en una secuencia de la misma manera--guardando los registros, evaluando la expresión, retornando para restaurar los registros, y repitiendo esto hasta que todas las expresiones hayan sido evaluadas:[fn:312]
+
+#+begin_src scheme
+ev-sequence
+  (test (op no-more-exps?) (reg unev))
+  (branch (label ev-sequence-end))
+  (assign exp (op first-exp) (reg unev))
+  (save unev)
+  (save env)
+  (assign continue (label ev-sequence-continue))
+  (goto (label eval-dispatch))
+ev-sequence-continue
+  (restore env)
+  (restore unev)
+  (assign unev (op rest-exps) (reg unev))
+  (goto (label ev-sequence))
+ev-sequence-end
+  (restore continue)
+  (goto (reg continue))
+#+end_src
+
+Esto puede parecer un cambio menor a nuestro código anterior para la evaluación de una secuencia: La única diferencia es que pasamos por el ciclo de guardar-restaurar para la última expresión en una secuencia así como para las otras.  El intérprete aún dará el mismo valor para cualquier expresión.  Pero este cambio es fatal para la implementación de recursión de cola, porque ahora debemos retornar después de evaluar la expresión final en una secuencia para deshacer los guardados de registros (inútiles).  Estos guardados extra se acumularán durante un anidamiento de llamadas a procedimientos.  Consecuentemente, procesos tales como ~sqrt-iter~ requerirán espacio proporcional al número de iteraciones en lugar de requerir espacio constante.  Esta diferencia puede ser significativa.  Por ejemplo, con recursión de cola, un bucle infinito puede expresarse usando solamente el mecanismo de llamada a procedimientos:
+
+#+begin_src scheme
+(define (count n)
+  (newline)
+  (display n)
+  (count (+ n 1)))
+#+end_src
+
+Sin recursión de cola, tal procedimiento eventualmente se quedaría sin espacio de pila, y expresar una verdadera iteración requeriría algún mecanismo de control distinto a la llamada a procedimientos.
+
+*** 5.4.3 Condicionales, asignaciones y definiciones
+:properties:
+:custom_id: section-5.4.3
+:end:
+
+Como con el evaluador metacircular, las formas especiales se manejan evaluando selectivamente fragmentos de la expresión.  Para una expresión ~if~, debemos evaluar el predicado y decidir, basándonos en el valor del predicado, si evaluar el consecuente o la alternativa.
+
+Antes de evaluar el predicado, guardamos la expresión ~if~ misma para que podamos extraer más tarde el consecuente o la alternativa.  También guardamos el entorno, que necesitaremos más tarde para evaluar el consecuente o la alternativa, y guardamos ~continue~, que necesitaremos más tarde para retornar a la evaluación de la expresión que está esperando el valor del ~if~.
+
+#+begin_src scheme
+ev-if
+  (save exp)                    ; guardar expresión para más tarde
+  (save env)
+  (save continue)
+  (assign continue (label ev-if-decide))
+  (assign exp (op if-predicate) (reg exp))
+  (goto (label eval-dispatch))  ; evaluar el predicado
+#+end_src
+
+Cuando retornamos de evaluar el predicado, probamos si fue verdadero o falso y, dependiendo del resultado, colocamos el consecuente o la alternativa en ~exp~ antes de ir a ~eval-dispatch~.  Observa que restaurar ~env~ y ~continue~ aquí configura ~eval-dispatch~ para tener el entorno correcto y continuar en el lugar correcto para recibir el valor de la expresión ~if~.
+
+#+begin_src scheme
+ev-if-decide
+  (restore continue)
+  (restore env)
+  (restore exp)
+  (test (op true?) (reg val))
+  (branch (label ev-if-consequent))
+
+ev-if-alternative
+  (assign exp (op if-alternative) (reg exp))
+  (goto (label eval-dispatch))
+ev-if-consequent
+  (assign exp (op if-consequent) (reg exp))
+  (goto (label eval-dispatch))
+#+end_src
+
+*Asignaciones y definiciones*
+
+Las asignaciones son manejadas por ~ev-assignment~, al cual se llega desde ~eval-dispatch~ con la expresión de asignación en ~exp~.  El código en ~ev-assignment~ primero evalúa la parte del valor de la expresión y luego instala el nuevo valor en el entorno.  Se asume que ~set-variable-value!~ está disponible como una operación de máquina.
+
+#+begin_src scheme
+ev-assignment
+  (assign unev (op assignment-variable) (reg exp))
+  (save unev)                   ; guardar variable para más tarde
+  (assign exp (op assignment-value) (reg exp))
+  (save env)
+  (save continue)
+  (assign continue (label ev-assignment-1))
+  (goto (label eval-dispatch))  ; evaluar el valor de la asignación
+ev-assignment-1
+  (restore continue)
+  (restore env)
+  (restore unev)
+  (perform
+   (op set-variable-value!) (reg unev) (reg val) (reg env))
+  (assign val (const ok))
+  (goto (reg continue))
+#+end_src
+
+Las definiciones se manejan de manera similar:
+
+#+begin_src scheme
+ev-definition
+  (assign unev (op definition-variable) (reg exp))
+  (save unev)                   ; guardar variable para más tarde
+  (assign exp (op definition-value) (reg exp))
+  (save env)
+  (save continue)
+  (assign continue (label ev-definition-1))
+  (goto (label eval-dispatch))  ; evaluar el valor de la definición
+ev-definition-1
+  (restore continue)
+  (restore env)
+  (restore unev)
+  (perform
+   (op define-variable!) (reg unev) (reg val) (reg env))
+  (assign val (const ok))
+  (goto (reg continue))
+#+end_src
+
+**** Ejercicio 5.23
+:properties:
+:custom_id: exercise-5.23
+:end:
+
+Extiende el evaluador para manejar expresiones derivadas tales como ~cond~, ~let~, etcétera (sección [[#section-4.1.2][4.1.2]]).  Puedes "hacer trampa" y asumir que los transformadores de sintaxis tales como ~cond->if~ están disponibles como operaciones de máquina.[fn:313]
+
+**** Ejercicio 5.24
+:properties:
+:custom_id: exercise-5.24
+:end:
+
+Implementa ~cond~ como una nueva forma especial básica sin reducirla a ~if~.  Tendrás que construir un bucle que pruebe los predicados de cláusulas ~cond~ sucesivas hasta que encuentres una que sea verdadera, y luego usar ~ev-sequence~ para evaluar las acciones de la cláusula.
+
+**** Ejercicio 5.25
+:properties:
+:custom_id: exercise-5.25
+:end:
+
+Modifica el evaluador de modo que use evaluación en orden normal, basada en el evaluador perezoso de la sección [[#section-4.2][4.2]].
+
+*** 5.4.4 Ejecución del evaluador
+:properties:
+:custom_id: section-5.4.4
+:end:
+
+Con la implementación del evaluador de control explícito llegamos al final de un desarrollo, comenzado en el [[#section-1][Capítulo 1]], en el que hemos explorado modelos sucesivamente más precisos del proceso de evaluación.  Comenzamos con el modelo de sustitución relativamente informal, luego extendimos esto en el [[#section-3][Capítulo 3]] al modelo de entorno, que nos permitió tratar con estado y cambio.  En el evaluador metacircular del [[#section-4][Capítulo 4]], usamos Scheme mismo como un lenguaje para hacer más explícita la estructura de entorno construida durante la evaluación de una expresión.  Ahora, con máquinas de registros, hemos examinado de cerca los mecanismos del evaluador para gestión de almacenamiento, paso de argumentos y control.  En cada nuevo nivel de descripción, hemos tenido que plantear problemas y resolver ambigüedades que no eran aparentes en el tratamiento previo, menos preciso, de la evaluación.  Para entender el comportamiento del evaluador de control explícito, podemos simularlo y monitorear su desempeño.
+
+Instalaremos un bucle controlador en nuestra máquina evaluadora.  Este desempeña el papel del procedimiento ~driver-loop~ de la sección [[#section-4.1.4][4.1.4]].  El evaluador repetidamente imprimirá un prompt, leerá una expresión, evaluará la expresión yendo a ~eval-dispatch~, e imprimirá el resultado.  Las siguientes instrucciones forman el comienzo de la secuencia del controlador del evaluador de control explícito:[fn:314]
+
+#+begin_src scheme
+read-eval-print-loop
+  (perform (op initialize-stack))
+  (perform
+   (op prompt-for-input) (const ";;; EC-Eval input:"))
+  (assign exp (op read))
+  (assign env (op get-global-environment))
+  (assign continue (label print-result))
+  (goto (label eval-dispatch))
+print-result
+  (perform
+   (op announce-output) (const ";;; EC-Eval value:"))
+  (perform (op user-print) (reg val))
+  (goto (label read-eval-print-loop))
+#+end_src
+
+Cuando encontramos un error en un procedimiento (tal como el "error de tipo de procedimiento desconocido" indicado en ~apply-dispatch~), imprimimos un mensaje de error y retornamos al bucle controlador.[fn:315]
+
+#+begin_src scheme
+unknown-expression-type
+  (assign val (const unknown-expression-type-error))
+  (goto (label signal-error))
+
+unknown-procedure-type
+  (restore continue)    ; limpiar pila (desde apply-dispatch)
+  (assign val (const unknown-procedure-type-error))
+  (goto (label signal-error))
+
+signal-error
+  (perform (op user-print) (reg val))
+  (goto (label read-eval-print-loop))
+#+end_src
+
+Para los propósitos de la simulación, inicializamos la pila cada vez que pasamos por el bucle controlador, ya que podría no estar vacía después de que un error (tal como una variable indefinida) interrumpa una evaluación.[fn:316]
+
+Si combinamos todos los fragmentos de código presentados en las secciones [[#section-5.4.1][5.4.1]]-[[#section-5.4.4][5.4.4]], podemos crear un modelo de máquina evaluadora que podemos ejecutar usando el simulador de máquina de registros de la sección [[#section-5.2][5.2]].
+
+#+begin_src scheme
+(define eceval
+  (make-machine
+   '(exp env val proc argl continue unev)
+   eceval-operations
+   '(
+     read-eval-print-loop
+     <entire machine controller as given above>
+     )))
+#+end_src
+
+Debemos definir procedimientos de Scheme para simular las operaciones usadas como primitivas por el evaluador.  Estos son los mismos procedimientos que usamos para el evaluador metacircular en la sección [[#section-4.1][4.1]], junto con los pocos adicionales definidos en notas al pie a lo largo de la sección [[#section-5.4][5.4]].
+
+#+begin_src scheme
+(define eceval-operations
+  (list (list 'self-evaluating? self-evaluating)
+        <complete list of operations for eceval machine>
+        ))
+#+end_src
+
+Finalmente, podemos inicializar el entorno global y ejecutar el evaluador:
+
+#+begin_src scheme
+(define the-global-environment (setup-environment))
+
+(start eceval)
+
+;;; EC-Eval input:
+(define (append x y)
+  (if (null? x)
+      y
+      (cons (car x)
+            (append (cdr x) y))))
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+(append '(a b c) '(d e f))
+;;; EC-Eval value:
+(a b c d e f)
+#+end_src
+
+Por supuesto, evaluar expresiones de esta manera tomará mucho más tiempo que si las hubiéramos tecleado directamente en Scheme, debido a los múltiples niveles de simulación involucrados.  Nuestras expresiones son evaluadas por la máquina evaluadora de control explícito, que está siendo simulada por un programa de Scheme, que a su vez está siendo evaluado por el intérprete de Scheme.
+
+*Monitoreo del desempeño del evaluador*
+
+La simulación puede ser una herramienta poderosa para guiar la implementación de evaluadores.  Las simulaciones hacen fácil no solo explorar variaciones del diseño de la máquina de registros sino también monitorear el desempeño del evaluador simulado.  Por ejemplo, un factor importante en el desempeño es cuán eficientemente el evaluador usa la pila.  Podemos observar el número de operaciones de pila requeridas para evaluar varias expresiones definiendo la máquina de registros evaluadora con la versión del simulador que recopila estadísticas sobre el uso de la pila (sección [[#section-5.2.4][5.2.4]]), y agregando una instrucción en el punto de entrada ~print-result~ del evaluador para imprimir las estadísticas:
+
+#+begin_src scheme
+print-result
+  (perform (op print-stack-statistics)); instrucción agregada
+  (perform
+   (op announce-output) (const ";;; EC-Eval value:"))
+  ... ; igual que antes
+#+end_src
+
+Las interacciones con el evaluador ahora lucen así:
+
+#+begin_src scheme
+;;; EC-Eval input:
+(define (factorial n)
+  (if (= n 1)
+      1
+      (* (factorial (- n 1)) n)))
+(total-pushes = 3 maximum-depth = 3)
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+(factorial 5)
+(total-pushes = 144 maximum-depth = 28)
+;;; EC-Eval value:
+120
+#+end_src
+
+Nota que el bucle controlador del evaluador reinicializa la pila al inicio de cada interacción, de modo que las estadísticas impresas se referirán solamente a operaciones de pila usadas para evaluar la expresión anterior.
+
+**** Ejercicio 5.26
+:properties:
+:custom_id: exercise-5.26
+:end:
+
+Usa la pila monitoreada para explorar la propiedad de recursión de cola del evaluador (sección [[#section-5.4.2][5.4.2]]).  Inicia el evaluador y define el procedimiento ~factorial~ iterativo de la sección [[#section-1.2.1][1.2.1]]:
+
+#+begin_src scheme
+(define (factorial n)
+  (define (iter product counter)
+    (if (> counter n)
+        product
+        (iter (* counter product)
+              (+ counter 1))))
+  (iter 1 1))
+#+end_src
+
+Ejecuta el procedimiento con algunos valores pequeños de n.  Registra la profundidad máxima de la pila y el número de inserciones requeridas para calcular n!  para cada uno de estos valores.
+
+a. Encontrarás que la profundidad máxima requerida para evaluar n!  es independiente de n.  ¿Cuál es esa profundidad?
+
+b. Determina a partir de tus datos una fórmula en términos de n para el número total de operaciones de inserción usadas en evaluar n!  para cualquier n >= 1.  Nota que el número de operaciones usadas es una función lineal de n y por lo tanto está determinada por dos constantes.
+
+**** Ejercicio 5.27
+:properties:
+:custom_id: exercise-5.27
+:end:
+
+Para comparar con el [[#exercise-5.26][Ejercicio 5.26]], explora el comportamiento del siguiente procedimiento para calcular factoriales recursivamente:
+
+#+begin_src scheme
+(define (factorial n)
+  (if (= n 1)
+      1
+      (* (factorial (- n 1)) n)))
+#+end_src
+
+Al ejecutar este procedimiento con la pila monitoreada, determina, como una función de n, la profundidad máxima de la pila y el número total de inserciones usadas en evaluar n!  para n >= 1.  (Nuevamente, estas funciones serán lineales.)  Resume tus experimentos llenando la siguiente tabla con las expresiones apropiadas en términos de n:
+
+#+begin_example
+                Profundidad máxima       Número de inserciones
+
+ Factorial
+ recursivo
+
+ Factorial
+ iterativo
+#+end_example
+
+La profundidad máxima es una medida de la cantidad de espacio usado por el evaluador al llevar a cabo el cálculo, y el número de inserciones se correlaciona bien con el tiempo requerido.
+
+**** Ejercicio 5.28
+:properties:
+:custom_id: exercise-5.28
+:end:
+
+Modifica la definición del evaluador cambiando ~eval-sequence~ como se describe en la sección [[#section-5.4.2][5.4.2]] de modo que el evaluador ya no sea de recursión de cola.  Vuelve a ejecutar tus experimentos del [[#exercise-5.26][Ejercicio 5.26]] y [[#exercise-5.27][Ejercicio 5.27]] para demostrar que ambas versiones del procedimiento ~factorial~ ahora requieren espacio que crece linealmente con su entrada.
+
+**** Ejercicio 5.29
+:properties:
+:custom_id: exercise-5.29
+:end:
+
+Monitorea las operaciones de pila en el cálculo recursivo de árbol de Fibonacci:
+
+#+begin_src scheme
+(define (fib n)
+  (if (< n 2)
+      n
+      (+ (fib (- n 1)) (fib (- n 2)))))
+#+end_src
+
+a. Da una fórmula en términos de n para la profundidad máxima de la pila requerida para calcular Fib(n) para n >= 2.  Pista: En la sección [[#section-1.2.2][1.2.2]] argumentamos que el espacio usado por este proceso crece linealmente con n.
+
+b. Da una fórmula para el número total de inserciones usadas para calcular Fib(n) para n >= 2.  Deberías encontrar que el número de inserciones (que se correlaciona bien con el tiempo usado) crece exponencialmente con n.  Pista: Sea S(n) el número de inserciones usadas en calcular Fib(n).  Deberías ser capaz de argumentar que hay una fórmula que expresa S(n) en términos de S(n - 1), S(n - 2), y alguna constante fija de "sobrecarga" k que es independiente de n.  Da la fórmula, y di qué es k.  Luego muestra que S(n) puede expresarse como a Fib(n + 1) + b y da los valores de a y b.
+
+**** Ejercicio 5.30
+:properties:
+:custom_id: exercise-5.30
+:end:
+
+Nuestro evaluador actualmente captura y señala solo dos tipos de errores--tipos de expresión desconocidos y tipos de procedimiento desconocidos.  Otros errores nos sacarán del bucle leer-evaluar-imprimir del evaluador.  Cuando ejecutamos el evaluador usando el simulador de máquina de registros, estos errores son capturados por el sistema Scheme subyacente.  Esto es análogo a que la computadora se bloquee cuando un programa de usuario comete un error.[fn:317] Es un proyecto grande hacer que funcione un sistema de errores real, pero vale mucho la pena el esfuerzo para entender lo que está involucrado aquí.
+
+a. Los errores que ocurren en el proceso de evaluación, tales como un intento de acceder a una variable no vinculada, podrían ser capturados cambiando la operación de búsqueda para que retorne un código de condición distinguido, que no puede ser un valor posible de ninguna variable de usuario.  El evaluador puede probar este código de condición y luego hacer lo necesario para ir a ~signal-error~.  Encuentra todos los lugares en el evaluador donde tal cambio es necesario y arréglelos.  Esto es mucho trabajo.
+
+b. Mucho peor es el problema de manejar errores que son señalados al aplicar procedimientos primitivos, tales como un intento de dividir por cero o un intento de extraer el ~car~ de un símbolo.  En un sistema profesional de alta calidad, cada aplicación primitiva se verifica por seguridad como parte de la primitiva.  Por ejemplo, cada llamada a ~car~ podría primero verificar que el argumento es un par.  Si el argumento no es un par, la aplicación retornaría un código de condición distinguido al evaluador, que entonces reportaría la falla.  Podríamos arreglar esto en nuestro simulador de máquina de registros haciendo que cada procedimiento primitivo verifique la aplicabilidad y retorne un código de condición distinguido apropiado en caso de falla.  Entonces el código ~primitive-apply~ en el evaluador puede verificar el código de condición e ir a ~signal-error~ si es necesario.  Construye esta estructura y haz que funcione.  Este es un proyecto importante.
