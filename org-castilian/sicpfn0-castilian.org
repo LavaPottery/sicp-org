@@ -1,0 +1,269 @@
+* Notas al pie
+
+[fn:1] El 'Lisp 1 Programmer's Manual' apareció en 1960, y el 'Lisp 1.5 Programmer's Manual' (McCarthy 1965) se publicó en 1962. La historia temprana de Lisp se describe en McCarthy 1978.
+
+[fn:2] Los dos dialectos en los que se escribieron la mayoría de los programas Lisp importantes de la década de 1970 son MacLisp (Moon 1978; Pitman 1983), desarrollado en el MIT Project MAC, e Interlisp (Teitelman 1974), desarrollado en Bolt Beranek and Newman Inc. y el Xerox Palo Alto Research Center. Portable Standard Lisp (Hearn 1969; Griss 1981) era un dialecto de Lisp diseñado para ser fácilmente portable entre diferentes máquinas. MacLisp engendró varios subdialectos, como Franz Lisp, que se desarrolló en la University of California en Berkeley, y Zetalisp (Moon 1981), que se basaba en un procesador de propósito especial diseñado en el MIT Artificial Intelligence Laboratory para ejecutar Lisp de manera muy eficiente. El dialecto de Lisp utilizado en este libro, llamado Scheme (Steele 1975), fue inventado en 1975 por Guy Lewis Steele Jr. y Gerald Jay Sussman del MIT Artificial Intelligence Laboratory y posteriormente reimplementado para uso educativo en el MIT. Scheme se convirtió en un estándar IEEE en 1990 (IEEE 1990). El dialecto Common Lisp (Steele 1982, Steele 1990) fue desarrollado por la comunidad Lisp para combinar características de los dialectos anteriores de Lisp con el fin de crear un estándar industrial para Lisp. Common Lisp se convirtió en un estándar ANSI en 1994 (ANSI 1994).
+
+[fn:3] Una de esas aplicaciones especiales fue un cálculo revolucionario de importancia científica: una integración del movimiento del Sistema Solar que extendió los resultados anteriores en casi dos órdenes de magnitud, y demostró que la dinámica del Sistema Solar es caótica. Este cálculo fue posible gracias a nuevos algoritmos de integración, un compilador de propósito especial y una computadora de propósito especial, todo ello implementado con la ayuda de herramientas de software escritas en Lisp (Abelson et al. 1992; Sussman and Wisdom 1992).
+
+[fn:4] La caracterización de los números como "datos simples" es una mentira descarada. De hecho, el tratamiento de los números es uno de los aspectos más complicados y confusos de cualquier lenguaje de programación. Algunos problemas típicos involucrados son estos: Algunos sistemas informáticos distinguen <<i191>> enteros, como 2, de <<i321>> números reales, como 2.71. ¿Es el número real 2.00 diferente del entero 2? ¿Son las operaciones aritméticas utilizadas para enteros las mismas que las operaciones utilizadas para números reales? ¿Dividir 6 entre 2 produce 3 o 3.0? ¿Qué tan grande puede ser un número que podamos representar? ¿Cuántos decimales de precisión podemos representar? ¿Es el rango de los enteros el mismo que el rango de los números reales? Más allá de estas preguntas, por supuesto, hay una colección de problemas relacionados con errores de redondeo y truncamiento: toda la ciencia del análisis numérico. Dado que nuestro enfoque en este libro está en el diseño de programas a gran escala en lugar de en técnicas numéricas, vamos a ignorar estos problemas. Los ejemplos numéricos en este capítulo exhibirán el comportamiento usual de redondeo que uno observa al usar operaciones aritméticas que preservan un número limitado de decimales de precisión en operaciones no enteras.
+
+[fn:5] A lo largo de este libro, cuando deseamos enfatizar la distinción entre la entrada escrita por el usuario y la respuesta impresa por el intérprete, mostraremos esta última en caracteres inclinados.
+
+[fn:6] Los sistemas Lisp típicamente proporcionan características para ayudar al usuario a formatear expresiones. Dos características especialmente útiles son una que automáticamente indenta a la posición correcta de impresión elegante cada vez que se inicia una nueva línea y otra que resalta el paréntesis izquierdo correspondiente cada vez que se escribe un paréntesis derecho.
+
+[fn:7] Lisp obedece la convención de que cada expresión tiene un valor. Esta convención, junto con la antigua reputación de Lisp como un lenguaje ineficiente, es la fuente de la observación ingeniosa de Alan Perlis (parafraseando a Oscar Wilde) que "los programadores de Lisp conocen el valor de todo pero el coste de nada."
+
+[fn:8] En este libro, no mostramos la respuesta del intérprete al evaluar definiciones, ya que esto depende mucho de la implementación.
+
+[fn:9] [[#section-3][Capítulo 3]] mostrará que esta noción de entorno es crucial, tanto para comprender cómo funciona el intérprete como para implementar intérpretes.
+
+[fn:10] Puede parecer extraño que la regla de evaluación diga, como parte del primer paso, que debemos evaluar el elemento más a la izquierda de una combinación, ya que en este punto eso solo puede ser un operador como ~+~ o ~*~ que representa un procedimiento primitivo incorporado como adición o multiplicación. Veremos más adelante que es útil poder trabajar con combinaciones cuyos operadores son en sí mismos expresiones compuestas.
+
+[fn:11] Las formas sintácticas especiales que son simplemente estructuras superficiales alternativas convenientes para cosas que pueden escribirse de maneras más uniformes a veces se llaman <<i382>> azúcar sintáctico, para usar una frase acuñada por Peter Landin. En comparación con los usuarios de otros lenguajes, los programadores de Lisp, como regla general, están menos preocupados por cuestiones de sintaxis. (Por el contrario, examina cualquier manual de Pascal y observa cuánto de él está dedicado a descripciones de sintaxis.) Este desdén por la sintaxis se debe en parte a la flexibilidad de Lisp, que hace que sea fácil cambiar la sintaxis superficial, y en parte a la observación de que muchas construcciones sintácticas "convenientes", que hacen que el lenguaje sea menos uniforme, terminan causando más problemas de lo que valen cuando los programas se vuelven grandes y complejos. En palabras de Alan Perlis, "el azúcar sintáctico causa cáncer del punto y coma."
+
+[fn:12] Observa que aquí se están combinando dos operaciones diferentes: estamos creando el procedimiento, y le estamos dando el nombre ~square~. Es posible, de hecho importante, poder separar estas dos nociones: crear procedimientos sin nombrarlos, y dar nombres a procedimientos que ya han sido creados. Veremos cómo hacer esto en la sección [[#section-1.3.2][1.3.2]].
+
+[fn:13] A lo largo de este libro, describiremos la sintaxis general de las expresiones usando símbolos en cursiva delimitados por corchetes angulares, por ejemplo, <NAME>, para denotar los "espacios" en la expresión que deben completarse cuando tal expresión se usa realmente.
+
+[fn:14] Más generalmente, el cuerpo del procedimiento puede ser una secuencia de expresiones. En este caso, el intérprete evalúa cada expresión en la secuencia por turno y devuelve el valor de la expresión final como el valor de la aplicación del procedimiento.
+
+[fn:15] A pesar de la simplicidad de la idea de sustitución, resulta ser sorprendentemente complicado dar una definición matemática rigurosa del proceso de sustitución. El problema surge de la posibilidad de confusión entre los nombres utilizados para los parámetros formales de un procedimiento y los nombres (posiblemente idénticos) utilizados en las expresiones a las que se puede aplicar el procedimiento. De hecho, hay una larga historia de definiciones erróneas de <<i374>> sustitución en la literatura de lógica y semántica de programación. Véase Stoy 1977 para una discusión cuidadosa de la sustitución.
+
+[fn:16] En [[#section-3][Capítulo 3]] introduciremos el <<i368>> procesamiento de flujos, que es una forma de manejar estructuras de datos aparentemente "infinitas" incorporando una forma limitada de evaluación de orden normal. En la sección [[#section-4.2][4.2]] modificaremos el intérprete de Scheme para producir una variante de orden normal de Scheme.
+
+[fn:17] "Interpretado como verdadero o falso" significa esto: En Scheme, hay dos valores distinguidos que son denotados por las constantes ~#t~ y ~#f~. Cuando el intérprete verifica el valor de un predicado, interpreta ~#f~ como falso. Cualquier otro valor se trata como verdadero. (Por lo tanto, proporcionar ~#t~ es lógicamente innecesario, pero es conveniente.) En este libro usaremos los nombres ~true~ y ~false~, que están asociados con los valores ~#t~ y ~#f~ respectivamente.
+
+[fn:18] ~Abs~ también usa el operador "menos" -, que, cuando se usa con un solo operando, como en ~(- x)~, indica negación.
+
+[fn:19] Una diferencia menor entre ~if~ y ~cond~ es que la parte <E> de cada cláusula ~cond~ puede ser una secuencia de expresiones. Si se encuentra que el <P> correspondiente es verdadero, las expresiones <E> se evalúan en secuencia y el valor de la expresión final en la secuencia se devuelve como el valor del ~cond~. En una expresión ~if~, sin embargo, el <CONSEQUENT> y el <ALTERNATIVE> deben ser expresiones únicas.
+
+[fn:20] Las descripciones declarativas e imperativas están íntimamente relacionadas, como de hecho lo están las matemáticas y la informática. Por ejemplo, decir que la respuesta producida por un programa es "correcta" es hacer una declaración declarativa sobre el programa. Hay una gran cantidad de investigación dirigida a establecer técnicas para demostrar que los programas son correctos, y gran parte de la dificultad técnica de este tema tiene que ver con negociar la transición entre declaraciones imperativas (a partir de las cuales se construyen los programas) y declaraciones declarativas (que pueden usarse para deducir cosas). En una vena relacionada, un área actual importante en el diseño de lenguajes de programación es la exploración de los llamados lenguajes de muy alto nivel, en los que uno realmente programa en términos de declaraciones declarativas. La idea es hacer que los intérpretes sean lo suficientemente sofisticados como para que, dado el conocimiento de "qué es" especificado por el programador, puedan generar conocimiento de "cómo hacer" automáticamente. Esto no se puede hacer en general, pero hay áreas importantes donde se ha avanzado. Revisitaremos esta idea en [[#section-4][Capítulo 4]].
+
+[fn:21] Este algoritmo de raíz cuadrada es en realidad un caso especial del método de Newton, que es una técnica general para encontrar raíces de ecuaciones. El algoritmo de raíz cuadrada en sí fue desarrollado por Heron of Alexandria en el siglo I d.C. Veremos cómo expresar el método general de Newton como un procedimiento de Lisp en la sección [[#section-1.3.4][1.3.4]].
+
+[fn:22] Usualmente daremos a los predicados nombres que terminen con signos de interrogación, para ayudarnos a recordar que son predicados. Esta es solo una convención estilística. En lo que respecta al intérprete, el signo de interrogación es solo un carácter ordinario.
+
+[fn:23] Observa que expresamos nuestra conjetura inicial como 1.0 en lugar de 1. Esto no haría ninguna diferencia en muchas implementaciones de Lisp. MIT Scheme, sin embargo, distingue entre enteros exactos y valores decimales, y dividir dos enteros produce un número racional en lugar de un decimal. Por ejemplo, dividir 10 entre 6 produce 5/3, mientras que dividir 10.0 entre 6.0 produce 1.6666666666666667. (Aprenderemos cómo implementar aritmética sobre números racionales en la sección [[#section-2.1.1][2.1.1]].) Si comenzamos con una conjetura inicial de 1 en nuestro programa de raíz cuadrada, y x es un entero exacto, todos los valores subsiguientes producidos en el cálculo de raíz cuadrada serán números racionales en lugar de decimales. Las operaciones mixtas sobre números racionales y decimales siempre producen decimales, por lo que comenzar con una conjetura inicial de 1.0 fuerza a todos los valores subsiguientes a ser decimales.
+
+[fn:24] Los lectores que estén preocupados por los problemas de eficiencia involucrados en el uso de llamadas a procedimientos para implementar iteración deben notar las observaciones sobre "recursión de cola" en la sección [[#section-1.2.1][1.2.1]].
+
+[fn:25] Ni siquiera está claro cuál de estos procedimientos es una implementación más eficiente. Esto depende del hardware disponible. Hay máquinas para las cuales la implementación "obvia" es la menos eficiente. Considera una máquina que tiene tablas extensas de logaritmos y antilogaritmos almacenadas de una manera muy eficiente.
+
+[fn:26] El concepto de renombrado consistente es en realidad sutil y difícil de definir formalmente. Lógicos famosos han cometido errores embarazosos aquí.
+
+[fn:27] El alcance léxico dicta que las variables libres en un procedimiento se tomen para referirse a enlaces hechos por definiciones de procedimientos envolventes; es decir, se buscan en el entorno en el que se definió el procedimiento. Veremos cómo funciona esto en detalle en el capítulo 3 cuando estudiemos entornos y el comportamiento detallado del intérprete.
+
+[fn:28] Las definiciones embebidas deben venir primero en el cuerpo de un procedimiento. La gerencia no es responsable de las consecuencias de ejecutar programas que entremezclan definición y uso.
+
+[fn:29] En un programa real probablemente usaríamos la estructura de bloque introducida en la última sección para ocultar la definición de ~fact-iter~:
+
+#+begin_src scheme
+(define (factorial n)
+  (define (iter product counter)
+    (if (> counter n)
+        product
+        (iter (* counter product)
+              (+ counter 1))))
+  (iter 1 1))
+#+end_src
+
+Evitamos hacer esto aquí para minimizar el número de cosas en las que pensar a la vez.
+
+[fn:30] Cuando discutamos la implementación de procedimientos en máquinas de registros en [[#section-5][Capítulo 5]], veremos que cualquier proceso iterativo puede realizarse "en hardware" como una máquina que tiene un conjunto fijo de registros y ninguna memoria auxiliar. En contraste, realizar un proceso recursivo requiere una máquina que usa una estructura de datos auxiliar conocida como <<i362>> pila.
+
+[fn:31] La recursión de cola ha sido conocida durante mucho tiempo como un truco de optimización del compilador. Una base semántica coherente para la recursión de cola fue proporcionada por Carl Hewitt (1977), quien la explicó en términos del modelo de computación de "paso de mensajes" que discutiremos en [[#section-3][Capítulo 3]]. Inspirados por esto, Gerald Jay Sussman y Guy Lewis Steele Jr. (véase Steele 1975) construyeron un intérprete de recursión de cola para Scheme. Steele más tarde mostró cómo la recursión de cola es una consecuencia de la forma natural de compilar llamadas a procedimientos (Steele 1977). El estándar IEEE para Scheme requiere que las implementaciones de Scheme sean de recursión de cola.
+
+[fn:32] Un ejemplo de esto se insinuó en la sección [[#section-1.1.3][1.1.3]]: El intérprete mismo evalúa expresiones usando un proceso recursivo de árbol.
+
+[fn:33] Por ejemplo, trabaja en detalle cómo se aplica la regla de reducción al problema de dar cambio por 10 centavos usando peniques y níqueles.
+
+[fn:34] Un enfoque para lidiar con cálculos redundantes es organizar las cosas de modo que construyamos automáticamente una tabla de valores a medida que se calculan. Cada vez que se nos pide que apliquemos el procedimiento a algún argumento, primero verificamos si el valor ya está almacenado en la tabla, en cuyo caso evitamos realizar el cálculo redundante. Esta estrategia, conocida como <<i388>> tabulación o <<i230>> memoización, puede implementarse de una manera directa. La tabulación a veces puede usarse para transformar procesos que requieren un número exponencial de pasos (como ~count-change~) en procesos cuyos requisitos de espacio y tiempo crecen linealmente con la entrada. Véase [[#exercise-3.27][Ejercicio 3.27]].
+
+[fn:35] Los elementos del triángulo de Pascal se llaman <<i39>> coeficientes binomiales, porque la n-ésima fila consiste en los coeficientes de los términos en la expansión de (x + y)^n. Este patrón para calcular los coeficientes apareció en la obra seminal de 1653 de Blaise Pascal sobre teoría de la probabilidad, 'Traite' du triangle arithme'tique'. Según Knuth (1973), el mismo patrón aparece en el 'Szu-yuen Yu"-chien' ("El Espejo Precioso de los Cuatro Elementos"), publicado por el matemático chino Chu Shih-chieh en 1303, en las obras del poeta y matemático persa del siglo XII Omar Khayyam, y en las obras del matemático hindú del siglo XII Bha'scara A'cha'rya.
+
+[fn:36] Estas afirmaciones enmascaran una gran cantidad de simplificación excesiva. Por ejemplo, si contamos los pasos del proceso como "operaciones de máquina" estamos haciendo la suposición de que el número de operaciones de máquina necesarias para realizar, digamos, una multiplicación es independiente del tamaño de los números a multiplicar, lo cual es falso si los números son suficientemente grandes. Comentarios similares se aplican a las estimaciones de espacio. Al igual que el diseño y la descripción de un proceso, el análisis de un proceso puede llevarse a cabo en varios niveles de abstracción.
+
+[fn:37] Más precisamente, el número de multiplicaciones requeridas es igual a 1 menos que el logaritmo en base 2 de n más el número de unos en la representación binaria de n. Este total siempre es menor que el doble del logaritmo en base 2 de n. Las constantes arbitrarias k_1 y k_2 en la definición de notación de orden implican que, para un proceso logarítmico, la base a la que se toman los logaritmos no importa, por lo que todos esos procesos se describen como \theta(log n).
+
+[fn:38] Puedes preguntarte por qué a alguien le importaría elevar números a la potencia 1000. Véase la sección [[#section-1.2.6][1.2.6]].
+
+[fn:39] Este algoritmo iterativo es antiguo. Aparece en el 'Chandah-sutra' de A'cha'rya Pingala, escrito antes del 200 a.C. Véase Knuth 1981, sección 4.6.3, para una discusión completa y análisis de este y otros métodos de exponenciación.
+
+[fn:40] Este algoritmo, que a veces se conoce como el "método del campesino ruso" de multiplicación, es antiguo. Se encuentran ejemplos de su uso en el Papiro de Rhind, uno de los dos documentos matemáticos más antiguos existentes, escrito alrededor del 1700 a.C. (y copiado de un documento aún más antiguo) por un escriba egipcio llamado A'h-mose.
+
+[fn:41] Este ejercicio nos fue sugerido por Joe Stoy, basado en un ejemplo en Kaldewaij 1990.
+
+[fn:42] El Algoritmo de Euclides se llama así porque aparece en los 'Elements' de Euclid (Libro 7, ca. 300 a.C.). Según Knuth (1973), puede considerarse el algoritmo no trivial más antiguo conocido. El método egipcio antiguo de multiplicación ([[#exercise-1.18][Ejercicio 1.18]]) es seguramente más antiguo, pero, como explica Knuth, el algoritmo de Euclides es el más antiguo conocido que se ha presentado como un algoritmo general, en lugar de como un conjunto de ejemplos ilustrativos.
+
+[fn:43] Este teorema fue probado en 1845 por Gabriel Lame', un matemático e ingeniero francés conocido principalmente por sus contribuciones a la física matemática. Para probar el teorema, consideramos pares (a_k ,b_k), donde a_k>= b_k, para los cuales el Algoritmo de Euclides termina en k pasos. La prueba se basa en la afirmación de que, si (a_(k+1), b_(k+1)) -> (a_k, b_k) -> (a_(k-1), b_(k-1)) son tres pares sucesivos en el proceso de reducción, entonces debemos tener b_(k+1)>= b_k + b_(k-1). Para verificar la afirmación, considera que un paso de reducción se define aplicando la transformación a_(k-1) = b_k, b_(k-1) = resto de a_k dividido por b_k. La segunda ecuación significa que a_k = qb_k + b_(k-1) para algún entero positivo q. Y dado que q debe ser al menos 1, tenemos a_k = qb_k + b_(k-1) >= b_k + b_(k-1). Pero en el paso de reducción anterior tenemos b_(k+1) = a_k. Por lo tanto, b_(k+1) = a_k>= b_k + b_(k-1). Esto verifica la afirmación. Ahora podemos probar el teorema por inducción sobre k, el número de pasos que el algoritmo requiere para terminar. El resultado es verdadero para k = 1, ya que esto simplemente requiere que b sea al menos tan grande como Fib(1) = 1. Ahora, supongamos que el resultado es verdadero para todos los enteros menores o iguales a k y establezcamos el resultado para k + 1. Sea (a_(k+1), b_(k+1)) -> (a_k, b_k) -> (a_k-1), b_(k-1)) pares sucesivos en el proceso de reducción. Por nuestras hipótesis de inducción, tenemos b_(k-1) >= Fib(k - 1) y b_k >= Fib(k). Por lo tanto, aplicando la afirmación que acabamos de probar junto con la definición de los números de Fibonacci da b_(k+1) >= b_k + b_(k-1) >= Fib(k) + Fib(k - 1) = Fib(k + 1), lo que completa la prueba del Teorema de Lame.
+
+[fn:44] Si d es un divisor de n, entonces también lo es n/d. Pero d y n/d no pueden ser ambos mayores que [sqrt](n).
+
+[fn:45] Pierre de Fermat (1601-1665) es considerado el fundador de la teoría de números moderna. Obtuvo muchos resultados importantes de teoría de números, pero usualmente anunciaba solo los resultados, sin proporcionar sus pruebas. El Pequeño Teorema de Fermat fue enunciado en una carta que escribió en 1640. La primera prueba publicada fue dada por Euler en 1736 (y una prueba anterior idéntica fue descubierta en los manuscritos inéditos de Leibniz). El más famoso de los resultados de Fermat, conocido como el Último Teorema de Fermat, fue anotado en 1637 en su copia del libro 'Arithmetic' (del matemático griego del siglo III Diophantus) con la observación "He descubierto una prueba verdaderamente notable, pero este margen es demasiado pequeño para contenerla." Encontrar una prueba del Último Teorema de Fermat se convirtió en uno de los desafíos más famosos de la teoría de números. Una solución completa fue finalmente dada en 1995 por Andrew Wiles de Princeton University.
+
+[fn:46] Los pasos de reducción en los casos donde el exponente e es mayor que 1 se basan en el hecho de que, para cualquier entero x, y, y m, podemos encontrar el resto de x por y módulo m calculando por separado los restos de x módulo m e y módulo m, multiplicando estos, y luego tomando el resto del resultado módulo m. Por ejemplo, en el caso donde e es par, calculamos el resto de b^(e/2) módulo m, elevamos al cuadrado esto, y tomamos el resto módulo m. Esta técnica es útil porque significa que podemos realizar nuestro cálculo sin tener que lidiar con números mucho más grandes que m. (Compara [[#exercise-1.25][Ejercicio 1.25]].)
+
+[fn:47] Los números que engañan la prueba de Fermat se llaman <<i54>> números de Carmichael, y se sabe poco sobre ellos aparte de que son extremadamente raros. Hay 255 números de Carmichael por debajo de 100,000,000. Los más pequeños son 561, 1105, 1729, 2465, 2821 y 6601. Al probar la primalidad de números muy grandes elegidos al azar, la probabilidad de tropezar con un valor que engañe la prueba de Fermat es menor que la probabilidad de que la radiación cósmica cause que la computadora cometa un error al ejecutar un algoritmo "correcto". Considerar que un algoritmo es inadecuado por la primera razón pero no por la segunda ilustra la diferencia entre matemáticas e ingeniería.
+
+[fn:48] Una de las aplicaciones más sorprendentes de las pruebas probabilísticas de primalidad ha sido en el campo de la criptografía. Aunque ahora es computacionalmente inviable factorizar un número arbitrario de 200 dígitos, la primalidad de tal número puede verificarse en unos pocos segundos con la prueba de Fermat. Este hecho forma la base de una técnica para construir "códigos inquebrantables" sugerida por Rivest, Shamir y Adleman (1977). El algoritmo <<i338>> RSA resultante se ha convertido en una técnica ampliamente utilizada para mejorar la seguridad de las comunicaciones electrónicas. Debido a este y otros desarrollos relacionados, el estudio de los números primos, una vez considerado el epítome de un tema en matemáticas "puras" para ser estudiado solo por sí mismo, ahora resulta tener importantes aplicaciones prácticas a la criptografía, la transferencia electrónica de fondos y la recuperación de información.
+
+[fn:49] Esta serie, usualmente escrita en la forma equivalente (\pi/4) = 1 - (1/3) + (1/5) - (1/7) + ..., se debe a Leibniz. Veremos cómo usar esto como base para algunos trucos numéricos elegantes en la sección [[#section-3.5.3][3.5.3]].
+
+[fn:50] Observa que hemos usado la estructura de bloque (sección [[#section-1.1.8][1.1.8]]) para embeber las definiciones de ~pi-next~ y ~pi-term~ dentro de ~pi-sum~, ya que estos procedimientos es poco probable que sean útiles para cualquier otro propósito. Veremos cómo deshacernos de ellos por completo en la sección [[#section-1.3.2][1.3.2]].
+
+[fn:51] La intención de [[#exercise-1.31][Ejercicio 1.31]] hasta [[#exercise-1.33][Ejercicio 1.33]] es demostrar el poder expresivo que se logra al usar una abstracción apropiada para consolidar muchas operaciones aparentemente dispares. Sin embargo, aunque la acumulación y el filtrado son ideas elegantes, nuestras manos están algo atadas al usarlas en este punto ya que todavía no tenemos estructuras de datos para proporcionar medios adecuados de combinación para estas abstracciones. Volveremos a estas ideas en la sección [[#section-2.2.3][2.2.3]] cuando mostremos cómo usar <<i348>> secuencias como interfaces para combinar filtros y acumuladores para construir abstracciones aún más poderosas. Veremos allí cómo estos métodos realmente se destacan como un enfoque poderoso y elegante para diseñar programas.
+
+[fn:52] Esta fórmula fue descubierta por el matemático inglés del siglo XVII John Wallis.
+
+[fn:53] Sería más claro y menos intimidante para las personas que aprenden Lisp si se usara un nombre más obvio que ~lambda~, como ~make-procedure~. Pero la convención está firmemente arraigada. La notación se adopta del cálculo [lambda], un formalismo matemático introducido por el lógico matemático Alonzo Church (1941). Church desarrolló el cálculo [lambda] para proporcionar una base rigurosa para estudiar las nociones de función y aplicación de función. El cálculo [lambda] se ha convertido en una herramienta básica para investigaciones matemáticas de la semántica de los lenguajes de programación.
+
+[fn:54] Comprender las definiciones internas lo suficientemente bien como para estar seguro de que un programa significa lo que pretendemos que signifique requiere un modelo más elaborado del proceso de evaluación del que hemos presentado en este capítulo. Sin embargo, las sutilezas no surgen con definiciones internas de procedimientos. Volveremos a este tema en la sección [[#section-4.1.6][4.1.6]], después de aprender más sobre evaluación.
+
+[fn:55] Hemos usado 0.001 como un número "pequeño" representativo para indicar una tolerancia para el error aceptable en un cálculo. La tolerancia apropiada para un cálculo real depende del problema a resolver y las limitaciones de la computadora y el algoritmo. Esta es a menudo una consideración muy sutil, que requiere ayuda de un analista numérico o algún otro tipo de mago.
+
+[fn:56] Esto se puede lograr usando ~error~, que toma como argumentos varios elementos que se imprimen como mensajes de error.
+
+[fn:57] Prueba esto durante una conferencia aburrida: Configura tu calculadora en modo radianes y luego presiona repetidamente el botón ~cos~ hasta que obtengas el punto fijo.
+
+[fn:58] |-> (pronunciado "mapea a") es la forma del matemático de escribir ~lambda~. y |-> x/y significa ~(lambda(y) (/ x y))~, es decir, la función cuyo valor en y es x/y.
+
+[fn:59] Observa que esta es una combinación cuyo operador es en sí mismo una combinación. [[#exercise-1.4][Ejercicio 1.4]] ya demostró la capacidad de formar tales combinaciones, pero eso fue solo un ejemplo de juguete. Aquí comenzamos a ver la necesidad real de tales combinaciones: al aplicar un procedimiento que se obtiene como el valor devuelto por un procedimiento de orden superior.
+
+[fn:60] Véase [[#exercise-1.45][Ejercicio 1.45]] para una mayor generalización.
+
+[fn:61] Los libros de cálculo elemental usualmente describen el método de Newton en términos de la secuencia de aproximaciones x_(n+1) = x_n - g(x_n)/Dg(x_n). Tener un lenguaje para hablar sobre procesos y usar la idea de puntos fijos simplifica la descripción del método.
+
+[fn:62] El método de Newton no siempre converge a una respuesta, pero se puede demostrar que en casos favorables cada iteración duplica la precisión de dígitos de la aproximación a la solución. En tales casos, el método de Newton convergirá mucho más rápidamente que el método de intervalo medio.
+
+[fn:63] Para encontrar raíces cuadradas, el método de Newton converge rápidamente a la solución correcta desde cualquier punto de partida.
+
+[fn:64] La noción de estado de primera clase de los elementos del lenguaje de programación se debe al científico informático británico Christopher Strachey (1916-1975).
+
+[fn:65] Veremos ejemplos de esto después de que introduzcamos estructuras de datos en [[#section-2][Capítulo 2]].
+
+[fn:66] El costo principal de implementación de los procedimientos de primera clase es que permitir que los procedimientos se devuelvan como valores requiere reservar almacenamiento para las variables libres de un procedimiento incluso cuando el procedimiento no se está ejecutando. En la implementación de Scheme que estudiaremos en la sección [[#section-4.1][4.1]], estas variables se almacenan en el entorno del procedimiento.
+
+[fn:67] La capacidad de manipular directamente procedimientos proporciona un aumento análogo en el poder expresivo de un lenguaje de programación. Por ejemplo, en la sección [[#section-1.3.1][1.3.1]] introdujimos el procedimiento ~sum~, que toma un procedimiento ~term~ como argumento y calcula la suma de los valores de ~term~ sobre algún intervalo especificado. Para definir ~sum~, es crucial que podamos hablar de un procedimiento como ~term~ como una entidad por derecho propio, sin considerar cómo ~term~ podría expresarse con operaciones más primitivas. De hecho, si no tuviéramos la noción de "un procedimiento", es dudoso que alguna vez pensáramos en la posibilidad de definir una operación como ~sum~. Además, en lo que respecta a realizar la suma, los detalles de cómo ~term~ puede construirse a partir de operaciones más primitivas son irrelevantes.
+
+[fn:68] El nombre ~cons~ significa "construir." Los nombres ~car~ y ~cdr~ derivan de la implementación original de Lisp en la IBM 704. Esa máquina tenía un esquema de direccionamiento que permitía referenciar las partes de "dirección" y "decremento" de una ubicación de memoria. ~car~ significa "Contenidos de la parte de Dirección del Registro" y ~cdr~ (pronunciado "cúder") significa "Contenidos de la parte de Decremento del Registro."
+
+[fn:69] Otra forma de definir los selectores y el constructor es
+
+#+begin_src scheme
+(define make-rat cons)
+(define numer car)
+(define denom cdr)
+#+end_src
+
+La primera definición asocia el nombre ~make-rat~ con el valor de la expresión ~cons~, que es el procedimiento primitivo que construye pares. Por lo tanto, ~make-rat~ y ~cons~ son nombres para el mismo constructor primitivo.
+
+Definir selectores y constructores de esta manera es eficiente: En lugar de que ~make-rat~ /llame/ a ~cons~, ~make-rat~ /es/ ~cons~, por lo que solo se llama a un procedimiento, no a dos, cuando se llama a ~make-rat~. Por otro lado, hacer esto derrota las ayudas de depuración que rastrean llamadas a procedimientos o ponen puntos de interrupción en llamadas a procedimientos: Es posible que desees observar cómo se llama a ~make-rat~, pero ciertamente no quieres observar cada llamada a ~cons~.
+
+Hemos elegido no usar este estilo de definición en este libro.
+
+[fn:70] ~Display~ es el primitivo de Scheme para imprimir datos. El primitivo de Scheme ~newline~ inicia una nueva línea para imprimir. Ninguno de estos procedimientos devuelve un valor útil, por lo que en los usos de ~print-rat~ a continuación, mostramos solo lo que ~print-rat~ imprime, no lo que el intérprete imprime como el valor devuelto por ~print-rat~.
+
+[fn:71] Sorprendentemente, esta idea es muy difícil de formular rigurosamente. Hay dos enfoques para dar tal formulación. Uno, iniciado por C. A. R. Hoare (1972), se conoce como el método de <<i1>> modelos abstractos. Formaliza la especificación de "procedimientos más condiciones" como se describe en el ejemplo de números racionales anterior. Observa que la condición sobre la representación de números racionales se expresó en términos de hechos sobre enteros (igualdad y división). En general, los modelos abstractos definen nuevos tipos de objetos de datos en términos de tipos previamente definidos de objetos de datos. Las afirmaciones sobre objetos de datos pueden por lo tanto verificarse reduciéndolas a afirmaciones sobre objetos de datos previamente definidos. Otro enfoque, introducido por Zilles en el MIT, por Goguen, Thatcher, Wagner y Wright en IBM (véase Thatcher, Wagner y Wright 1978), y por Guttag en Toronto (véase Guttag 1977), se llama <<i15>> especificación algebraica. Considera los "procedimientos" como elementos de un sistema algebraico abstracto cuyo comportamiento se especifica mediante axiomas que corresponden a nuestras "condiciones", y usa las técnicas del álgebra abstracta para verificar afirmaciones sobre objetos de datos. Ambos métodos se revisan en el artículo de Liskov and Zilles (1975).
+
+[fn:72] El uso de la palabra "clausura" aquí proviene del álgebra abstracta, donde se dice que un conjunto de elementos está cerrado bajo una operación si aplicar la operación a elementos en el conjunto produce un elemento que es nuevamente un elemento del conjunto. La comunidad Lisp también (desafortunadamente) usa la palabra "clausura" para describir un concepto totalmente no relacionado: Una clausura es una técnica de implementación para representar procedimientos con variables libres. No usamos la palabra "clausura" en este segundo sentido en este libro.
+
+[fn:73] La noción de que un medio de combinación debe satisfacer la clausura es una idea directa. Desafortunadamente, los combinadores de datos proporcionados en muchos lenguajes de programación populares no satisfacen la clausura, o hacen que la clausura sea engorrosa de explotar. En Fortran o Basic, uno típicamente combina elementos de datos ensamblándolos en arreglos, pero no se pueden formar arreglos cuyos elementos sean a su vez arreglos. Pascal y C admiten estructuras cuyos elementos son estructuras. Sin embargo, esto requiere que el programador manipule punteros explícitamente, y se adhiera a la restricción de que cada campo de una estructura puede contener solo elementos de una forma preespecificada. A diferencia de Lisp con sus pares, estos lenguajes no tienen pegamento de propósito general incorporado que facilite manipular datos compuestos de manera uniforme. Esta limitación subyace al comentario de Alan Perlis en su prólogo a este libro: "En Pascal, la plétora de estructuras de datos declarables induce una especialización dentro de las funciones que inhibe y penaliza la cooperación casual. Es mejor tener 100 funciones operando sobre una estructura de datos que tener 10 funciones operando sobre 10 estructuras de datos."
+
+[fn:74] En este libro, usamos <<i212>> lista para referirnos a una cadena de pares terminada por el marcador de fin de lista. En contraste, el término <<i213>> estructura de lista se refiere a cualquier estructura de datos hecha de pares, no solo a listas.
+
+[fn:75] Dado que las aplicaciones anidadas de ~car~ y ~cdr~ son engorrosas de escribir, los dialectos de Lisp proporcionan abreviaciones para ellas, por ejemplo,
+
+#+begin_example
+(cadr (ARG)) = (car (cdr (ARG)))
+#+end_example
+
+Los nombres de todos estos procedimientos comienzan con ~c~ y terminan con ~r~. Cada ~a~ entre ellos representa una operación ~car~ y cada ~d~ una operación ~cdr~, que se aplicarán en el mismo orden en que aparecen en el nombre. Los nombres ~car~ y ~cdr~ persisten porque combinaciones simples como ~cadr~ son pronunciables.
+
+[fn:76] Es notable cuánta energía en la estandarización de dialectos de Lisp se ha disipado en argumentos que son literalmente sobre nada: ¿Debe ~nil~ ser un nombre ordinario? ¿Debe el valor de ~nil~ ser un símbolo? ¿Debe ser una lista? ¿Debe ser un par? En Scheme, ~nil~ es un nombre ordinario, que usamos en esta sección como una variable cuyo valor es el marcador de fin de lista (al igual que ~true~ es una variable ordinaria que tiene un valor verdadero). Otros dialectos de Lisp, incluido Common Lisp, tratan ~nil~ como un símbolo especial. Los autores de este libro, que han soportado demasiadas disputas de estandarización de lenguajes, quisieran evitar todo el problema. Una vez que hayamos introducido la cita en la sección [[#section-2.3][2.3]], denotaremos la lista vacía como ~'()~ y prescindiremos de la variable ~nil~ por completo.
+
+[fn:77] Para definir ~f~ y ~g~ usando ~lambda~ escribiríamos
+
+#+begin_src scheme
+(define f (lambda (x y . z) <BODY>))
+(define g (lambda w <BODY>))
+#+end_src
+
+[fn:78] Scheme proporciona estándarmente un procedimiento ~map~ que es más general que el descrito aquí. Este ~map~ más general toma un procedimiento de n argumentos, junto con n listas, y aplica el procedimiento a todos los primeros elementos de las listas, todos los segundos elementos de las listas, y así sucesivamente, devolviendo una lista de los resultados. Por ejemplo:
+
+#+begin_src scheme
+(map + (list 1 2 3) (list 40 50 60) (list 700 800 900))
+(741 852 963)
+
+(map (lambda (x y) (+ x (* 2 y)))
+     (list 1 2 3)
+     (list 4 5 6))
+(9 12 15)
+#+end_src
+
+[fn:79] El orden de las dos primeras cláusulas en el ~cond~ importa, ya que la lista vacía satisface ~null?~ y también no es un par.
+
+[fn:80] Este es, de hecho, precisamente el procedimiento ~fringe~ del [[#exercise-2.28][Ejercicio 2.28]]. Aquí lo hemos renombrado para enfatizar que es parte de una familia de procedimientos generales de manipulación de secuencias.
+
+[fn:81] Richard Waters (1979) desarrolló un programa que analiza automáticamente programas tradicionales de Fortran, viéndolos en términos de mapeos, filtros y acumulaciones. Descubrió que el 90 por ciento del código en el Fortran Scientific Subroutine Package encaja perfectamente en este paradigma. Una de las razones del éxito de Lisp como lenguaje de programación es que las listas proporcionan un medio estándar para expresar colecciones ordenadas de modo que puedan manipularse usando operaciones de orden superior. El lenguaje de programación APL debe gran parte de su poder y atractivo a una elección similar. En APL, todos los datos se representan como arreglos, y existe un conjunto universal y conveniente de operadores genéricos para todo tipo de operaciones de arreglos.
+
+[fn:82] Según Knuth (1981), esta regla fue formulada por W. G. Horner a principios del siglo XIX, pero el método fue en realidad utilizado por Newton más de cien años antes. La regla de Horner evalúa el polinomio usando menos adiciones y multiplicaciones que el método directo de primero calcular a_n x^n, luego agregar a_(n-1)x^(n-1), y así sucesivamente. De hecho, es posible probar que cualquier algoritmo para evaluar polinomios arbitrarios debe usar al menos tantas adiciones y multiplicaciones como lo hace la regla de Horner, y por lo tanto la regla de Horner es un algoritmo óptimo para la evaluación de polinomios. Esto fue probado (para el número de adiciones) por A. M. Ostrowski en un artículo de 1954 que esencialmente fundó el estudio moderno de algoritmos óptimos. La declaración análoga para las multiplicaciones fue probada por V. Y. Pan en 1966. El libro de Borodin and Munro (1975) proporciona una visión general de estos y otros resultados sobre algoritmos óptimos.
+
+[fn:83] Esta definición usa la versión extendida de ~map~ descrita en [fn:12].
+
+[fn:84] Este enfoque para mapeos anidados nos fue mostrado por David Turner, cuyos lenguajes KRC y Miranda proporcionan formalismos elegantes para lidiar con estas construcciones. Los ejemplos en esta sección (véase también [[#exercise-2.42][Ejercicio 2.42]]) están adaptados de Turner 1981. En la sección [[#section-3.5.3][3.5.3]], veremos cómo este enfoque se generaliza a secuencias infinitas.
+
+[fn:85] Estamos representando un par aquí como una lista de dos elementos en lugar de como un par de Lisp. Por lo tanto, el "par" (i,j) se representa como ~(list i j)~, no ~(cons i j)~.
+
+[fn:86] El conjunto S - x es el conjunto de todos los elementos de S, excluyendo x.
+
+[fn:87] Los puntos y comas en el código de Scheme se usan para introducir <<i68>> comentarios. Todo desde el punto y coma hasta el final de la línea es ignorado por el intérprete. En este libro no usamos muchos comentarios; intentamos hacer que nuestros programas se auto-documenten usando nombres descriptivos.
+
+[fn:88] El lenguaje de imágenes se basa en el lenguaje que Peter Henderson creó para construir imágenes como el grabado en madera "Square Limit" de M.C. Escher (véase Henderson 1982). El grabado incorpora un patrón escalado repetido, similar a las disposiciones dibujadas usando el procedimiento ~square-limit~ en esta sección.
+
+[fn:89] William Barton Rogers (1804-1882) fue el fundador y primer presidente del MIT. Un geólogo y maestro talentoso, enseñó en William and Mary College y en la University of Virginia. En 1859 se mudó a Boston, donde tuvo más tiempo para la investigación, trabajó en un plan para establecer un "instituto politécnico", y sirvió como el primer Inspector Estatal de Medidores de Gas de Massachusetts.
+
+Cuando se estableció el MIT en 1861, Rogers fue elegido su primer presidente. Rogers defendió un ideal de "aprendizaje útil" que era diferente de la educación universitaria de la época, con su énfasis excesivo en los clásicos, que, como escribió, "se interponen en el camino de la instrucción y disciplina más amplia, más elevada y más práctica de las ciencias naturales y sociales." Esta educación también debía ser diferente de la educación estrecha de escuela de oficios. En palabras de Rogers:
+
+#+begin_quote
+La distinción impuesta por el mundo entre el trabajador práctico y el científico es completamente fútil, y toda la experiencia de los tiempos modernos ha demostrado su total inutilidad.
+#+end_quote
+
+Rogers sirvió como presidente del MIT hasta 1870, cuando renunció debido a mala salud. En 1878, el segundo presidente del MIT, John Runkle, renunció bajo la presión de una crisis financiera provocada por el Pánico de 1873 y la tensión de luchar contra los intentos de Harvard de apoderarse del MIT. Rogers regresó para ocupar el cargo de presidente hasta 1881.
+
+Rogers se derrumbó y murió mientras se dirigía a la clase de graduados del MIT en los ejercicios de graduación de 1882. Runkle citó las últimas palabras de Rogers en un discurso conmemorativo pronunciado ese mismo año:
+
+#+begin_quote
+"Mientras estoy aquí hoy y veo lo que es el Instituto, ... recuerdo los comienzos de la ciencia. Recuerdo que hace ciento cincuenta años Stephen Hales publicó un panfleto sobre el tema del gas de iluminación, en el cual afirmó que sus investigaciones habían demostrado que 128 granos de carbón bituminoso - " "Carbón bituminoso," estas fueron sus últimas palabras en la tierra. Aquí se inclinó hacia adelante, como si consultara algunas notas en la mesa frente a él, luego lentamente recuperando una posición erguida, levantó las manos, y fue trasladado de la escena de sus trabajos y triunfos terrenales a "el mañana de la muerte," donde se resuelven los misterios de la vida, y el espíritu incorpóreo encuentra satisfacción infinita al contemplar los nuevos y todavía insondables misterios del futuro infinito.
+#+end_quote
+
+En palabras de Francis A. Walker (el tercer presidente del MIT):
+
+#+begin_quote
+Toda su vida se había comportado con la mayor fidelidad y heroísmo, y murió como un buen caballero sin duda hubiera deseado, en su armadura, en su puesto, y en la misma parte y acto del deber público.
+#+end_quote
+
+[fn:90] De manera equivalente, podríamos escribir
+
+#+begin_src scheme
+(define flipped-pairs
+  (square-of-four identity flip-vert identity flip-vert))
+#+end_src
+
+[fn:91] ~Rotate180~ rota un pintor 180 grados (véase [[#exercise-2.50][Ejercicio 2.50]]). En lugar de ~rotate180~ podríamos decir ~(compose flip-vert flip-horiz)~, usando el procedimiento ~compose~ del [[#exercise-1.42][Ejercicio 1.42]].
+
+[fn:92] ~Frame-coord-map~ usa las operaciones de vectores descritas en [[#exercise-2.46][Ejercicio 2.46]] a continuación, las cuales asumimos que han sido implementadas usando alguna representación para vectores. Debido a la abstracción de datos, no importa cuál sea esta representación de vectores, siempre que las operaciones de vectores se comporten correctamente.
+
+[fn:93] ~Segments->painter~ usa la representación para segmentos de línea descrita en [[#exercise-2.48][Ejercicio 2.48]] a continuación. También usa el procedimiento ~for-each~ descrito en [[#exercise-2.23][Ejercicio 2.23]].
+
+[fn:94] Por ejemplo, el pintor ~rogers~ de [[figure-2.11][Figura 2.11]] fue construido a partir de una imagen de nivel de gris. Para cada punto en un marco dado, el pintor ~rogers~ determina el punto en la imagen que se mapea a él bajo el mapa de coordenadas del marco, y lo sombrea en consecuencia. Al permitir diferentes tipos de pintores, estamos capitalizando la idea de datos abstractos discutida en la sección [[#section-2.1.3][2.1.3]], donde argumentamos que una representación de número racional podría ser cualquier cosa en absoluto que satisfaga una condición apropiada. Aquí estamos usando el hecho de que un pintor puede implementarse de cualquier manera en absoluto, siempre que dibuje algo en el marco designado. La sección [[#section-2.1.3][2.1.3]] también mostró cómo los pares podrían implementarse como procedimientos. Los pintores son nuestro segundo ejemplo de una representación procedimental para datos.
+
+[fn:95] ~Rotate90~ es una rotación pura solo para marcos cuadrados, porque también estira y encoge la imagen para encajar en el marco rotado.
+
+[fn:96] Las imágenes en forma de diamante en las figuras [[figure-2.10][Figura 2.10]] y [[figure-2.11][Figura 2.11]] fueron creadas con ~squash-inwards~ aplicado a ~wave~ y ~rogers~.
+
+[fn:97] La sección [[#section-3.3.4][3.3.4]] describe uno de esos lenguajes.
+
+[fn:98] Permitir la cita en un lenguaje causa estragos con la capacidad de razonar sobre el lenguaje en términos simples, porque destruye la noción de que los iguales pueden sustituirse por iguales. Por ejemplo, tres es uno más dos, pero la palabra "tres" no es la frase "uno más dos." La cita es poderosa porque nos da una forma de construir expresiones que manipulan otras expresiones (como veremos cuando escribamos un intérprete en [[#section-4][Capítulo 4]]). Pero permitir declaraciones en un lenguaje que hablen sobre otras declaraciones en ese lenguaje hace muy difícil mantener cualquier principio coherente de lo que "los iguales pueden sustituirse por iguales" debería significar. Por ejemplo, si sabemos que la estrella de la tarde es la estrella de la mañana, entonces de la declaración "la estrella de la tarde es Venus" podemos deducir "la estrella de la mañana es Venus." Sin embargo, dado que "John sabe que la estrella de la tarde es Venus" no podemos inferir que "John sabe que la estrella de la mañana es Venus."
+
+[fn:99] La comilla simple es diferente de la comilla doble que hemos estado usando para encerrar cadenas de caracteres a imprimir. Mientras que la comilla simple puede usarse para denotar listas o símbolos, la comilla doble se usa solo con cadenas de caracteres. En este libro, el único uso para cadenas de caracteres es como elementos a imprimir.
