@@ -1,0 +1,122 @@
+** 3.2 El modelo de entornos para la evaluación
+:properties:
+:custom_id: section-3.2
+:end:
+
+Cuando introdujimos los procedimientos compuestos en [[#section-1][Capítulo 1]], utilizamos el modelo de sustitución de evaluación (sección [[#section-1.1.5][1.1.5]]) para definir qué significa aplicar un procedimiento a argumentos:
+
+- Para aplicar un procedimiento compuesto a argumentos, evalúa el cuerpo del procedimiento con cada parámetro formal reemplazado por el argumento correspondiente.
+
+Una vez que admitimos la asignación en nuestro lenguaje de programación, tal definición ya no es adecuada. En particular, la sección [[#section-3.1.3][3.1.3]] argumentó que, en presencia de asignación, una variable ya no puede considerarse meramente un nombre para un valor. Más bien, una variable debe de alguna manera designar un "lugar" en el que se pueden almacenar valores. En nuestro nuevo modelo de evaluación, estos lugares se mantendrán en estructuras llamadas <<i125>> entornos.
+
+Un entorno es una secuencia de <<i148>> marcos. Cada marco es una tabla (posiblemente vacía) de <<i37>> enlaces, que asocian nombres de variables con sus valores correspondientes. (Un solo marco puede contener como máximo un enlace para cualquier variable.) Cada marco también tiene un puntero a su <<i120>> entorno circundante, a menos que, para propósitos de discusión, el marco se considere <<i166>> global. El <<i418>> valor de una variable con respecto a un entorno es el valor dado por el enlace de la variable en el primer marco del entorno que contiene un enlace para esa variable. Si ningún marco en la secuencia especifica un enlace para la variable, entonces se dice que la variable está <<i409>> no enlazada en el entorno.
+
+<<figure-3.1>> Una estructura de entorno simple.
+
+#+begin_example
+            +--------+
+            |      I |
+            | x: 3   |
+            | y: 5   |
+            +--------+
+               ^  ^
+               |  |
+             C |  | D
+ +---------+   |  |   +----------+
+ |      II |   |  |   |      III |
+ | z: 6    +---+  +---+ m: 1     |
+ | x: 7    |          | y: 2     |
+ +---------+          +----------+
+#+end_example
+
+[[figure-3.1][Figura 3.1]] muestra una estructura de entorno simple que consiste en tres marcos, etiquetados I, II y III. En el diagrama, A, B, C y D son punteros a entornos. C y D apuntan al mismo entorno. Las variables ~z~ y ~x~ están enlazadas en el marco II, mientras que ~y~ y ~x~ están enlazadas en el marco I. El valor de ~x~ en el entorno D es 3. El valor de ~x~ con respecto al entorno B también es 3. Esto se determina de la siguiente manera: Examinamos el primer marco en la secuencia (marco III) y no encontramos un enlace para ~x~, así que procedemos al entorno circundante D y encontramos el enlace en el marco I. Por otro lado, el valor de ~x~ en el entorno A es 7, porque el primer marco en la secuencia (marco II) contiene un enlace de ~x~ a 7. Con respecto al entorno A, se dice que el enlace de ~x~ a 7 en el marco II <<i352>> ensombrece el enlace de ~x~ a 3 en el marco I.
+
+El entorno es crucial para el proceso de evaluación, porque determina el contexto en el que se debe evaluar una expresión. De hecho, se podría decir que las expresiones en un lenguaje de programación no tienen, en sí mismas, ningún significado. Más bien, una expresión adquiere un significado sólo con respecto a algún entorno en el que se evalúa. Incluso la interpretación de una expresión tan directa como ~(+ 1 1)~ depende de la comprensión de que uno está operando en un contexto en el que ~+~ es el símbolo para la adición. Por lo tanto, en nuestro modelo de evaluación siempre hablaremos de evaluar una expresión con respecto a algún entorno. Para describir las interacciones con el intérprete, supondremos que hay un entorno global, que consiste en un solo marco (sin entorno circundante) que incluye valores para los símbolos asociados con los procedimientos primitivos. Por ejemplo, la idea de que ~+~ es el símbolo para la adición se captura al decir que el símbolo ~+~ está enlazado en el entorno global al procedimiento primitivo de adición.
+
+*** 3.2.1 Las reglas para la evaluación
+:properties:
+:custom_id: section-3.2.1
+:end:
+
+La especificación general de cómo el intérprete evalúa una combinación permanece igual que cuando la introdujimos por primera vez en la sección [[#section-1.1.3][1.1.3]]:
+
+Para evaluar una combinación:
+
+1. Evalúa las subexpresiones de la combinación.[fn:140]
+
+2. Aplica el valor de la subexpresión del operador a los valores de las subexpresiones de los operandos.
+
+El modelo de entornos de evaluación reemplaza el modelo de sustitución al especificar qué significa aplicar un procedimiento compuesto a argumentos.
+
+En el modelo de entornos de evaluación, un procedimiento es siempre un par que consiste en algún código y un puntero a un entorno. Los procedimientos se crean de una sola manera: evaluando una expresión ~lambda~. Esto produce un procedimiento cuyo código se obtiene del texto de la expresión ~lambda~ y cuyo entorno es el entorno en el que se evaluó la expresión ~lambda~ para producir el procedimiento. Por ejemplo, considera la definición de procedimiento
+
+#+begin_src scheme
+(define (square x)
+  (* x x))
+#+end_src
+
+evaluada en el entorno global. La sintaxis de definición de procedimiento es sólo azúcar sintáctico para una expresión ~lambda~ implícita subyacente. Habría sido equivalente haber usado
+
+#+begin_src scheme
+(define square
+  (lambda (x) (* x x)))
+#+end_src
+
+que evalúa ~(lambda (x) (* x x))~ y enlaza ~square~ al valor resultante, todo en el entorno global.
+
+[[figure-3.2][Figura 3.2]] muestra el resultado de evaluar esta expresión ~define~. El objeto de procedimiento es un par cuyo código especifica que el procedimiento tiene un parámetro formal, a saber ~x~, y un cuerpo de procedimiento ~(* x x)~. La parte del entorno del procedimiento es un puntero al entorno global, ya que ese es el entorno en el que se evaluó la expresión ~lambda~ para producir el procedimiento. Se ha agregado un nuevo enlace, que asocia el objeto de procedimiento con el símbolo ~square~, al marco global. En general, ~define~ crea definiciones agregando enlaces a los marcos.
+
+<<figure-3.2>> Estructura de entorno producida al evaluar ~(define (square x) (* x x))~ en el entorno global.
+
+#+begin_example
+            +----------------------+
+            | other variables      |
+ global --->|                      |
+ env        | square: --+          |
+            +-----------|----------+
+                        |       ^
+ (define (square x)     |       |
+   (* x x))             V       |
+                    .---.---.   |
+                    | O | O-+---+
+                    `-|-^---'
+                      |
+                      V
+                    parameters: x
+                    body: (* x x)
+#+end_example
+
+Ahora que hemos visto cómo se crean los procedimientos, podemos describir cómo se aplican los procedimientos. El modelo de entornos especifica: Para aplicar un procedimiento a argumentos, crea un nuevo entorno que contenga un marco que enlace los parámetros a los valores de los argumentos. El entorno circundante de este marco es el entorno especificado por el procedimiento. Ahora, dentro de este nuevo entorno, evalúa el cuerpo del procedimiento.
+
+Para mostrar cómo se sigue esta regla, [[figure-3.3][Figura 3.3]] ilustra la estructura de entorno creada al evaluar la expresión ~(square 5)~ en el entorno global, donde ~square~ es el procedimiento generado en [[figure-3.2][Figura 3.2]]. Aplicar el procedimiento resulta en la creación de un nuevo entorno, etiquetado E1 en la figura, que comienza con un marco en el que ~x~, el parámetro formal para el procedimiento, está enlazado al argumento 5. El puntero que conduce hacia arriba desde este marco muestra que el entorno circundante del marco es el entorno global. El entorno global se elige aquí, porque este es el entorno que se indica como parte del objeto de procedimiento ~square~. Dentro de E1, evaluamos el cuerpo del procedimiento, ~(* x x)~. Dado que el valor de ~x~ en E1 es 5, el resultado es ~(* 5 5)~, o 25.
+
+<<figure-3.3>> Entorno creado al evaluar ~(square 5)~ en el entorno global.
+
+#+begin_example
+           +------------------------------------+
+           | other variables                    |
+ global -->|                                    |
+ env       | square: --+                        |
+           +-----------|---------------------+--+
+                       |       ^             ^
+ (square 5)            |       |             |
+                       V       |             |
+                   .---.---.   |         +---+--+
+                   | O | O-+---+   E1 -->| x: 5 |
+                   `-|-^---'             +------+
+                     |
+                     V
+                   parameters: x
+                   body: (* x x)
+#+end_example
+
+El modelo de entornos de aplicación de procedimientos puede resumirse mediante dos reglas:
+
+1. Un objeto de procedimiento se aplica a un conjunto de argumentos construyendo un marco, enlazando los parámetros formales del procedimiento a los argumentos de la llamada, y luego evaluando el cuerpo del procedimiento en el contexto del nuevo entorno construido. El nuevo marco tiene como su entorno circundante la parte del entorno del objeto de procedimiento que se está aplicando.
+
+2. Un procedimiento se crea evaluando una expresión ~lambda~ relativa a un entorno dado. El objeto de procedimiento resultante es un par que consiste en el texto de la expresión ~lambda~ y un puntero al entorno en el que se creó el procedimiento.
+
+También especificamos que definir un símbolo usando ~define~ crea un enlace en el marco del entorno actual y asigna al símbolo el valor indicado.[fn:141] Finalmente, especificamos el comportamiento de ~set!~, la operación que nos obligó a introducir el modelo de entornos en primer lugar. Evaluar la expresión '(set! <VARIABLE> <VALUE>)' en algún entorno localiza el enlace de la variable en el entorno y cambia ese enlace para indicar el nuevo valor. Es decir, uno encuentra el primer marco en el entorno que contiene un enlace para la variable y modifica ese marco. Si la variable no está enlazada en el entorno, entonces ~set!~ señala un error.
+
+Estas reglas de evaluación, aunque considerablemente más complejas que el modelo de sustitución, aún son razonablemente directas. Además, el modelo de evaluación, aunque abstracto, proporciona una descripción correcta de cómo el intérprete evalúa expresiones. En [[#section-4][Capítulo 4]] veremos cómo este modelo puede servir como un plano para implementar un intérprete funcional. Las siguientes secciones elaboran los detalles del modelo analizando algunos programas ilustrativos.
+
