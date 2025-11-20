@@ -8,7 +8,7 @@
    mkdir -p temp trash
    ```
 2. **Identify** the target file in `org-castilian/`.
-3. **Define** the `BASENAME` (the filename without extension, e.g., `sicp5-1`).
+3. **Define** the `BASENAME` (the filename without extension, e.g., `sicp1-1`).
 4. **Execute Splitter**:
    ```bash
    python3 scripts/smart_split.py "org-castilian/[basename].org"
