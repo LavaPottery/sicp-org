@@ -1,0 +1,163 @@
+[fn:300] Esta idea fue inventada e implementada por primera vez por Minsky, como parte de la implementación de Lisp para el PDP-1 en el MIT Research Laboratory of Electronics. Fue desarrollada posteriormente por Fenichel y Yochelson (1969) para su uso en la implementación de Lisp para el sistema de tiempo compartido Multics. Más tarde, Baker (1978) desarrolló una versión de "tiempo real" del método, que no requiere que el cálculo se detenga durante la recolección de basura. La idea de Baker fue extendida por Hewitt, Lieberman y Moon (véase Lieberman y Hewitt 1983) para aprovechar el hecho de que algunas estructuras son más volátiles y otras estructuras son más permanentes.
+
+Una técnica alternativa de recolección de basura comúnmente utilizada es el método <<i226>> mark-sweep. Este consiste en rastrear toda la estructura accesible desde los registros de la máquina y marcar cada par que alcanzamos. Luego escaneamos toda la memoria, y cualquier ubicación que no esté marcada es "barrida" como basura y puesta a disposición para su reutilización. Se puede encontrar una discusión completa del método mark-sweep en Allen 1978.
+
+El algoritmo Minsky-Fenichel-Yochelson es el algoritmo dominante en uso para sistemas de memoria grande porque examina solo la parte útil de la memoria. Esto contrasta con mark-sweep, en el cual la fase de barrido debe verificar toda la memoria. Una segunda ventaja de stop-and-copy es que es un recolector de basura <<i69>> compactante. Es decir, al final de la fase de recolección de basura, los datos útiles habrán sido movidos a ubicaciones de memoria consecutivas, con todos los pares de basura comprimidos. Esta puede ser una consideración de rendimiento extremadamente importante en máquinas con memoria virtual, en las cuales los accesos a direcciones de memoria ampliamente separadas pueden requerir operaciones de paginación adicionales.
+
+[fn:301] Esta lista de registros no incluye los registros utilizados por el sistema de asignación de almacenamiento--~root~, ~the-cars~, ~the-cdrs~, y los otros registros que se introducirán en esta sección.
+
+[fn:302] El término /broken heart/ fue acuñado por David Cressey, quien escribió un recolector de basura para MDL, un dialecto de Lisp desarrollado en el MIT durante los primeros años de la década de 1970.
+
+[fn:303] El recolector de basura utiliza el predicado de bajo nivel ~pointer-to-pair?~ en lugar de la operación de estructura de lista ~pair?~ porque en un sistema real puede haber varias cosas que se tratan como pares con fines de recolección de basura. Por ejemplo, en un sistema Scheme que se ajusta al estándar IEEE, un objeto de procedimiento puede implementarse como un tipo especial de "par" que no satisface el predicado ~pair?~. Para propósitos de simulación, ~pointer-to-pair?~ puede implementarse como ~pair?~.
+
+[fn:304] Véase Batali et al. 1982 para más información sobre el chip y el método por el cual fue diseñado.
+
+[fn:305] En nuestro controlador, el despacho está escrito como una secuencia de instrucciones ~test~ y ~branch~. Alternativamente, podría haberse escrito en un estilo dirigido por datos (y en un sistema real probablemente lo habría sido) para evitar la necesidad de realizar pruebas secuenciales y facilitar la definición de nuevos tipos de expresión. Una máquina diseñada para ejecutar Lisp probablemente incluiría una instrucción ~dispatch-on-type~ que ejecutaría eficientemente tales despachos dirigidos por datos.
+
+[fn:306] Este es un punto importante pero sutil en la traducción de algoritmos de un lenguaje procedimental, como Lisp, a un lenguaje de máquina de registros. Como alternativa a guardar solo lo que se necesita, podríamos guardar todos los registros (excepto ~val~) antes de cada llamada recursiva. Esto se llama una disciplina de <<i147>> framed-stack. Esto funcionaría pero podría guardar más registros de los necesarios; esto podría ser una consideración importante en un sistema donde las operaciones de pila son costosas. Guardar registros cuyos contenidos no se necesitarán más tarde también puede retener datos inútiles que de otro modo podrían ser recolectados como basura, liberando espacio para ser reutilizado.
+
+[fn:307] Agregamos a los procedimientos de estructura de datos del evaluador en la sección [[#section-4.1.3][4.1.3]] los siguientes dos procedimientos para manipular listas de argumentos:
+
+#+begin_src scheme
+(define (empty-arglist) '())
+
+(define (adjoin-arg arg arglist)
+  (append arglist (list arg)))
+#+end_src
+
+También usamos un procedimiento de sintaxis adicional para probar el último operando en una combinación:
+
+#+begin_src scheme
+(define (last-operand? ops)
+  (null? (cdr ops)))
+#+end_src
+
+[fn:308] La optimización de tratar el último operando especialmente se conoce como recursión de cola <<i131>> evlis (véase Wand 1980). Podríamos ser algo más eficientes en el bucle de evaluación de argumentos si hiciéramos de la evaluación del primer operando también un caso especial. Esto nos permitiría posponer la inicialización de ~argl~ hasta después de evaluar el primer operando, para evitar guardar ~argl~ en este caso. El compilador en la sección [[#section-5.5][5.5]] realiza esta optimización. (Compare el procedimiento ~construct-arglist~ de la sección [[#section-5.5.3][5.5.3]].)
+
+[fn:309] El orden de evaluación de los operandos en el evaluador metacircular está determinado por el orden de evaluación de los argumentos a ~cons~ en el procedimiento ~list-of-values~ de la sección [[#section-4.1.1][4.1.1]] (véase [[#exercise-4.1][Exercise 4.1]]).
+
+[fn:310] Vimos en la sección [[#section-5.1][5.1]] cómo implementar tal proceso con una máquina de registros que no tenía pila; el estado del proceso se almacenaba en un conjunto fijo de registros.
+
+[fn:311] Esta implementación de recursión de cola en ~ev-sequence~ es una variedad de una técnica de optimización bien conocida utilizada por muchos compiladores. Al compilar un procedimiento que termina con una llamada a procedimiento, se puede reemplazar la llamada por un salto al punto de entrada del procedimiento llamado. Construir esta estrategia en el intérprete, como lo hemos hecho en esta sección, proporciona la optimización de manera uniforme en todo el lenguaje.
+
+[fn:312] Podemos definir ~no-more-exps?~ de la siguiente manera:
+
+#+begin_src scheme
+(define (no-more-exps? seq) (null? seq))
+#+end_src
+
+[fn:313] Esto no es realmente hacer trampa. En una implementación real construida desde cero, usaríamos nuestro evaluador de control explícito para interpretar un programa Scheme que realiza transformaciones a nivel de fuente como ~cond->if~ en una fase de sintaxis que se ejecuta antes de la ejecución.
+
+[fn:314] Aquí asumimos que ~read~ y las diversas operaciones de impresión están disponibles como operaciones primitivas de la máquina, lo cual es útil para nuestra simulación, pero completamente poco realista en la práctica. Estas son en realidad operaciones extremadamente complejas. En la práctica, se implementarían utilizando operaciones de entrada-salida de bajo nivel como transferir caracteres individuales hacia y desde un dispositivo.
+
+Para soportar la operación ~get-global-environment~ definimos
+
+#+begin_src scheme
+(define the-global-environment (setup-environment))
+
+(define (get-global-environment)
+  the-global-environment)
+#+end_src
+
+[fn:315] Hay otros errores que nos gustaría que el intérprete manejara, pero estos no son tan simples. Véase [[#exercise-5.30][Exercise 5.30]].
+
+[fn:316] Podríamos realizar la inicialización de la pila solo después de los errores, pero hacerlo en el bucle del controlador será conveniente para monitorear el rendimiento del evaluador, como se describe a continuación.
+
+[fn:317] Lamentablemente, este es el estado normal de las cosas en los sistemas de lenguajes convencionales basados en compiladores como C. En UNIX(tm) el sistema "vuelca el núcleo", y en DOS/Windows(tm) se vuelve catatónico. El Macintosh(tm) muestra una imagen de una bomba explotando y te ofrece la oportunidad de reiniciar la computadora--si tienes suerte.
+
+[fn:318] Esta es una afirmación teórica. No estamos afirmando que las rutas de datos del evaluador sean un conjunto particularmente conveniente o eficiente de rutas de datos para una computadora de propósito general. Por ejemplo, no son muy buenas para implementar cálculos de punto flotante de alto rendimiento o cálculos que manipulan intensivamente vectores de bits.
+
+[fn:319] En realidad, la máquina que ejecuta código compilado puede ser más simple que la máquina intérprete, porque no usaremos los registros ~exp~ y ~unev~. El intérprete usaba estos para contener piezas de expresiones no evaluadas. Sin embargo, con el compilador, estas expresiones se construyen en el código compilado que la máquina de registros ejecutará. Por la misma razón, no necesitamos las operaciones de máquina que tratan con la sintaxis de expresiones. Pero el código compilado usará algunas operaciones de máquina adicionales (para representar objetos de procedimiento compilados) que no aparecieron en la máquina evaluadora de control explícito.
+
+[fn:320] Observe, sin embargo, que nuestro compilador es un programa Scheme, y los procedimientos de sintaxis que utiliza para manipular expresiones son los procedimientos Scheme reales utilizados con el evaluador metacircular. Para el evaluador de control explícito, en contraste, asumimos que las operaciones de sintaxis equivalentes estaban disponibles como operaciones para la máquina de registros. (Por supuesto, cuando simulamos la máquina de registros en Scheme, usamos los procedimientos Scheme reales en nuestra simulación de máquina de registros.)
+
+[fn:321] Este procedimiento utiliza una característica de Lisp llamada <<i30>> backquote (o <<i311>> quasiquote) que es útil para construir listas. Preceder una lista con un símbolo de backquote es muy similar a citarla, excepto que cualquier cosa en la lista que esté marcada con una coma se evalúa.
+
+Por ejemplo, si el valor de ~linkage~ es el símbolo ~branch25~, entonces la expresión ~'((goto (label ,linkage)))~ se evalúa a la lista ~((goto (label branch25)))~. De manera similar, si el valor de ~x~ es la lista ~(a b c)~, entonces ~'(1 2 ,(car x))~ se evalúa a la lista ~(1 2 a)~.
+
+[fn:322] No podemos simplemente usar las etiquetas ~true-branch~, ~false-branch~ y ~after-if~ como se muestra arriba, porque podría haber más de un ~if~ en el programa. El compilador utiliza el procedimiento ~make-label~ para generar etiquetas. ~make-label~ toma un símbolo como argumento y devuelve un nuevo símbolo que comienza con el símbolo dado. Por ejemplo, llamadas sucesivas a ~(make-label 'a)~ devolverían ~a1~, ~a2~, y así sucesivamente. ~make-label~ puede implementarse de manera similar a la generación de nombres de variables únicos en el lenguaje de consultas, de la siguiente manera:
+
+#+begin_src scheme
+(define label-counter 0)
+
+(define (new-label-number)
+  (set! label-counter (+ 1 label-counter))
+  label-counter)
+
+(define (make-label name)
+  (string->symbol
+   (string-append (symbol->string name)
+                  (number->string (new-label-number)))))
+#+end_src
+
+[fn:323] Necesitamos operaciones de máquina para implementar una estructura de datos para representar procedimientos compilados, análoga a la estructura para procedimientos compuestos descrita en la sección [[#section-4.1.3][4.1.3]]:
+
+#+begin_src scheme
+(define (make-compiled-procedure entry env)
+  (list 'compiled-procedure entry env))
+
+(define (compiled-procedure? proc)
+  (tagged-list? proc 'compiled-procedure))
+
+(define (compiled-procedure-entry c-proc) (cadr c-proc))
+
+(define (compiled-procedure-env c-proc) (caddr c-proc))
+#+end_src
+
+[fn:324] En realidad, señalamos un error cuando el objetivo no es ~val~ y el enlace es ~return~, ya que el único lugar donde solicitamos enlaces ~return~ es al compilar procedimientos, y nuestra convención es que los procedimientos devuelven sus valores en ~val~.
+
+[fn:325] Hacer que un compilador genere código recursivo de cola podría parecer una idea sencilla. Pero la mayoría de los compiladores para lenguajes comunes, incluidos C y Pascal, no hacen esto, y por lo tanto estos lenguajes no pueden representar procesos iterativos solo en términos de llamadas a procedimientos. La dificultad con la recursión de cola en estos lenguajes es que sus implementaciones usan la pila para almacenar argumentos de procedimientos y variables locales, así como direcciones de retorno. Las implementaciones de Scheme descritas en este libro almacenan argumentos y variables en memoria para ser recolectados como basura. La razón para usar la pila para variables y argumentos es que evita la necesidad de recolección de basura en lenguajes que de otro modo no la requerirían, y generalmente se cree que es más eficiente. Los compiladores sofisticados de Lisp pueden, de hecho, usar la pila para argumentos sin destruir la recursión de cola. (Véase Hanson 1990 para una descripción.) También hay cierto debate sobre si la asignación de pila es realmente más eficiente que la recolección de basura en primer lugar, pero los detalles parecen depender de puntos finos de la arquitectura de computadoras. (Véase Appel 1987 y Miller y Rozas 1994 para puntos de vista opuestos sobre este tema.)
+
+[fn:326] La variable ~all-regs~ está vinculada a la lista de nombres de todos los registros:
+
+#+begin_src scheme
+(define all-regs '(env proc val argl continue))
+#+end_src
+
+[fn:327] Observe que ~preserving~ llama a ~append~ con tres argumentos. Aunque la definición de ~append~ mostrada en este libro acepta solo dos argumentos, Scheme proporciona estándarmente un procedimiento ~append~ que toma un número arbitrario de argumentos.
+
+[fn:328] Hemos usado el mismo símbolo ~+~ aquí para denotar tanto el procedimiento del lenguaje fuente como la operación de la máquina. En general no habrá una correspondencia uno a uno entre las primitivas del lenguaje fuente y las primitivas de la máquina.
+
+[fn:329] Hacer de las primitivas palabras reservadas es en general una mala idea, ya que un usuario no puede entonces reenlazar estos nombres a diferentes procedimientos. Además, si agregamos palabras reservadas a un compilador que está en uso, los programas existentes que definen procedimientos con estos nombres dejarán de funcionar. Véase [[#exercise-5.44][Exercise 5.44]] para ideas sobre cómo evitar este problema.
+
+[fn:330] Esto no es cierto si permitimos definiciones internas, a menos que las eliminemos por escaneo. Véase [[#exercise-5.43][Exercise 5.43]].
+
+[fn:331] Esta es la modificación a la búsqueda de variables requerida si implementamos el método de escaneo para eliminar definiciones internas ([[#exercise-5.43][Exercise 5.43]]). Necesitaremos eliminar estas definiciones para que el direccionamiento léxico funcione.
+
+[fn:332] Las direcciones léxicas no pueden usarse para acceder a variables en el entorno global, porque estos nombres pueden definirse y redefinirse interactivamente en cualquier momento. Con las definiciones internas eliminadas por escaneo, como en [[#exercise-5.43][Exercise 5.43]], las únicas definiciones que el compilador ve son aquellas en el nivel superior, que actúan sobre el entorno global. La compilación de una definición no hace que el nombre definido se ingrese en el entorno de tiempo de compilación.
+
+[fn:333] Por supuesto, los procedimientos compilados así como los procedimientos interpretados son compuestos (no primitivos). Para compatibilidad con la terminología utilizada en el evaluador de control explícito, en esta sección usaremos "compuesto" para significar interpretado (en oposición a compilado).
+
+[fn:334] Ahora que la máquina evaluadora comienza con un ~branch~, siempre debemos inicializar el registro ~flag~ antes de iniciar la máquina evaluadora. Para iniciar la máquina en su bucle ordinario de leer-evaluar-imprimir, podríamos usar
+
+#+begin_src scheme
+(define (start-eceval)
+  (set! the-global-environment (setup-environment))
+  (set-register-contents! eceval 'flag false)
+  (start eceval))
+#+end_src
+
+[fn:335] Dado que un procedimiento compilado es un objeto que el sistema puede intentar imprimir, también modificamos la operación de impresión del sistema ~user-print~ (de la sección [[#section-4.1.4][4.1.4]]) para que no intente imprimir los componentes de un procedimiento compilado:
+
+#+begin_src scheme
+(define (user-print object)
+  (cond ((compound-procedure? object)
+         (display (list 'compound-procedure
+                        (procedure-parameters object)
+                        (procedure-body object)
+                        '<procedure-env>)))
+        ((compiled-procedure? object)
+         (display '<compiled-procedure>))
+        (else (display object))))
+#+end_src
+
+[fn:336] Podemos hacerlo aún mejor extendiendo el compilador para permitir que el código compilado llame a procedimientos interpretados. Véase [[#exercise-5.47][Exercise 5.47]].
+
+[fn:337] Independientemente de la estrategia de ejecución, incurrimos en una sobrecarga significativa si insistimos en que los errores encontrados en la ejecución de un programa de usuario sean detectados y señalados, en lugar de permitir que maten el sistema o produzcan respuestas incorrectas. Por ejemplo, una referencia de array fuera de límites puede detectarse verificando la validez de la referencia antes de realizarla. Sin embargo, la sobrecarga de la verificación puede ser muchas veces el costo de la referencia del array en sí, y un programador debe sopesar la velocidad contra la seguridad al determinar si tal verificación es deseable. Un buen compilador debería poder producir código con tales verificaciones, debería evitar verificaciones redundantes y debería permitir a los programadores controlar el alcance y tipo de verificación de errores en el código compilado.
+
+Los compiladores para lenguajes populares, como C y C++, ponen apenas operaciones de verificación de errores en el código en ejecución, para hacer que las cosas se ejecuten lo más rápido posible. Como resultado, recae en los programadores proporcionar explícitamente la verificación de errores. Desafortunadamente, las personas a menudo descuidan hacer esto, incluso en aplicaciones críticas donde la velocidad no es una restricción. Sus programas llevan vidas rápidas y peligrosas. Por ejemplo, el notorio "Worm" que paralizó el Internet en 1988 explotó la falla del sistema operativo UNIX(tm) de verificar si el búfer de entrada se había desbordado en el demonio finger. (Véase Spafford 1989.)
+
+[fn:338] Por supuesto, con cualquiera de las estrategias de interpretación o compilación, también debemos implementar para la nueva máquina la asignación de almacenamiento, entrada y salida, y todas las diversas operaciones que tomamos como "primitivas" en nuestra discusión del evaluador y el compilador. Una estrategia para minimizar el trabajo aquí es escribir tantas de estas operaciones como sea posible en Lisp y luego compilarlas para la nueva máquina. En última instancia, todo se reduce a un pequeño núcleo (como la recolección de basura y el mecanismo para aplicar primitivas de máquina reales) que se codifica manualmente para la nueva máquina.
+
+[fn:339] Esta estrategia conduce a pruebas divertidas de corrección del compilador, como verificar si la compilación de un programa en la nueva máquina, usando el compilador compilado, es idéntica a la compilación del programa en el sistema Lisp original. Rastrear la fuente de las diferencias es divertido pero a menudo frustrante, porque los resultados son extremadamente sensibles a detalles minúsculos.
+
