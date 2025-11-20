@@ -1,0 +1,275 @@
+[fn:200] Esta es una pequeña reflexión, en Lisp, de las dificultades que los lenguajes convencionales fuertemente tipados como Pascal tienen para lidiar con procedimientos de orden superior. En tales lenguajes, el programador debe especificar los tipos de datos de los argumentos y el resultado de cada procedimiento: número, valor lógico, secuencia, etc. En consecuencia, no podríamos expresar una abstracción como "mapear un procedimiento dado ~proc~ sobre todos los elementos en una secuencia" mediante un único procedimiento de orden superior como ~stream-map~. Más bien, necesitaríamos un procedimiento de mapeo diferente para cada combinación diferente de tipos de datos de argumento y resultado que pudiera especificarse para un ~proc~. Mantener una noción práctica de "tipo de datos" en presencia de procedimientos de orden superior plantea muchos problemas difíciles. Una forma de tratar este problema se ilustra con el lenguaje ML (Gordon, Milner, and Wadsworth 1979), cuyos "tipos de datos polimórficos" incluyen plantillas para transformaciones de orden superior entre tipos de datos. Además, los tipos de datos para la mayoría de los procedimientos en ML nunca se declaran explícitamente por el programador. En su lugar, ML incluye un <<i407>> mecanismo de inferencia de tipos que usa información del entorno para deducir los tipos de datos para procedimientos recién definidos.
+
+[fn:201] De manera similar en física, cuando observamos una partícula en movimiento, decimos que la posición (estado) de la partícula está cambiando. Sin embargo, desde la perspectiva de la línea de mundo de la partícula en el espacio-tiempo no hay cambio involucrado.
+
+[fn:202] John Backus, el inventor de Fortran, dio gran visibilidad a la programación funcional cuando le fue otorgado el premio ACM Turing en 1978. Su discurso de aceptación (Backus 1978) defendió firmemente el enfoque funcional. Una buena visión general de la programación funcional se encuentra en Henderson 1980 y en Darlington, Henderson, and Turner 1982.
+
+[fn:203] Observa que, para cualesquiera dos flujos, en general hay más de un orden aceptable de intercalación. Por lo tanto, técnicamente, "merge" es una relación más que una función: la respuesta no es una función determinista de las entradas. Ya mencionamos ([fn:39]) que el no determinismo es esencial al tratar con concurrencia. La relación merge ilustra el mismo no determinismo esencial, desde la perspectiva funcional. En la sección [[#section-4.3][4.3]], examinaremos el no determinismo desde otro punto de vista.
+
+[fn:204] El modelo de objetos aproxima el mundo dividiéndolo en piezas separadas. El modelo funcional no modulariza a lo largo de los límites de los objetos. El modelo de objetos es útil cuando el estado no compartido de los "objetos" es mucho mayor que el estado que comparten. Un ejemplo de un lugar donde falla el punto de vista de objetos es la mecánica cuántica, donde pensar en las cosas como partículas individuales conduce a paradojas y confusiones. Unificar la visión de objetos con la visión funcional puede tener poco que ver con la programación, sino más bien con cuestiones epistemológicas fundamentales.
+
+[fn:205] La misma idea es omnipresente en toda la ingeniería. Por ejemplo, los ingenieros eléctricos usan muchos lenguajes diferentes para describir circuitos. Dos de estos son el lenguaje de <<i253>> redes eléctricas y el lenguaje de <<i385>> sistemas eléctricos. El lenguaje de redes enfatiza el modelado físico de dispositivos en términos de elementos eléctricos discretos. Los objetos primitivos del lenguaje de redes son componentes eléctricos primitivos como resistencias, condensadores, inductores y transistores, que se caracterizan en términos de variables físicas llamadas voltaje y corriente. Al describir circuitos en el lenguaje de redes, el ingeniero se ocupa de las características físicas de un diseño. En contraste, los objetos primitivos del lenguaje de sistemas son módulos de procesamiento de señales como filtros y amplificadores. Solo es relevante el comportamiento funcional de los módulos, y las señales se manipulan sin preocupación por su realización física como voltajes y corrientes. El lenguaje de sistemas se erige sobre el lenguaje de redes, en el sentido de que los elementos de los sistemas de procesamiento de señales se construyen a partir de redes eléctricas. Aquí, sin embargo, las preocupaciones están en la organización a gran escala de dispositivos eléctricos para resolver un problema de aplicación dado; se asume la viabilidad física de las partes. Esta colección en capas de lenguajes es otro ejemplo de la técnica de diseño estratificado ilustrada por el lenguaje de imágenes de la sección [[#section-2.2.4][2.2.4]].
+
+[fn:206] Las características más importantes que nuestro evaluador omite son mecanismos para manejar errores y apoyar la depuración. Para una discusión más extensa de evaluadores, ver Friedman, Wand, and Haynes 1992, que da una exposición de lenguajes de programación que procede a través de una secuencia de evaluadores escritos en Scheme.
+
+[fn:207] Aun así, quedarán aspectos importantes del proceso de evaluación que no son elucidados por nuestro evaluador. Los más importantes de estos son los mecanismos detallados mediante los cuales los procedimientos llaman a otros procedimientos y devuelven valores a sus llamadores. Abordaremos estos problemas en el [[#section-5][Capítulo 5]], donde examinaremos más de cerca el proceso de evaluación implementando el evaluador como una máquina de registros simple.
+
+[fn:208] Si nos concedemos la capacidad de aplicar primitivas, entonces ¿qué queda por implementar en el evaluador? El trabajo del evaluador no es especificar las primitivas del lenguaje, sino más bien proporcionar el tejido conectivo: los medios de combinación y los medios de abstracción, que vincula una colección de primitivas para formar un lenguaje. Específicamente:
+
+- El evaluador nos permite tratar con expresiones anidadas. Por ejemplo, aunque simplemente aplicar primitivas sería suficiente para evaluar la expresión ~(+ 1 6)~, no es adecuado para manejar ~(+ 1 (* 2 3))~. En lo que respecta al procedimiento primitivo ~+~, sus argumentos deben ser números, y se ahogaría si le pasáramos la expresión ~(* 2 3)~ como argumento. Un papel importante del evaluador es coreografiar la composición de procedimientos de modo que ~(* 2 3)~ se reduzca a 6 antes de ser pasado como argumento a ~+~.
+
+- El evaluador nos permite usar variables. Por ejemplo, el procedimiento primitivo para la adición no tiene forma de tratar con expresiones como ~(+ x 1)~. Necesitamos un evaluador para llevar un registro de las variables y obtener sus valores antes de invocar los procedimientos primitivos.
+
+- El evaluador nos permite definir procedimientos compuestos. Esto implica llevar un registro de las definiciones de procedimientos, saber cómo usar estas definiciones al evaluar expresiones, y proporcionar un mecanismo que permita a los procedimientos aceptar argumentos.
+
+- El evaluador proporciona las formas especiales, que deben ser evaluadas de manera diferente a las llamadas de procedimiento.
+
+[fn:209] Podríamos haber simplificado la cláusula ~application?~ en ~eval~ usando ~map~ (y estipulando que ~operands~ devuelve una lista) en lugar de escribir un procedimiento ~list-of-values~ explícito. Elegimos no usar ~map~ aquí para enfatizar el hecho de que el evaluador puede ser implementado sin ningún uso de procedimientos de orden superior (y por lo tanto podría ser escrito en un lenguaje que no tiene procedimientos de orden superior), aunque el lenguaje que soporta incluirá procedimientos de orden superior.
+
+[fn:210] En este caso, el lenguaje que se está implementando y el lenguaje de implementación son el mismo. La contemplación del significado de ~true?~ aquí produce una expansión de la conciencia sin el abuso de sustancias.
+
+[fn:211] Esta implementación de ~define~ ignora un problema sutil en el manejo de definiciones internas, aunque funciona correctamente en la mayoría de los casos. Veremos cuál es el problema y cómo resolverlo en la sección [[#section-4.1.6][4.1.6]].
+
+[fn:212] Como dijimos cuando introdujimos ~define~ y ~set!~, estos valores dependen de la implementación en Scheme, es decir, el implementador puede elegir qué valor devolver.
+
+[fn:213] Como se mencionó en la sección [[#section-2.3.1][2.3.1]], el evaluador ve una expresión entrecomillada como una lista que comienza con ~quote~, incluso si la expresión se escribe con la comilla. Por ejemplo, la expresión ~'a~ sería vista por el evaluador como ~(quote a)~. Ver [[#exercise-2.55][Ejercicio 2.55]].
+
+[fn:214] El valor de una expresión ~if~ cuando el predicado es falso y no hay alternativa no está especificado en Scheme; hemos elegido aquí hacerlo falso. Apoyaremos el uso de las variables ~true~ y ~false~ en expresiones a ser evaluadas vinculándolas en el entorno global. Ver sección [[#section-4.1.4][4.1.4]].
+
+[fn:215] Estos selectores para una lista de expresiones, y los correspondientes para una lista de operandos, no están destinados como una abstracción de datos. Se introducen como nombres mnemotécnicos para las operaciones básicas de lista con el fin de hacer más fácil entender el evaluador de control explícito en la sección [[#section-5.4][5.4]].
+
+[fn:216] El valor de una expresión ~cond~ cuando todos los predicados son falsos y no hay cláusula ~else~ no está especificado en Scheme; hemos elegido aquí hacerlo falso.
+
+[fn:217] Los sistemas Lisp prácticos proporcionan un mecanismo que permite a un usuario agregar nuevas expresiones derivadas y especificar su implementación como transformaciones sintácticas sin modificar el evaluador. Tal transformación definida por el usuario se llama <<i224>> macro. Aunque es fácil agregar un mecanismo elemental para definir macros, el lenguaje resultante tiene problemas sutiles de conflicto de nombres. Ha habido mucha investigación sobre mecanismos para la definición de macros que no causan estas dificultades. Ver, por ejemplo, Kohlbecker 1986, Clinger and Rees 1991, y Hanson 1991.
+
+[fn:218] Los marcos no son realmente una abstracción de datos en el siguiente código: ~Set-variable-value!~ y ~define-variable!~ usan ~set-car!~ para modificar directamente los valores en un marco. El propósito de los procedimientos de marco es hacer que los procedimientos de manipulación de entorno sean fáciles de leer.
+
+[fn:219] El inconveniente de esta representación (así como la variante en el [[#exercise-4.11][Ejercicio 4.11]]) es que el evaluador puede tener que buscar en muchos marcos para encontrar el enlace de una variable dada. (Tal enfoque se conoce como <<i102>> enlace profundo.) Una forma de evitar esta ineficiencia es hacer uso de una estrategia llamada <<i205>> direccionamiento léxico, que se discutirá en la sección [[#section-5.5.6][5.5.6]].
+
+[fn:220] Cualquier procedimiento definido en el Lisp subyacente puede ser usado como primitiva para el evaluador metacircular. El nombre de una primitiva instalada en el evaluador no necesita ser el mismo que el nombre de su implementación en el Lisp subyacente; los nombres son iguales aquí porque el evaluador metacircular implementa Scheme en sí mismo. Así, por ejemplo, podríamos poner ~(list 'first car)~ o ~(list 'square (lambda (x) (* x x)))~ en la lista de ~primitive-procedures~.
+
+[fn:221] ~Apply-in-underlying-scheme~ es el procedimiento ~apply~ que hemos usado en capítulos anteriores. El procedimiento ~apply~ del evaluador metacircular (sección [[#section-4.1.1][4.1.1]]) modela el funcionamiento de esta primitiva. Tener dos cosas diferentes llamadas ~apply~ lleva a un problema técnico al ejecutar el evaluador metacircular, porque definir el ~apply~ del evaluador metacircular enmascarará la definición de la primitiva. Una forma de evitar esto es renombrar el ~apply~ metacircular para evitar conflicto con el nombre del procedimiento primitivo. En su lugar, hemos asumido que hemos guardado una referencia al ~apply~ subyacente haciendo
+
+#+begin_src scheme
+(define apply-in-underlying-scheme apply)
+#+end_src
+
+antes de definir el ~apply~ metacircular. Esto nos permite acceder a la versión original de ~apply~ bajo un nombre diferente.
+
+[fn:222] El procedimiento primitivo ~read~ espera entrada del usuario, y devuelve la siguiente expresión completa que se escribe. Por ejemplo, si el usuario escribe ~(+ 23 x)~, ~read~ devuelve una lista de tres elementos que contiene el símbolo ~+~, el número 23, y el símbolo ~x~. Si el usuario escribe ~'x~, ~read~ devuelve una lista de dos elementos que contiene el símbolo ~quote~ y el símbolo ~x~.
+[fn:223] El hecho de que las máquinas se describan en Lisp es irrelevante. Si le damos a nuestro evaluador un programa Lisp que se comporta como un evaluador para algún otro lenguaje, digamos C, el evaluador Lisp emulará el evaluador C, que a su vez puede emular cualquier máquina descrita como un programa C. De manera similar, escribir un evaluador Lisp en C produce un programa C que puede ejecutar cualquier programa Lisp. La idea profunda aquí es que cualquier evaluador puede emular a cualquier otro. Por lo tanto, la noción de "lo que en principio se puede calcular" (ignorando las cuestiones prácticas de tiempo y memoria requeridos) es independiente del lenguaje o la computadora, y en su lugar refleja una noción subyacente de <<i76>> computabilidad. Esto fue demostrado por primera vez de manera clara por Alan M. Turing (1912-1954), cuyo artículo de 1936 sentó las bases de la informática teórica. En el artículo, Turing presentó un modelo computacional simple, ahora conocido como <<i403>> máquina de Turing, y argumentó que cualquier "proceso efectivo" puede ser formulado como un programa para tal máquina. (Este argumento se conoce como la <<i59>> tesis de Church-Turing.) Turing luego implementó una máquina universal, es decir, una máquina de Turing que se comporta como un evaluador para programas de máquina de Turing. Usó este marco para demostrar que hay problemas bien planteados que no pueden ser calculados por máquinas de Turing (ver [[#exercise-4.15][Ejercicio 4.15]]), y por lo tanto por implicación no pueden ser formulados como "procesos efectivos". Turing continuó haciendo contribuciones fundamentales a la informática práctica también. Por ejemplo, inventó la idea de estructurar programas usando subrutinas de propósito general. Ver Hodges 1983 para una biografía de Turing.
+
+[fn:224] Algunas personas encuentran contraintuitivo que un evaluador, que está implementado por un procedimiento relativamente simple, pueda emular programas que son más complejos que el evaluador mismo. La existencia de una máquina evaluadora universal es una propiedad profunda y maravillosa de la computación. La <<i324>> teoría de la recursión, una rama de la lógica matemática, se ocupa de los límites lógicos de la computación. El hermoso libro de Douglas Hofstadter 'Go"del, Escher, Bach' (1979) explora algunas de estas ideas.
+
+[fn:225] Advertencia: Esta primitiva ~eval~ no es idéntica al procedimiento ~eval~ que implementamos en la sección [[#section-4.1.1][4.1.1]], porque usa entornos Scheme /reales/ en lugar de las estructuras de entorno de ejemplo que construimos en la sección [[#section-4.1.3][4.1.3]]. Estos entornos reales no pueden ser manipulados por el usuario como listas ordinarias; deben ser accedidos mediante ~eval~ u otras operaciones especiales. De manera similar, la primitiva ~apply~ que vimos antes no es idéntica al ~apply~ metacircular, porque usa procedimientos Scheme reales en lugar de los objetos de procedimiento que construimos en las secciones [[#section-4.1.3][4.1.3]] y [[#section-4.1.4][4.1.4]].
+
+[fn:226] La implementación MIT de Scheme incluye ~eval~, así como un símbolo ~user-initial-environment~ que está vinculado al entorno inicial en el que se evalúan las expresiones de entrada del usuario.
+
+[fn:227] Aunque estipulamos que ~halts?~ recibe un objeto de procedimiento, observa que este razonamiento sigue aplicándose incluso si ~halts?~ puede obtener acceso al texto del procedimiento y su entorno. Este es el célebre <<i172>> teorema de la parada de Turing, que dio el primer ejemplo claro de un <<i256>> problema no computable, es decir, una tarea bien planteada que no puede ser llevada a cabo como un procedimiento computacional.
+
+[fn:228] Querer que los programas no dependan de este mecanismo de evaluación es la razón del comentario "la gerencia no es responsable" en [fn:28] del [[#section-1][Capítulo 1]]. Al insistir en que las definiciones internas vienen primero y no se usan entre sí mientras se están evaluando las definiciones, el estándar IEEE para Scheme deja a los implementadores alguna elección en el mecanismo usado para evaluar estas definiciones. La elección de una regla de evaluación en lugar de otra aquí puede parecer un problema pequeño, afectando solo la interpretación de programas "mal formados". Sin embargo, veremos en la sección [[#section-5.5.6][5.5.6]] que moverse a un modelo de alcance simultáneo para definiciones internas evita algunas dificultades desagradables que de otro modo surgirían al implementar un compilador.
+
+[fn:229] El estándar IEEE para Scheme permite diferentes estrategias de implementación especificando que depende del programador obedecer esta restricción, no de la implementación hacerla cumplir. Algunas implementaciones de Scheme, incluyendo MIT Scheme, usan la transformación mostrada arriba. Por lo tanto, algunos programas que no obedecen esta restricción de hecho se ejecutarán en tales implementaciones.
+
+[fn:230] Los implementadores MIT de Scheme apoyan a Alyssa con los siguientes fundamentos: Eva tiene razón en principio - las definiciones deben considerarse simultáneas. Pero parece difícil implementar un mecanismo general y eficiente que haga lo que Eva requiere. En ausencia de tal mecanismo, es mejor generar un error en los casos difíciles de definiciones simultáneas (la noción de Alyssa) que producir una respuesta incorrecta (como Ben lo tendría).
+
+[fn:231] Este ejemplo ilustra un truco de programación para formular procedimientos recursivos sin usar ~define~. El truco más general de este tipo es el <<i271>> operador Y, que puede ser usado para dar una implementación de "cálculo lambda puro" de la recursión. (Ver Stoy 1977 para detalles sobre el cálculo lambda, y Gabriel 1988 para una exposición del operador Y en Scheme.)
+
+[fn:232] Esta técnica es una parte integral del proceso de compilación, que discutiremos en el [[#section-5][Capítulo 5]]. Jonathan Rees escribió un intérprete Scheme como este alrededor de 1982 para el proyecto T (Rees and Adams 1982). Marc Feeley (1986) (ver también Feeley and Lapalme 1987) inventó independientemente esta técnica en su tesis de maestría.
+
+[fn:233] Sin embargo, hay una parte importante de la búsqueda de variables que /sí/ puede hacerse como parte del análisis sintáctico. Como mostraremos en la sección [[#section-5.5.6][5.5.6]], se puede determinar la posición en la estructura del entorno donde se encontrará el valor de la variable, evitando así la necesidad de escanear el entorno en busca de la entrada que coincide con la variable.
+
+[fn:234] Ver [[#exercise-4.23][Ejercicio 4.23]] para obtener información sobre el procesamiento de secuencias.
+
+[fn:235] Snarf: "Agarrar, especialmente un documento o archivo grande con el propósito de usarlo con o sin el permiso del propietario." Snarf down: "Snarf, a veces con la connotación de absorber, procesar o entender." (Estas definiciones fueron snarfed de Steele et al. 1983. Ver también Raymond 1993.)
+
+[fn:236] La diferencia entre la terminología "perezosa" y la terminología de "orden normal" es algo difusa. Generalmente, "perezoso" se refiere a los mecanismos de evaluadores particulares, mientras que "orden normal" se refiere a la semántica de los lenguajes, independientemente de cualquier estrategia de evaluación particular. Pero esta no es una distinción firme, y las dos terminologías a menudo se usan indistintamente.
+
+[fn:237] La terminología "estricto" versus "no estricto" significa esencialmente lo mismo que "orden aplicativo" versus "orden normal", excepto que se refiere a procedimientos y argumentos individuales en lugar del lenguaje en su conjunto. En una conferencia sobre lenguajes de programación podrías escuchar a alguien decir, "El lenguaje de orden normal Hassle tiene ciertas primitivas estrictas. Otros procedimientos toman sus argumentos por evaluación perezosa."
+
+[fn:238] La palabra <<i394>> thunk fue inventada por un grupo de trabajo informal que estaba discutiendo la implementación de llamada por nombre en Algol 60. Observaron que la mayor parte del análisis de ("pensar sobre") la expresión podría hacerse en tiempo de compilación; por lo tanto, en tiempo de ejecución, la expresión ya habría sido "pensada" (Ingerman et al. 1960).
+
+[fn:239] Esto es análogo al uso de ~force~ en los objetos retrasados que se introdujeron en el [[#section-3][Capítulo 3]] para representar flujos. La diferencia crítica entre lo que estamos haciendo aquí y lo que hicimos en el [[#section-3][Capítulo 3]] es que estamos incorporando el retraso y el forzado en el evaluador, y por lo tanto haciendo esto uniforme y automático en todo el lenguaje.
+
+[fn:240] La evaluación perezosa combinada con memoización a veces se conoce como <<i51>> paso de argumentos por necesidad, en contraste con el <<i48>> paso de argumentos por nombre. (La llamada por nombre, introducida en Algol 60, es similar a la evaluación perezosa sin memoización.) Como diseñadores de lenguajes, podemos construir nuestro evaluador para memoizar, no memoizar, o dejar esto como una opción para los programadores ([[#exercise-4.31][Ejercicio 4.31]]). Como podrías esperar del [[#section-3][Capítulo 3]], estas elecciones plantean problemas que se vuelven sutiles y confusos en presencia de asignaciones. (Ver [[#exercise-4.27][Ejercicio 4.27]] y [[#exercise-4.29][Ejercicio 4.29]].) Un excelente artículo de Clinger (1982) intenta aclarar las múltiples dimensiones de confusión que surgen aquí.
+
+[fn:241] Observa que también borramos el ~env~ del thunk una vez que se ha calculado el valor de la expresión. Esto no hace ninguna diferencia en los valores devueltos por el intérprete. Sin embargo, ayuda a ahorrar espacio, porque eliminar la referencia del thunk al ~env~ una vez que ya no se necesita permite que esta estructura sea <<i160>> recolectada como basura y su espacio reciclado, como discutiremos en la sección [[#section-5.3][5.3]].
+
+De manera similar, podríamos haber permitido que los entornos innecesarios en los objetos retrasados memoizados de la sección [[#section-3.5.1][3.5.1]] sean recolectados como basura, haciendo que ~memo-proc~ haga algo como ~(set! proc '())~ para descartar el procedimiento ~proc~ (que incluye el entorno en el que se evaluó el ~delay~) después de almacenar su valor.
+
+[fn:242] Este ejercicio demuestra que la interacción entre la evaluación perezosa y los efectos secundarios puede ser muy confusa. Esto es justo lo que podrías esperar de la discusión en el [[#section-3][Capítulo 3]].
+
+[fn:243] Este es precisamente el problema con el procedimiento ~unless~, como en el [[#exercise-4.26][Ejercicio 4.26]].
+
+[fn:244] Esta es la representación procedimental descrita en el [[#exercise-2.4][Ejercicio 2.4]]. Esencialmente cualquier representación procedimental (por ejemplo, una implementación de paso de mensajes) funcionaría igual de bien. Observa que podemos instalar estas definiciones en el evaluador perezoso simplemente escribiéndolas en el bucle del controlador. Si originalmente habíamos incluido ~cons~, ~car~, y ~cdr~ como primitivas en el entorno global, serán redefinidas. (Ver también [[#exercise-4.33][Ejercicio 4.33]] y [[#exercise-4.34][Ejercicio 4.34]].)
+
+[fn:245] Esto nos permite crear versiones retrasadas de tipos más generales de estructuras de lista, no solo secuencias. Hughes 1990 discute algunas aplicaciones de "árboles perezosos".
+
+[fn:246] Asumimos que hemos definido previamente un procedimiento ~prime?~ que prueba si los números son primos. Incluso con ~prime?~ definido, el procedimiento ~prime-sum-pair~ puede parecer sospechosamente parecido al intento inútil de "pseudo-Lisp" de definir la función raíz cuadrada, que describimos al principio de la sección [[#section-1.1.7][1.1.7]]. De hecho, un procedimiento de raíz cuadrada en esas líneas puede ser formulado como un programa no determinista. Al incorporar un mecanismo de búsqueda en el evaluador, estamos erosionando la distinción entre descripciones puramente declarativas y especificaciones imperativas de cómo calcular respuestas. Iremos aún más lejos en esta dirección en la sección [[#section-4.4][4.4]].
+
+[fn:247] La idea de ~amb~ para programación no determinista fue descrita por primera vez en 1961 por John McCarthy (ver McCarthy 1967).
+
+[fn:248] En realidad, la distinción entre devolver no determinísticamente una sola elección y devolver todas las elecciones depende en cierta medida de nuestro punto de vista. Desde la perspectiva del código que usa el valor, la elección no determinista devuelve un solo valor. Desde la perspectiva del programador que diseña el código, la elección no determinista potencialmente devuelve todos los valores posibles, y la computación se ramifica de modo que cada valor se investiga por separado.
+
+[fn:249] Uno podría objetar que este es un mecanismo desesperadamente ineficiente. Podría requerir millones de procesadores para resolver algún problema fácilmente enunciado de esta manera, y la mayor parte del tiempo la mayoría de esos procesadores estarían ociosos. Esta objeción debe tomarse en el contexto de la historia. La memoria solía considerarse un bien tan caro. En 1964 un megabyte de RAM costaba alrededor de $400,000. Ahora cada computadora personal tiene muchos megabytes de RAM, y la mayor parte del tiempo la mayor parte de esa RAM no se usa. Es difícil subestimar el costo de la electrónica producida en masa.
+
+[fn:250] Automagically: "Automáticamente, pero de una manera que, por alguna razón (típicamente porque es demasiado complicado, o demasiado feo, o quizás incluso demasiado trivial), el hablante no tiene ganas de explicar." (Steele 1983, Raymond 1993).
+
+[fn:251] La integración de estrategias de búsqueda automática en lenguajes de programación ha tenido una historia larga y accidentada. Las primeras sugerencias de que los algoritmos no deterministas podrían ser codificados elegantemente en un lenguaje de programación con búsqueda y retroceso automático vinieron de Robert Floyd (1967). Carl Hewitt (1969) inventó un lenguaje de programación llamado Planner que apoyaba explícitamente el retroceso cronológico automático, proporcionando una estrategia de búsqueda en profundidad incorporada. Sussman, Winograd, and Charniak (1971) implementaron un subconjunto de este lenguaje, llamado MicroPlanner, que se usó para apoyar el trabajo en resolución de problemas y planificación de robots. Ideas similares, surgidas de la lógica y la demostración de teoremas, llevaron a la génesis en Edinburgh y Marseille del elegante lenguaje Prolog (que discutiremos en la sección [[#section-4.4][4.4]]). Después de suficiente frustración con la búsqueda automática, McDermott and Sussman (1972) desarrollaron un lenguaje llamado Conniver, que incluía mecanismos para colocar la estrategia de búsqueda bajo control del programador. Esto resultó difícil de manejar, sin embargo, y Sussman and Stallman (1975) encontraron un enfoque más manejable mientras investigaban métodos de análisis simbólico para circuitos eléctricos. Desarrollaron un esquema de retroceso no cronológico que se basaba en rastrear las dependencias lógicas que conectan hechos, una técnica que ha llegado a conocerse como <<i109>> retroceso dirigido por dependencias. Aunque su método era complejo, producía programas razonablemente eficientes porque hacía poca búsqueda redundante. Doyle (1979) y McAllester (1978, 1980) generalizaron y aclararon los métodos de Stallman and Sussman, desarrollando un nuevo paradigma para formular la búsqueda que ahora se llama <<i402>> mantenimiento de la verdad. Los sistemas modernos de resolución de problemas todos usan alguna forma de sistema de mantenimiento de la verdad como sustrato. Ver Forbus and deKleer 1993 para una discusión de formas elegantes de construir sistemas de mantenimiento de la verdad y aplicaciones usando el mantenimiento de la verdad. Zabih, McAllester, and Chapman 1987 describe una extensión no determinista a Scheme que se basa en ~amb~; es similar al intérprete descrito en esta sección, pero más sofisticado, porque usa retroceso dirigido por dependencias en lugar de retroceso cronológico. Winston 1992 da una introducción a ambos tipos de retroceso.
+[fn:252] Nuestro programa usa el siguiente procedimiento para determinar si los elementos de una lista son distintos:
+
+#+begin_src scheme
+(define (distinct? items)
+  (cond ((null? items) true)
+        ((null? (cdr items)) true)
+        ((member (car items) (cdr items)) false)
+        (else (distinct? (cdr items)))))
+#+end_src
+
+~member~ es como ~memq~ excepto que usa ~equal?~ en lugar de ~eq?~ para probar la igualdad.
+
+[fn:253] Esto está tomado de un folleto llamado "Problematical Recreations," publicado en los años 1960 por Litton Industries, donde se atribuye al 'Kansas State Engineer'.
+
+[fn:254] Aquí usamos la convención de que el primer elemento de cada lista designa la parte del discurso para el resto de las palabras en la lista.
+
+[fn:255] Observa que ~parse-word~ usa ~set!~ para modificar la lista de entrada no analizada. Para que esto funcione, nuestro evaluador ~amb~ debe deshacer los efectos de las operaciones ~set!~ cuando retrocede.
+
+[fn:256] Observa que esta definición es recursiva: un verbo puede ser seguido por cualquier número de frases preposicionales.
+
+[fn:257] Este tipo de gramática puede volverse arbitrariamente compleja, pero es solo un juguete en lo que respecta a la comprensión del lenguaje real. La comprensión del lenguaje natural real por computadora requiere una mezcla elaborada de análisis sintáctico e interpretación del significado. Por otro lado, incluso los analizadores de juguete pueden ser útiles para apoyar lenguajes de comando flexibles para programas como sistemas de recuperación de información. Winston 1992 discute enfoques computacionales para la comprensión del lenguaje real y también las aplicaciones de gramáticas simples a lenguajes de comando.
+
+[fn:258] Aunque la idea de Alyssa funciona muy bien (y es sorprendentemente simple), las oraciones que genera son un poco aburridas: no muestrean las oraciones posibles de este lenguaje de una manera muy interesante. De hecho, la gramática es altamente recursiva en muchos lugares, y la técnica de Alyssa "cae en" una de estas recursiones y se atasca. Ver [[#exercise-4.50][Ejercicio 4.50]] para una forma de tratar con esto.
+
+[fn:259] Elegimos implementar el evaluador perezoso en la sección [[#section-4.2][4.2]] como una modificación del evaluador metacircular ordinario de la sección [[#section-4.1.1][4.1.1]]. En contraste, basaremos el evaluador ~amb~ en el evaluador analizador de la sección [[#section-4.1.7][4.1.7]], porque los procedimientos de ejecución en ese evaluador proporcionan un marco conveniente para implementar el retroceso.
+
+[fn:260] Asumimos que el evaluador soporta ~let~ (ver [[#exercise-4.22][Ejercicio 4.22]]), que hemos usado en nuestros programas no deterministas.
+
+[fn:261] No nos preocupamos por deshacer definiciones, ya que podemos asumir que las definiciones internas son escaneadas (sección [[#section-4.1.6][4.1.6]]).
+
+[fn:262] La programación lógica ha surgido de una larga historia de investigación en demostración automática de teoremas. Los primeros programas de demostración de teoremas podían lograr muy poco, porque buscaban exhaustivamente el espacio de posibles demostraciones. El gran avance que hizo tal búsqueda plausible fue el descubrimiento a principios de los años 1960 del <<i413>> algoritmo de unificación y el <<i335>> principio de resolución (Robinson 1965). La resolución fue usada, por ejemplo, por Green and Raphael (1968) (ver también Green 1969) como la base para un sistema deductivo de respuesta a preguntas. Durante la mayor parte de este período, los investigadores se concentraron en algoritmos que están garantizados para encontrar una demostración si existe una. Tales algoritmos eran difíciles de controlar y dirigir hacia una demostración. Hewitt (1969) reconoció la posibilidad de fusionar la estructura de control de un lenguaje de programación con las operaciones de un sistema de manipulación lógica, llevando al trabajo en búsqueda automática mencionado en la sección [[#section-4.3.1][4.3.1]] (nota al pie [fn:251]). Al mismo tiempo que esto se estaba haciendo, Colmerauer, en Marseille, estaba desarrollando sistemas basados en reglas para manipular el lenguaje natural (ver Colmerauer et al. 1973). Inventó un lenguaje de programación llamado Prolog para representar esas reglas. Kowalski (1973; 1979), en Edinburgh, reconoció que la ejecución de un programa Prolog podría interpretarse como la demostración de teoremas (usando una técnica de demostración llamada resolución linear de cláusulas de Horn). La fusión de las dos últimas líneas llevó al movimiento de programación lógica. Por lo tanto, al asignar crédito por el desarrollo de la programación lógica, los franceses pueden señalar la génesis de Prolog en la Universidad de Marseille, mientras que los británicos pueden destacar el trabajo en la Universidad de Edinburgh. Según la gente del MIT, la programación lógica fue desarrollada por estos grupos en un intento de descifrar de qué estaba hablando Hewitt en su brillante pero impenetrable tesis doctoral. Para una historia de la programación lógica, ver Robinson 1983.
+
+[fn:263] Para ver la correspondencia entre las reglas y el procedimiento, deja que ~x~ en el procedimiento (donde ~x~ no está vacío) corresponda a ~(cons u v)~ en la regla. Entonces ~z~ en la regla corresponde al ~append~ de ~(cdr x)~ y ~y~.
+
+[fn:264] Esto ciertamente no libera al usuario del problema completo de cómo calcular la respuesta. Hay muchos conjuntos de reglas matemáticamente equivalentes diferentes para formular la relación ~append~, solo algunos de los cuales pueden convertirse en dispositivos efectivos para calcular en cualquier dirección. Además, a veces la información "qué es" no da ninguna pista sobre "cómo" calcular una respuesta. Por ejemplo, considera el problema de calcular la y tal que y^2 = x.
+
+[fn:265] El interés en la programación lógica alcanzó su punto máximo durante principios de los años 80 cuando el gobierno japonés comenzó un ambicioso proyecto dirigido a construir supercomputadoras optimizadas para ejecutar lenguajes de programación lógica. La velocidad de tales computadoras iba a ser medida en LIPS (Inferencias Lógicas Por Segundo) en lugar de los usuales FLOPS (Operaciones de Punto Flotante Por Segundo). Aunque el proyecto tuvo éxito en desarrollar hardware y software como se planeó originalmente, la industria informática internacional se movió en una dirección diferente. Ver Feigenbaum and Shrobe 1993 para una evaluación general del proyecto japonés. La comunidad de programación lógica también ha avanzado a considerar la programación relacional basada en técnicas distintas al simple emparejamiento de patrones, como la capacidad de tratar con restricciones numéricas como las ilustradas en el sistema de propagación de restricciones de la sección [[#section-3.3.5][3.3.5]].
+
+[fn:266] Esto usa la notación de cola punteada introducida en el [[#exercise-2.20][Ejercicio 2.20]].
+
+[fn:267] En realidad, esta descripción de ~not~ es válida solo para casos simples. El comportamiento real de ~not~ es más complejo. Examinaremos las peculiaridades de ~not~ en las secciones [[#section-4.4.2][4.4.2]] y [[#section-4.4.3][4.4.3]].
+
+[fn:268] ~Lisp-value~ debe ser usado solo para realizar una operación no proporcionada en el lenguaje de consultas. En particular, no debe ser usado para probar igualdad (ya que eso es para lo que está diseñado el emparejamiento en el lenguaje de consultas) o desigualdad (ya que eso puede hacerse con la regla ~same~ mostrada abajo).
+
+[fn:269] Observa que no necesitamos ~same~ para hacer que dos cosas sean lo mismo: simplemente usamos la misma variable de patrón para cada una; en efecto, tenemos una cosa en lugar de dos cosas en primer lugar. Por ejemplo, ver ~?town~ en la regla ~lives-near~ y ~?middle-manager~ en la regla ~wheel~ abajo. ~same~ es útil cuando queremos forzar que dos cosas sean diferentes, como ~?person-1~ y ~?person-2~ en la regla ~lives-near~. Aunque usar la misma variable de patrón en dos partes de una consulta fuerza que el mismo valor aparezca en ambos lugares, usar variables de patrón diferentes no fuerza que aparezcan valores diferentes. (Los valores asignados a variables de patrón diferentes pueden ser iguales o diferentes.)
+
+[fn:270] También permitiremos reglas sin cuerpos, como en ~same~, y interpretaremos tal regla como que la conclusión de la regla es satisfecha por cualesquiera valores de las variables.
+
+[fn:271] Debido a que el emparejamiento es generalmente muy costoso, nos gustaría evitar aplicar el emparejador completo a cada elemento de la base de datos. Esto usualmente se arregla dividiendo el proceso en un emparejamiento rápido y grueso y el emparejamiento final. El emparejamiento grueso filtra la base de datos para producir un pequeño conjunto de candidatos para el emparejamiento final. Con cuidado, podemos arreglar nuestra base de datos de modo que parte del trabajo de emparejamiento grueso pueda hacerse cuando se construye la base de datos en lugar de cuando queremos seleccionar los candidatos. Esto se llama <<i182>> indexación de la base de datos. Hay una vasta tecnología construida alrededor de esquemas de indexación de bases de datos. Nuestra implementación, descrita en la sección [[#section-4.4.4][4.4.4]], contiene una forma simplista de tal optimización.
+
+[fn:272] Pero este tipo de explosión exponencial no es común en consultas ~and~ porque las condiciones agregadas tienden a reducir en lugar de expandir el número de marcos producidos.
+
+[fn:273] Hay una amplia literatura sobre sistemas de gestión de bases de datos que se ocupa de cómo manejar consultas complejas eficientemente.
+
+[fn:274] Hay una diferencia sutil entre esta implementación de filtro de ~not~ y el significado usual de ~not~ en lógica matemática. Ver sección [[#section-4.4.3][4.4.3]].
+
+[fn:275] En el emparejamiento de patrones unilateral, todas las ecuaciones que contienen variables de patrón son explícitas y ya están resueltas para la incógnita (la variable de patrón).
+
+[fn:276] Otra forma de pensar en la unificación es que genera el patrón más general que es una especialización de los dos patrones de entrada. Es decir, la unificación de ~(?x a)~ y ~((b ?y) ?z)~ es ~((b ?y) a)~, y la unificación de ~(?x a ?y)~ y ~(?y ?z a)~, discutida arriba, es ~(a a a)~. Para nuestra implementación, es más conveniente pensar en el resultado de la unificación como un marco en lugar de un patrón.
+[fn:277] Dado que la unificación es una generalización del emparejamiento, podríamos simplificar el sistema usando el unificador para producir ambos flujos. Sin embargo, tratar el caso fácil con el emparejador simple ilustra cómo el emparejamiento (en oposición a la unificación completa) puede ser útil por sí mismo.
+
+[fn:278] La razón por la que usamos flujos (en lugar de listas) de marcos es que la aplicación recursiva de reglas puede generar números infinitos de valores que satisfacen una consulta. La evaluación retrasada incorporada en los flujos es crucial aquí: el sistema imprimirá respuestas una por una a medida que se generen, independientemente de si hay un número finito o infinito de respuestas.
+
+[fn:279] Que un método particular de inferencia sea legítimo no es una afirmación trivial. Uno debe demostrar que si uno comienza con premisas verdaderas, solo pueden derivarse conclusiones verdaderas. El método de inferencia representado por aplicaciones de reglas es el <<i242>> modus ponens, el familiar método de inferencia que dice que si A es verdadero y /A implica B/ es verdadero, entonces podemos concluir que B es verdadero.
+
+[fn:280] Debemos calificar esta afirmación acordando que, al hablar de la "inferencia" lograda por un programa lógico, asumimos que la computación termina. Desafortunadamente, incluso esta afirmación calificada es falsa para nuestra implementación del lenguaje de consultas (y también falsa para programas en Prolog y la mayoría de los otros lenguajes de programación lógica actuales) debido a nuestro uso de ~not~ y ~lisp-value~. Como describiremos a continuación, el ~not~ implementado en el lenguaje de consultas no siempre es consistente con el ~not~ de la lógica matemática, y ~lisp-value~ introduce complicaciones adicionales. Podríamos implementar un lenguaje consistente con la lógica matemática simplemente eliminando ~not~ y ~lisp-value~ del lenguaje y acordando escribir programas usando solo consultas simples, ~and~, y ~or~. Sin embargo, esto restringiría enormemente el poder expresivo del lenguaje. Una de las principales preocupaciones de la investigación en programación lógica es encontrar formas de lograr más consistencia con la lógica matemática sin sacrificar indebidamente el poder expresivo.
+
+[fn:281] Este no es un problema de la lógica sino de la interpretación procedimental de la lógica proporcionada por nuestro intérprete. Podríamos escribir un intérprete que no caería en un bucle aquí. Por ejemplo, podríamos enumerar todas las demostraciones derivables de nuestras aserciones y nuestras reglas en un orden de amplitud primero en lugar de profundidad primero. Sin embargo, tal sistema hace más difícil aprovechar el orden de las deducciones en nuestros programas. Un intento de construir control sofisticado en tal programa se describe en deKleer et al. 1977. Otra técnica, que no lleva a problemas de control tan serios, es poner conocimiento especial, como detectores para tipos particulares de bucles ([[#exercise-4.67][Ejercicio 4.67]]). Sin embargo, no puede haber un esquema general para prevenir de manera confiable que un sistema se vaya por caminos infinitos al realizar deducciones. Imagina una regla diabólica de la forma "Para mostrar que P(x) es verdadero, muestra que P(f(x)) es verdadero," para alguna función f adecuadamente elegida.
+
+[fn:282] Considera la consulta ~(not (baseball-fan (Bitdiddle Ben)))~. El sistema encuentra que ~(baseball-fan (Bitdiddle Ben))~ no está en la base de datos, por lo que el marco vacío no satisface el patrón y no es filtrado fuera del flujo inicial de marcos. El resultado de la consulta es por lo tanto el marco vacío, que se usa para instanciar la consulta de entrada para producir ~(not (baseball-fan (Bitdiddle Ben)))~.
+
+[fn:283] Una discusión y justificación de este tratamiento de ~not~ puede encontrarse en el artículo de Clark (1978).
+
+[fn:284] En general, unificar ~?y~ con una expresión que involucra ~?y~ requeriría que pudiéramos encontrar un punto fijo de la ecuación ~?y~ = <EXPRESIÓN QUE INVOLUCRA ?Y>. A veces es posible formar sintácticamente una expresión que parece ser la solución. Por ejemplo, ~?y~ = ~(f ?y)~ parece tener el punto fijo '(f (f (f ... )))', que podemos producir comenzando con la expresión ~(f ?y)~ y sustituyendo repetidamente ~(f ?y)~ por ~?y~. Desafortunadamente, no toda ecuación de este tipo tiene un punto fijo significativo. Los problemas que surgen aquí son similares a los problemas de manipular series infinitas en matemáticas. Por ejemplo, sabemos que 2 es la solución a la ecuación y = 1
++ y/2. Comenzando con la expresión 1 + y/2 y sustituyendo repetidamente 1 +
+y/2 por y da
+
+#+begin_example
+ 2 = y = 1 + y/2 = 1 + (1 + y/2)/2 = 1 + 1/2 + y/4 = ...
+#+end_example
+
+lo que lleva a
+
+#+begin_example
+ 2 = 1 + 1/2 + 1/4 + 1/8 + ...
+#+end_example
+
+Sin embargo, si intentamos la misma manipulación comenzando con la observación de que - 1 es la solución a la ecuación y = 1 + 2y, obtenemos
+
+#+begin_example
+ -1 = y = 1 + 2y = 1 + 2(1 + 2y) = 1 + 2 + 4y = ...
+#+end_example
+
+lo que lleva a
+
+#+begin_example
+ -1 = 1 + 2 + 4 + 8 + ...
+#+end_example
+
+Aunque las manipulaciones formales usadas en derivar estas dos ecuaciones son idénticas, el primer resultado es una afirmación válida sobre series infinitas pero el segundo no lo es. De manera similar, para nuestros resultados de unificación, razonar con una expresión sintácticamente construida arbitraria puede llevar a errores.
+
+[fn:285] La mayoría de los sistemas Lisp dan al usuario la capacidad de modificar el procedimiento ~read~ ordinario para realizar tales transformaciones definiendo <<i320>> caracteres de macro lectora. Las expresiones entrecomilladas ya se manejan de esta manera: el lector traduce automáticamente ~'expression~ en ~(quote expression)~ antes de que el evaluador lo vea. Podríamos arreglar que ~?expression~ sea transformado en ~(? expression)~ de la misma manera; sin embargo, por claridad hemos incluido el procedimiento de transformación aquí explícitamente.
+
+~expand-question-mark~ y ~contract-question-mark~ usan varios procedimientos con ~string~ en sus nombres. Estas son primitivas de Scheme.
+
+[fn:286] Esta suposición pasa por alto una gran cantidad de complejidad. Usualmente una gran porción de la implementación de un sistema Lisp está dedicada a hacer que la lectura y la impresión funcionen.
+
+[fn:287] Uno podría argumentar que no necesitamos guardar el viejo ~n~; después de decrementarlo y resolver el subproblema, simplemente podríamos incrementarlo para recuperar el valor viejo. Aunque esta estrategia funciona para factorial, no puede funcionar en general, ya que el valor viejo de un registro no siempre puede ser calculado a partir del nuevo.
+
+[fn:288] En la sección [[#section-5.3][5.3]] veremos cómo implementar una pila en términos de operaciones más primitivas.
+
+[fn:289] Usar el procedimiento ~receive~ aquí es una forma de hacer que ~extract-labels~ devuelva efectivamente dos valores, ~labels~ e ~insts~, sin hacer explícitamente una estructura de datos compuesta para contenerlos. Una implementación alternativa, que devuelve un par explícito de valores, es
+
+#+begin_src scheme
+(define (extract-labels text)
+  (if (null? text)
+      (cons '() '())
+      (let ((result (extract-labels (cdr text))))
+        (let ((insts (car result)) (labels (cdr result)))
+          (let ((next-inst (car text)))
+            (if (symbol? next-inst)
+                (cons insts
+                      (cons (make-label-entry next-inst insts) labels))
+                (cons (cons (make-instruction next-inst) insts)
+                      labels)))))))
+#+end_src
+
+que sería llamado por ~assemble~ como sigue:
+
+#+begin_src scheme
+(define (assemble controller-text machine)
+  (let ((result (extract-labels controller-text)))
+    (let ((insts (car result)) (labels (cdr result)))
+      (update-insts! insts labels machine)
+      insts)))
+#+end_src
+
+Puedes considerar nuestro uso de ~receive~ como una demostración de una forma elegante de devolver múltiples valores, o simplemente una excusa para mostrar un truco de programación. Un argumento como ~receive~ que es el siguiente procedimiento a ser invocado se llama "continuación". Recuerda que también usamos continuaciones para implementar la estructura de control de retroceso en el evaluador ~amb~ en la sección [[#section-4.3.3][4.3.3]].
+[fn:290] Podríamos representar la memoria como listas de elementos. Sin embargo, el tiempo de acceso entonces no sería independiente del índice, ya que acceder al n-ésimo elemento de una lista requiere n - 1 operaciones ~cdr~.
+
+[fn:291] Para completitud, deberíamos especificar una operación ~make-vector~ que construya vectores. Sin embargo, en la aplicación presente usaremos vectores solo para modelar divisiones fijas de la memoria de la computadora.
+
+[fn:292] Esta es precisamente la misma idea de "datos etiquetados" que introdujimos en el [[#section-2][Capítulo 2]] para tratar con operaciones genéricas. Aquí, sin embargo, los tipos de datos están incluidos a nivel de máquina primitiva en lugar de ser construidos mediante el uso de listas.
+
+[fn:293] La información de tipo puede ser codificada de varias maneras, dependiendo de los detalles de la máquina en la que se va a implementar el sistema Lisp. La eficiencia de ejecución de los programas Lisp dependerá fuertemente de cuán inteligentemente se haga esta elección, pero es difícil formular reglas de diseño generales para buenas elecciones. La forma más directa de implementar punteros tipados es asignar un conjunto fijo de bits en cada puntero para que sea un <<i404>> campo de tipo que codifique el tipo de datos. Las preguntas importantes a abordar al diseñar tal representación incluyen las siguientes: ¿Cuántos bits de tipo se requieren? ¿Qué tan grandes deben ser los índices del vector? ¿Con qué eficiencia pueden usarse las instrucciones primitivas de la máquina para manipular los campos de tipo de los punteros? Las máquinas que incluyen hardware especial para el manejo eficiente de campos de tipo se dice que tienen <<i389>> arquitecturas etiquetadas.
+
+[fn:294] Esta decisión sobre la representación de números determina si ~eq?~, que prueba la igualdad de punteros, puede usarse para probar la igualdad de números. Si el puntero contiene el número mismo, entonces números iguales tendrán el mismo puntero. Pero si el puntero contiene el índice de una ubicación donde está almacenado el número, números iguales estarán garantizados a tener punteros iguales solo si tenemos cuidado de nunca almacenar el mismo número en más de una ubicación.
+
+[fn:295] Esto es justo como escribir un número como una secuencia de dígitos, excepto que cada "dígito" es un número entre 0 y el número más grande que puede ser almacenado en un solo puntero.
+
+[fn:296] Hay otras formas de encontrar almacenamiento libre. Por ejemplo, podríamos enlazar juntos todos los pares no utilizados en una <<i150>> lista libre. Nuestras ubicaciones libres son consecutivas (y por lo tanto pueden ser accedidas incrementando un puntero) porque estamos usando un recolector de basura compactador, como veremos en la sección [[#section-5.3.2][5.3.2]].
+
+[fn:297] Esta es esencialmente la implementación de ~cons~ en términos de ~set-car!~ y ~set-cdr!~, como se describe en la sección [[#section-3.3.1][3.3.1]]. La operación ~get-new-pair~ usada en esa implementación se realiza aquí mediante el puntero ~free~.
+
+[fn:298] Esto puede no ser cierto eventualmente, porque las memorias pueden llegar a ser lo suficientemente grandes como para que sea imposible quedarse sin memoria libre en la vida útil de la computadora. Por ejemplo, hay aproximadamente 3*(10^13) microsegundos en un año, por lo que si fuéramos a hacer ~cons~ una vez por microsegundo necesitaríamos alrededor de 10^15 celdas de memoria para construir una máquina que pudiera operar durante 30 años sin quedarse sin memoria. Esa cantidad de memoria parece absurdamente grande según los estándares de hoy, pero no es físicamente imposible. Por otro lado, los procesadores se están volviendo más rápidos y una computadora futura puede tener grandes números de procesadores operando en paralelo en una sola memoria, por lo que puede ser posible usar la memoria mucho más rápido de lo que hemos postulado.
+
+[fn:299] Asumimos aquí que la pila está representada como una lista como se describe en la sección [[#section-5.3.1][5.3.1]], de modo que los elementos en la pila son accesibles a través del puntero en el registro de pila.
