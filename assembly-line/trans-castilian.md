@@ -1,19 +1,20 @@
-# Trans-Castilian Assembly Line
+# Trans-Castilian Assembly Line (Universal System)
 
 ## DIRECT COMMANDS
 
-### Phase 1: The Split
+### Phase 1: The Split (Universal)
 1. **Setup**: Ensure working directories exist:
    ```bash
    mkdir -p temp trash
    ```
-2. **Identify** the target file in `org-castilian/` (e.g., `sicp1-1.org`).
-3. **Define** the `BASENAME` (the filename without the `.org` extension, e.g., `sicp1-1`).
-4. **Execute**:
+2. **Identify** the target file in `org-castilian/`.
+3. **Define** the `BASENAME` (the filename without extension, e.g., `sicp5-1`).
+4. **Execute Splitter**:
    ```bash
    python3 scripts/smart_split.py "org-castilian/[basename].org"
    ```
-5. **Safekeeping**: Move the original file from `org-castilian/` to `trash/`:
+5. **Verify**: Check `temp/`. Ensure no file is excessively large (aiming for <150 lines).
+6. **Safekeeping**: Move the original file from `org-castilian/` to `trash/`:
    ```bash
    mv "org-castilian/[basename].org" "trash/[basename].org"
    ```
@@ -30,7 +31,7 @@
    - Apply `skills/translate-code-comments_OPTIMIZED.md`.
    - Save result to: `temp/[partname]-STEP2.org`
 
-**Constraint**: Do not delete files in `temp/`.
+**Constraint**: Do not delete files in `temp/` until Phase 3 is verified.
 
 ### Phase 3: Finalization
 **Merge (Python Sorted Method)**:
