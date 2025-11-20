@@ -1,0 +1,751 @@
+** 5.5 Compilación
+:properties:
+:custom_id: section-5.5
+:end:
+
+El evaluador de control explícito de la sección [[#section-5.4][5.4]] es una máquina de registros cuyo controlador interpreta programas Scheme. En esta sección veremos cómo ejecutar programas Scheme en una máquina de registros cuyo controlador no es un intérprete Scheme.
+
+La máquina evaluadora de control explícito es universal--puede llevar a cabo cualquier proceso computacional que se pueda describir en Scheme. El controlador del evaluador orquesta el uso de sus caminos de datos para realizar el cálculo deseado. Por lo tanto, los caminos de datos del evaluador son universales: son suficientes para realizar cualquier cálculo que deseemos, dado un controlador apropiado.[fn:318]
+
+Los ordenadores comerciales de propósito general son máquinas de registros organizadas alrededor de una colección de registros y operaciones que constituyen un conjunto universal de caminos de datos eficiente y conveniente. El controlador de una máquina de propósito general es un intérprete para un lenguaje de máquina de registros como el que hemos estado usando. Este lenguaje se llama el <<i251>> lenguaje nativo de la máquina, o simplemente <<i223>> lenguaje de máquina. Los programas escritos en lenguaje de máquina son secuencias de instrucciones que usan los caminos de datos de la máquina. Por ejemplo, la secuencia de instrucciones del evaluador de control explícito puede considerarse como un programa en lenguaje de máquina para un ordenador de propósito general en lugar de como el controlador de una máquina intérprete especializada.
+
+Hay dos estrategias comunes para cerrar la brecha entre lenguajes de alto nivel y lenguajes de máquina de registros. El evaluador de control explícito ilustra la estrategia de interpretación. Un intérprete escrito en el lenguaje nativo de una máquina configura la máquina para ejecutar programas escritos en un lenguaje (llamado el <<i357>> lenguaje fuente) que puede diferir del lenguaje nativo de la máquina que realiza la evaluación. Los procedimientos primitivos del lenguaje fuente se implementan como una biblioteca de subrutinas escritas en el lenguaje nativo de la máquina dada. Un programa a interpretar (llamado el <<i358>> programa fuente) se representa como una estructura de datos. El intérprete recorre esta estructura de datos, analizando el programa fuente. Al hacerlo, simula el comportamiento previsto del programa fuente llamando a las subrutinas primitivas apropiadas de la biblioteca.
+
+En esta sección, exploramos la estrategia alternativa de <<i70>> compilación. Un compilador para un lenguaje fuente y máquina dados traduce un programa fuente en un programa equivalente (llamado el <<i266>> programa objeto) escrito en el lenguaje nativo de la máquina. El compilador que implementamos en esta sección traduce programas escritos en Scheme en secuencias de instrucciones a ejecutar usando los caminos de datos de la máquina evaluadora de control explícito.[fn:319]
+
+Comparada con la interpretación, la compilación puede proporcionar un gran aumento en la eficiencia de la ejecución del programa, como explicaremos a continuación en la descripción general del compilador. Por otro lado, un intérprete proporciona un entorno más potente para el desarrollo y depuración interactivos de programas, porque el programa fuente que se está ejecutando está disponible en tiempo de ejecución para ser examinado y modificado. Además, dado que toda la biblioteca de primitivas está presente, se pueden construir nuevos programas y agregarlos al sistema durante la depuración.
+
+En vista de las ventajas complementarias de la compilación y la interpretación, los entornos modernos de desarrollo de programas siguen una estrategia mixta. Los intérpretes Lisp generalmente están organizados de manera que los procedimientos interpretados y los procedimientos compilados pueden llamarse entre sí. Esto permite a un programador compilar aquellas partes de un programa que se supone están depuradas, obteniendo así la ventaja de eficiencia de la compilación, mientras retiene el modo de ejecución interpretativo para aquellas partes del programa que están en el flujo del desarrollo y depuración interactivos. En la sección [[#section-5.5.7][5.5.7]], después de haber implementado el compilador, mostraremos cómo interfazarlo con nuestro intérprete para producir un sistema de desarrollo integrado intérprete-compilador.
+
+*Una descripción general del compilador*
+
+Nuestro compilador es muy parecido a nuestro intérprete, tanto en su estructura como en la función que realiza. En consecuencia, los mecanismos usados por el compilador para analizar expresiones serán similares a los usados por el intérprete. Además, para facilitar la interfaz entre código compilado e interpretado, diseñaremos el compilador para generar código que obedezca las mismas convenciones de uso de registros que el intérprete: el entorno se mantendrá en el registro ~env~, las listas de argumentos se acumularán en ~argl~, un procedimiento a aplicar estará en ~proc~, los procedimientos devolverán sus respuestas en ~val~, y la ubicación a la que un procedimiento debe retornar se mantendrá en ~continue~. En general, el compilador traduce un programa fuente en un programa objeto que realiza esencialmente las mismas operaciones de registro que haría el intérprete al evaluar el mismo programa fuente.
+
+Esta descripción sugiere una estrategia para implementar un compilador rudimentario: recorremos la expresión de la misma manera que lo hace el intérprete. Cuando encontramos una instrucción de registro que el intérprete realizaría al evaluar la expresión, no ejecutamos la instrucción sino que la acumulamos en una secuencia. La secuencia resultante de instrucciones será el código objeto. Observa la ventaja de eficiencia de la compilación sobre la interpretación. Cada vez que el intérprete evalúa una expresión--por ejemplo, ~(f 84 96)~--realiza el trabajo de clasificar la expresión (descubrir que esto es una aplicación de procedimiento) y probar el final de la lista de operandos (descubrir que hay dos operandos). Con un compilador, la expresión se analiza solo una vez, cuando la secuencia de instrucciones se genera en tiempo de compilación. El código objeto producido por el compilador contiene solo las instrucciones que evalúan el operador y los dos operandos, ensamblan la lista de argumentos, y aplican el procedimiento (en ~proc~) a los argumentos (en ~argl~).
+
+Este es el mismo tipo de optimización que implementamos en el evaluador analizador de la sección [[#section-4.1.7][4.1.7]]. Pero hay más oportunidades para ganar eficiencia en código compilado. Cuando el intérprete se ejecuta, sigue un proceso que debe ser aplicable a cualquier expresión en el lenguaje. En contraste, un segmento dado de código compilado está destinado a ejecutar alguna expresión particular. Esto puede hacer una gran diferencia, por ejemplo en el uso de la pila para guardar registros. Cuando el intérprete evalúa una expresión, debe estar preparado para cualquier contingencia. Antes de evaluar una subexpresión, el intérprete guarda todos los registros que se necesitarán más adelante, porque la subexpresión podría requerir una evaluación arbitraria. Un compilador, por otro lado, puede explotar la estructura de la expresión particular que está procesando para generar código que evite operaciones de pila innecesarias.
+
+Como caso concreto, considera la combinación ~(f 84 96)~. Antes de que el intérprete evalúe el operador de la combinación, se prepara para esta evaluación guardando los registros que contienen los operandos y el entorno, cuyos valores se necesitarán más adelante. El intérprete entonces evalúa el operador para obtener el resultado en ~val~, restaura los registros guardados, y finalmente mueve el resultado de ~val~ a ~proc~. Sin embargo, en la expresión particular con la que estamos tratando, el operador es el símbolo ~f~, cuya evaluación se logra mediante la operación de máquina ~lookup-variable-value~, que no altera ningún registro. El compilador que implementamos en esta sección aprovechará este hecho y generará código que evalúa el operador usando la instrucción
+
+#+begin_src scheme
+(assign proc (op lookup-variable-value) (const f) (reg env))
+#+end_src
+
+Este código no solo evita los guardados y restauraciones innecesarios sino que también asigna el valor de la búsqueda directamente a ~proc~, mientras que el intérprete obtendría el resultado en ~val~ y luego movería esto a ~proc~.
+
+Un compilador también puede optimizar el acceso al entorno. Habiendo analizado el código, el compilador puede en muchos casos saber en qué marco estará ubicada una variable particular y acceder a ese marco directamente, en lugar de realizar la búsqueda ~lookup-variable-value~. Discutiremos cómo implementar tal acceso a variables en la sección [[#section-5.5.6][5.5.6]]. Sin embargo, hasta entonces, nos enfocaremos en el tipo de optimizaciones de registro y pila descritas arriba. Hay muchas otras optimizaciones que pueden ser realizadas por un compilador, como codificar operaciones primitivas "en línea" en lugar de usar un mecanismo ~apply~ general (véase [[#exercise-5.38][Exercise 5.38]]); pero no enfatizaremos estas aquí. Nuestro objetivo principal en esta sección es ilustrar el proceso de compilación en un contexto simplificado (pero aún interesante).
+
+*** 5.5.1 Estructura del compilador
+:properties:
+:custom_id: section-5.5.1
+:end:
+
+En la sección [[#section-4.1.7][4.1.7]] modificamos nuestro intérprete metacircular original para separar el análisis de la ejecución. Analizamos cada expresión para producir un procedimiento de ejecución que tomaba un entorno como argumento y realizaba las operaciones requeridas. En nuestro compilador, haremos esencialmente el mismo análisis. Sin embargo, en lugar de producir procedimientos de ejecución, generaremos secuencias de instrucciones para ser ejecutadas por nuestra máquina de registros.
+
+El procedimiento ~compile~ es el despachador de nivel superior en el compilador. Corresponde al procedimiento ~eval~ de la sección [[#section-4.1.1][4.1.1]], al procedimiento ~analyze~ de la sección [[#section-4.1.7][4.1.7]], y al punto de entrada ~eval-dispatch~ del evaluador de control explícito en la sección [[#section-5.4.1][5.4.1]]. El compilador, como los intérpretes, usa los procedimientos de sintaxis de expresiones definidos en la sección [[#section-4.1.2][4.1.2]].[fn:320] ~compile~ realiza un análisis de casos sobre el tipo sintáctico de la expresión a compilar. Para cada tipo de expresión, despacha a un <<i64>> generador de código especializado:
+
+#+begin_src scheme
+(define (compile exp target linkage)
+  (cond ((self-evaluating? exp)
+         (compile-self-evaluating exp target linkage))
+        ((quoted? exp) (compile-quoted exp target linkage))
+        ((variable? exp)
+         (compile-variable exp target linkage))
+        ((assignment? exp)
+         (compile-assignment exp target linkage))
+        ((definition? exp)
+         (compile-definition exp target linkage))
+        ((if? exp) (compile-if exp target linkage))
+        ((lambda? exp) (compile-lambda exp target linkage))
+        ((begin? exp)
+         (compile-sequence (begin-actions exp)
+                           target
+                           linkage))
+        ((cond? exp) (compile (cond->if exp) target linkage))
+        ((application? exp)
+         (compile-application exp target linkage))
+        (else
+         (error "Unknown expression type - COMPILE" exp))))
+#+end_src
+
+*Objetivos y enlazamientos*
+
+~compile~ y los generadores de código que llama toman dos argumentos además de la expresión a compilar. Hay un <<i392>> objetivo, que especifica el registro en el que el código compilado debe devolver el valor de la expresión. También hay un <<i209>> descriptor de enlazamiento, que describe cómo el código resultante de la compilación de la expresión debe proceder cuando ha terminado su ejecución. El descriptor de enlazamiento puede requerir que el código haga una de las siguientes tres cosas:
+
+- continuar en la siguiente instrucción en secuencia (esto se especifica mediante el descriptor de enlazamiento ~next~),
+
+- retornar del procedimiento que se está compilando (esto se especifica mediante el descriptor de enlazamiento ~return~), o
+
+- saltar a un punto de entrada nombrado (esto se especifica usando la etiqueta designada como el descriptor de enlazamiento).
+
+Por ejemplo, compilar la expresión ~5~ (que es auto-evaluable) con un objetivo del registro ~val~ y un enlazamiento de ~next~ debe producir la instrucción
+
+#+begin_src scheme
+(assign val (const 5))
+#+end_src
+
+Compilar la misma expresión con un enlazamiento de ~return~ debe producir las instrucciones
+
+#+begin_src scheme
+(assign val (const 5))
+(goto (reg continue))
+#+end_src
+
+En el primer caso, la ejecución continuará con la siguiente instrucción en la secuencia. En el segundo caso, retornaremos de una llamada a procedimiento. En ambos casos, el valor de la expresión se colocará en el registro objetivo ~val~.
+
+*Secuencias de instrucciones y uso de la pila*
+
+Cada generador de código devuelve una <<i186>> secuencia de instrucciones que contiene el código objeto que ha generado para la expresión. La generación de código para una expresión compuesta se logra combinando la salida de generadores de código más simples para expresiones componentes, al igual que la evaluación de una expresión compuesta se logra evaluando las expresiones componentes.
+
+El método más simple para combinar secuencias de instrucciones es un procedimiento llamado ~append-instruction-sequences~. Toma como argumentos cualquier número de secuencias de instrucciones que deben ejecutarse secuencialmente; las concatena y devuelve la secuencia combinada. Es decir, si <SEQ_1> y <SEQ_2> son secuencias de instrucciones, entonces evaluar
+
+#+begin_src scheme
+(append-instruction-sequences <SEQ_1> <SEQ_2>)
+#+end_src
+
+produce la secuencia
+
+#+begin_src scheme
+<SEQ_1>
+<SEQ_2>
+#+end_src
+
+Cuando los registros podrían necesitar ser guardados, los generadores de código del compilador usan ~preserving~, que es un método más sutil para combinar secuencias de instrucciones. ~preserving~ toma tres argumentos: un conjunto de registros y dos secuencias de instrucciones que deben ejecutarse secuencialmente. Concatena las secuencias de tal manera que el contenido de cada registro en el conjunto se preserve sobre la ejecución de la primera secuencia, si esto es necesario para la ejecución de la segunda secuencia. Es decir, si la primera secuencia modifica el registro y la segunda secuencia realmente necesita el contenido original del registro, entonces ~preserving~ envuelve un ~save~ y un ~restore~ del registro alrededor de la primera secuencia antes de concatenar las secuencias. De lo contrario, ~preserving~ simplemente devuelve las secuencias de instrucciones concatenadas. Así, por ejemplo,
+
+#+begin_src scheme
+(preserving (list <REG_1> <REG_2>) <SEQ_1> <SEQ_2>)
+#+end_src
+
+produce una de las siguientes cuatro secuencias de instrucciones, dependiendo de cómo <SEQ_1> y <SEQ_2> usen <REG_1> y <REG_2>:
+
+#+begin_example
+ <seq_1> | (save <reg_1>)    | (save <reg_2>)    | (save <reg_2>)
+ <seq_2> | <seq_1>           | <seq_1>           | (save <reg_1>)
+         | (restore <reg_1>) | (restore <reg_2>) | <seq_1>
+         | <seq_2>           | <seq_2>           | (restore <reg_1>)
+         |                   |                   | (restore <reg_2>)
+         |                   |                   | <seq_2>
+#+end_example
+
+Al usar ~preserving~ para combinar secuencias de instrucciones, el compilador evita operaciones de pila innecesarias. Esto también aísla los detalles de si generar o no instrucciones ~save~ y ~restore~ dentro del procedimiento ~preserving~, separándolos de las preocupaciones que surgen al escribir cada uno de los generadores de código individuales. De hecho, ninguna instrucción ~save~ o ~restore~ es producida explícitamente por los generadores de código.
+
+En principio, podríamos representar una secuencia de instrucciones simplemente como una lista de instrucciones. ~append-instruction-sequences~ podría entonces combinar secuencias de instrucciones realizando un ~append~ de lista ordinario. Sin embargo, ~preserving~ sería entonces una operación compleja, porque tendría que analizar cada secuencia de instrucciones para determinar cómo la secuencia usa sus registros. ~preserving~ sería ineficiente además de compleja, porque tendría que analizar cada uno de sus argumentos de secuencia de instrucciones, aunque estas secuencias mismas podrían haber sido construidas por llamadas a ~preserving~, en cuyo caso sus partes ya habrían sido analizadas. Para evitar tal análisis repetitivo asociaremos con cada secuencia de instrucciones alguna información sobre su uso de registros. Cuando construyamos una secuencia de instrucciones básica proporcionaremos esta información explícitamente, y los procedimientos que combinan secuencias de instrucciones derivarán información de uso de registros para la secuencia combinada a partir de la información asociada con las secuencias componentes.
+
+Una secuencia de instrucciones contendrá tres piezas de información:
+
+- el conjunto de registros que deben inicializarse antes de que se ejecuten las instrucciones en la secuencia (se dice que estos registros son <<i252>> necesitados por la secuencia),
+
+- el conjunto de registros cuyos valores son modificados por las instrucciones en la secuencia, y
+
+- las instrucciones reales (también llamadas <<i365>> sentencias) en la secuencia.
+
+Representaremos una secuencia de instrucciones como una lista de sus tres partes. El constructor para secuencias de instrucciones es por lo tanto
+
+#+begin_src scheme
+(define (make-instruction-sequence needs modifies statements)
+  (list needs modifies statements))
+#+end_src
+
+Por ejemplo, la secuencia de dos instrucciones que busca el valor de la variable ~x~ en el entorno actual, asigna el resultado a ~val~, y luego retorna, requiere que los registros ~env~ y ~continue~ hayan sido inicializados, y modifica el registro ~val~. Esta secuencia por lo tanto sería construida como
+
+#+begin_src scheme
+(make-instruction-sequence
+ '(env continue) '(val)
+ '((assign val
+           (op lookup-variable-value) (const x) (reg env))
+   (goto (reg continue))))
+#+end_src
+
+A veces necesitamos construir una secuencia de instrucciones sin sentencias:
+
+#+begin_src scheme
+(define (empty-instruction-sequence)
+  (make-instruction-sequence '() '() '()))
+#+end_src
+
+Los procedimientos para combinar secuencias de instrucciones se muestran en la sección [[#section-5.5.4][5.5.4]].
+
+**** Exercise 5.31
+:properties:
+:custom_id: exercise-5.31
+:end:
+
+Al evaluar una aplicación de procedimiento, el evaluador de control explícito siempre guarda y restaura el registro ~env~ alrededor de la evaluación del operador, guarda y restaura ~env~ alrededor de la evaluación de cada operando (excepto el final), guarda y restaura ~argl~ alrededor de la evaluación de cada operando, y guarda y restaura ~proc~ alrededor de la evaluación de la secuencia de operandos. Para cada una de las siguientes combinaciones, indica cuáles de estas operaciones ~save~ y ~restore~ son superfluas y por lo tanto podrían ser eliminadas por el mecanismo ~preserving~ del compilador:
+
+#+begin_src scheme
+(f 'x 'y)
+
+((f) 'x 'y)
+
+(f (g 'x) y)
+
+(f (g 'x) 'y)
+#+end_src
+
+**** Exercise 5.32
+:properties:
+:custom_id: exercise-5.32
+:end:
+
+Usando el mecanismo ~preserving~, el compilador evitará guardar y restaurar ~env~ alrededor de la evaluación del operador de una combinación en el caso donde el operador es un símbolo. También podríamos construir tales optimizaciones en el evaluador. De hecho, el evaluador de control explícito de la sección [[#section-5.4][5.4]] ya realiza una optimización similar, tratando las combinaciones sin operandos como un caso especial.
+
+a. Extiende el evaluador de control explícito para reconocer como una clase separada de expresiones las combinaciones cuyo operador es un símbolo, y para aprovechar este hecho al evaluar tales expresiones.
+
+b. Alyssa P. Hacker sugiere que extendiendo el evaluador para reconocer más y más casos especiales podríamos incorporar todas las optimizaciones del compilador, y que esto eliminaría la ventaja de la compilación por completo. ¿Qué opinas de esta idea?
+
+*** 5.5.2 Compilación de expresiones
+:properties:
+:custom_id: section-5.5.2
+:end:
+
+En esta sección y la siguiente implementamos los generadores de código a los que despacha el procedimiento ~compile~.
+
+*Compilación de código de enlazamiento*
+
+En general, la salida de cada generador de código terminará con instrucciones--generadas por el procedimiento ~compile-linkage~--que implementan el enlazamiento requerido. Si el enlazamiento es ~return~ entonces debemos generar la instrucción ~(goto (reg continue))~. Esto necesita el registro ~continue~ y no modifica ningún registro. Si el enlazamiento es ~next~, entonces no necesitamos incluir ninguna instrucción adicional. De lo contrario, el enlazamiento es una etiqueta, y generamos un ~goto~ a esa etiqueta, una instrucción que no necesita ni modifica ningún registro.[fn:321]
+
+#+begin_src scheme
+(define (compile-linkage linkage)
+  (cond ((eq? linkage 'return)
+         (make-instruction-sequence '(continue) '()
+                                    '((goto (reg continue)))))
+        ((eq? linkage 'next)
+         (empty-instruction-sequence))
+        (else
+         (make-instruction-sequence '() '()
+                                    '((goto (label ,linkage)))))))
+#+end_src
+
+El código de enlazamiento se concatena a una secuencia de instrucciones mediante ~preserving~ del registro ~continue~, ya que un enlazamiento ~return~ requerirá el registro ~continue~: si la secuencia de instrucciones dada modifica ~continue~ y el código de enlazamiento lo necesita, ~continue~ será guardado y restaurado.
+
+#+begin_src scheme
+(define (end-with-linkage linkage instruction-sequence)
+  (preserving '(continue)
+              instruction-sequence
+              (compile-linkage linkage)))
+#+end_src
+
+*Compilación de expresiones simples*
+
+Los generadores de código para expresiones auto-evaluables, citas, y variables construyen secuencias de instrucciones que asignan el valor requerido al registro objetivo y luego proceden según lo especificado por el descriptor de enlazamiento.
+
+#+begin_src scheme
+(define (compile-self-evaluating exp target linkage)
+  (end-with-linkage
+   linkage
+   (make-instruction-sequence
+    '() (list target)
+    '((assign ,target (const ,exp))))))
+
+(define (compile-quoted exp target linkage)
+  (end-with-linkage
+   linkage
+   (make-instruction-sequence
+    '() (list target)
+    '((assign ,target (const ,(text-of-quotation exp)))))))
+
+(define (compile-variable exp target linkage)
+  (end-with-linkage
+   linkage
+   (make-instruction-sequence
+    '(env) (list target)
+    '((assign ,target
+              (op lookup-variable-value)
+              (const ,exp)
+              (reg env))))))
+#+end_src
+
+Todas estas instrucciones de asignación modifican el registro objetivo, y la que busca una variable necesita el registro ~env~.
+
+Las asignaciones y definiciones se manejan de manera muy similar a como se hace en el intérprete. Generamos recursivamente código que calcula el valor a asignar a la variable, y le concatenamos una secuencia de dos instrucciones que realmente establece o define la variable y asigna el valor de toda la expresión (el símbolo ~ok~) al registro objetivo. La compilación recursiva tiene objetivo ~val~ y enlazamiento ~next~ de manera que el código pondrá su resultado en ~val~ y continuará con el código que se concatena después de él. La concatenación se hace preservando ~env~, ya que el entorno se necesita para establecer o definir la variable y el código para el valor de la variable podría ser la compilación de una expresión compleja que podría modificar los registros de maneras arbitrarias.
+
+#+begin_src scheme
+(define (compile-assignment exp target linkage)
+  (let ((var (assignment-variable exp))
+        (get-value-code
+         (compile (assignment-value exp) 'val 'next)))
+    (end-with-linkage
+     linkage
+     (preserving '(env)
+                 get-value-code
+                 (make-instruction-sequence
+                  '(env val) (list target)
+                  '((perform (op set-variable-value!)
+                             (const ,var)
+                             (reg val)
+                             (reg env))
+                    (assign ,target (const ok))))))))
+
+(define (compile-definition exp target linkage)
+  (let ((var (definition-variable exp))
+        (get-value-code
+         (compile (definition-value exp) 'val 'next)))
+    (end-with-linkage
+     linkage
+     (preserving '(env)
+                 get-value-code
+                 (make-instruction-sequence
+                  '(env val) (list target)
+                  '((perform (op define-variable!)
+                             (const ,var)
+                             (reg val)
+                             (reg env))
+                    (assign ,target (const ok))))))))
+#+end_src
+
+La secuencia de dos instrucciones concatenada requiere ~env~ y ~val~ y modifica el objetivo. Nota que aunque preservamos ~env~ para esta secuencia, no preservamos ~val~, porque el ~get-value-code~ está diseñado para colocar explícitamente su resultado en ~val~ para uso de esta secuencia. (De hecho, si preserváramos ~val~, tendríamos un error, porque esto causaría que los contenidos previos de ~val~ sean restaurados justo después de que se ejecuta el ~get-value-code~.)
+
+*Compilación de expresiones condicionales*
+
+El código para una expresión ~if~ compilada con un objetivo y enlazamiento dados tiene la forma
+
+#+begin_src scheme
+<compilation of predicate, target 'val', linkage 'next'>
+ (test (op false?) (reg val))
+ (branch (label false-branch))
+true-branch
+ <compilation of consequent with given target and given linkage or 'after-if'>
+false-branch
+ <compilation of alternative with given target and linkage>
+after-if
+#+end_src
+
+Para generar este código, compilamos el predicado, el consecuente y la alternativa, y combinamos el código resultante con instrucciones para probar el resultado del predicado y con etiquetas recién generadas para marcar las ramas verdadera y falsa y el final del condicional.[fn:322] En esta disposición de código, debemos bifurcar alrededor de la rama verdadera si la prueba es falsa. La única complicación leve es en cómo debe manejarse el enlazamiento para la rama verdadera. Si el enlazamiento para el condicional es ~return~ o una etiqueta, entonces las ramas verdadera y falsa usarán ambas este mismo enlazamiento. Si el enlazamiento es ~next~, la rama verdadera termina con un salto alrededor del código para la rama falsa hacia la etiqueta al final del condicional.
+
+#+begin_src scheme
+(define (compile-if exp target linkage)
+  (let ((t-branch (make-label 'true-branch))
+        (f-branch (make-label 'false-branch))
+        (after-if (make-label 'after-if)))
+    (let ((consequent-linkage
+           (if (eq? linkage 'next) after-if linkage)))
+      (let ((p-code (compile (if-predicate exp) 'val 'next))
+            (c-code
+             (compile
+              (if-consequent exp) target consequent-linkage))
+            (a-code
+             (compile (if-alternative exp) target linkage)))
+        (preserving '(env continue)
+                    p-code
+                    (append-instruction-sequences
+                     (make-instruction-sequence
+                      '(val) '()
+                      '((test (op false?) (reg val))
+                        (branch (label ,f-branch))))
+                     (parallel-instruction-sequences
+                      (append-instruction-sequences t-branch c-code)
+                      (append-instruction-sequences f-branch a-code))
+                     after-if))))))
+#+end_src
+
+~env~ se preserva alrededor del código del predicado porque podría ser necesitado por las ramas verdadera y falsa, y ~continue~ se preserva porque podría ser necesitado por el código de enlazamiento en esas ramas. El código para las ramas verdadera y falsa (que no se ejecutan secuencialmente) se concatena usando un combinador especial ~parallel-instruction-sequences~ descrito en la sección [[#section-5.5.4][5.5.4]].
+
+Nota que ~cond~ es una expresión derivada, así que todo lo que el compilador necesita hacer para manejarlo es aplicar el transformador ~cond->if~ (de la sección [[#section-4.1.2][4.1.2]]) y compilar la expresión ~if~ resultante.
+
+*Compilación de secuencias*
+
+La compilación de secuencias (de cuerpos de procedimientos o expresiones ~begin~ explícitas) es paralela a su evaluación. Cada expresión de la secuencia se compila--la última expresión con el enlazamiento especificado para la secuencia, y las otras expresiones con enlazamiento ~next~ (para ejecutar el resto de la secuencia). Las secuencias de instrucciones para las expresiones individuales se concatenan para formar una única secuencia de instrucciones, de tal manera que ~env~ (necesitado para el resto de la secuencia) y ~continue~ (posiblemente necesitado para el enlazamiento al final de la secuencia) se preservan.
+
+#+begin_src scheme
+(define (compile-sequence seq target linkage)
+  (if (last-exp? seq)
+      (compile (first-exp seq) target linkage)
+      (preserving '(env continue)
+                  (compile (first-exp seq) target 'next)
+                  (compile-sequence (rest-exps seq) target linkage))))
+#+end_src
+
+*Compilación de expresiones ~lambda~*
+
+Las expresiones ~lambda~ construyen procedimientos. El código objeto para una expresión ~lambda~ debe tener la forma
+
+#+begin_src scheme
+<construct procedure object and assign it to target register>
+<LINKAGE>
+#+end_src
+
+Cuando compilamos la expresión ~lambda~, también generamos el código para el cuerpo del procedimiento. Aunque el cuerpo no será ejecutado en el momento de construcción del procedimiento, es conveniente insertarlo en el código objeto justo después del código para el ~lambda~. Si el enlazamiento para la expresión ~lambda~ es una etiqueta o ~return~, esto está bien. Pero si el enlazamiento es ~next~, necesitaremos saltar alrededor del código para el cuerpo del procedimiento usando un enlazamiento que salta a una etiqueta que se inserta después del cuerpo. El código objeto así tiene la forma
+
+#+begin_src scheme
+<construct procedure object and assign it to target register>
+ <code for given linkage> or '(goto (label after-lambda))'
+ <compilation of procedure body>
+after-lambda
+#+end_src
+
+~compile-lambda~ genera el código para construir el objeto procedimiento seguido por el código para el cuerpo del procedimiento. El objeto procedimiento será construido en tiempo de ejecución combinando el entorno actual (el entorno en el punto de definición) con el punto de entrada al cuerpo del procedimiento compilado (una etiqueta recién generada).[fn:323]
+
+#+begin_src scheme
+(define (compile-lambda exp target linkage)
+  (let ((proc-entry (make-label 'entry))
+        (after-lambda (make-label 'after-lambda)))
+    (let ((lambda-linkage
+           (if (eq? linkage 'next) after-lambda linkage)))
+      (append-instruction-sequences
+       (tack-on-instruction-sequence
+        (end-with-linkage lambda-linkage
+                          (make-instruction-sequence
+                           '(env) (list target)
+                           '((assign ,target
+                                     (op make-compiled-procedure)
+                                     (label ,proc-entry)
+                                     (reg env)))))
+        (compile-lambda-body exp proc-entry))
+       after-lambda))))
+#+end_src
+
+~compile-lambda~ usa el combinador especial ~tack-on-instruction-sequence~ (sección [[#section-5.5.4][5.5.4]]) en lugar de ~append-instruction-sequences~ para concatenar el cuerpo del procedimiento al código de la expresión ~lambda~, porque el cuerpo no es parte de la secuencia de instrucciones que será ejecutada cuando se entre a la secuencia combinada; más bien, está en la secuencia solo porque ese era un lugar conveniente para ponerlo.
+
+~compile-lambda-body~ construye el código para el cuerpo del procedimiento. Este código comienza con una etiqueta para el punto de entrada. A continuación vienen instrucciones que harán que el entorno de evaluación en tiempo de ejecución cambie al entorno correcto para evaluar el cuerpo del procedimiento--a saber, el entorno de definición del procedimiento, extendido para incluir los enlaces de los parámetros formales a los argumentos con los que se llama al procedimiento. Después de esto viene el código para la secuencia de expresiones que constituye el cuerpo del procedimiento. La secuencia se compila con enlazamiento ~return~ y objetivo ~val~ de manera que terminará retornando del procedimiento con el resultado del procedimiento en ~val~.
+
+#+begin_src scheme
+(define (compile-lambda-body exp proc-entry)
+  (let ((formals (lambda-parameters exp)))
+    (append-instruction-sequences
+     (make-instruction-sequence '(env proc argl) '(env)
+                                '(,proc-entry
+                                  (assign env (op compiled-procedure-env) (reg proc))
+                                  (assign env
+                                          (op extend-environment)
+                                          (const ,formals)
+                                          (reg argl)
+                                          (reg env))))
+     (compile-sequence (lambda-body exp) 'val 'return))))
+#+end_src
+*** 5.5.3 Compilación de combinaciones
+:properties:
+:custom_id: section-5.5.3
+:end:
+
+La esencia del proceso de compilación es la compilación de aplicaciones de procedimientos. El código para una combinación compilada con un objetivo y enlazamiento dados tiene la forma
+
+#+begin_src scheme
+<compilation of operator, target 'proc', linkage 'next'>
+<evaluate operands and construct argument list in 'argl'>
+<compilation of procedure call with given target and linkage>
+#+end_src
+
+Los registros ~env~, ~proc~ y ~argl~ pueden tener que ser guardados y restaurados durante la evaluación del operador y los operandos. Nota que este es el único lugar en el compilador donde se especifica un objetivo diferente de ~val~.
+
+El código requerido es generado por ~compile-application~. Esto compila recursivamente el operador, para producir código que pone el procedimiento a aplicar en ~proc~, y compila los operandos, para producir código que evalúa los operandos individuales de la aplicación. Las secuencias de instrucciones para los operandos se combinan (mediante ~construct-arglist~) con código que construye la lista de argumentos en ~argl~, y el código de lista de argumentos resultante se combina con el código del procedimiento y el código que realiza la llamada al procedimiento (producido por ~compile-procedure-call~). Al concatenar las secuencias de código, el registro ~env~ debe preservarse alrededor de la evaluación del operador (ya que evaluar el operador podría modificar ~env~, que se necesitará para evaluar los operandos), y el registro ~proc~ debe preservarse alrededor de la construcción de la lista de argumentos (ya que evaluar los operandos podría modificar ~proc~, que se necesitará para la aplicación real del procedimiento). ~continue~ también debe preservarse en todo momento, ya que se necesita para el enlazamiento en la llamada al procedimiento.
+
+#+begin_src scheme
+(define (compile-application exp target linkage)
+  (let ((proc-code (compile (operator exp) 'proc 'next))
+        (operand-codes
+         (map (lambda (operand) (compile operand 'val 'next))
+              (operands exp))))
+    (preserving '(env continue)
+                proc-code
+                (preserving '(proc continue)
+                            (construct-arglist operand-codes)
+                            (compile-procedure-call target linkage)))))
+#+end_src
+
+El código para construir la lista de argumentos evaluará cada operando en ~val~ y luego hará ~cons~ de ese valor sobre la lista de argumentos que se está acumulando en ~argl~. Dado que hacemos ~cons~ de los argumentos sobre ~argl~ en secuencia, debemos comenzar con el último argumento y terminar con el primero, de manera que los argumentos aparezcan en orden de primero a último en la lista resultante. En lugar de desperdiciar una instrucción inicializando ~argl~ a la lista vacía para preparar esta secuencia de evaluaciones, hacemos que la primera secuencia de código construya el ~argl~ inicial. La forma general de la construcción de lista de argumentos es por lo tanto la siguiente:
+
+#+begin_src scheme
+<compilation of last operand, targeted to 'val'>
+(assign argl (op list) (reg val))
+<compilation of next operand, targeted to 'val'>
+(assign argl (op cons) (reg val) (reg argl))
+...
+<compilation of first operand, targeted to 'val'>
+(assign argl (op cons) (reg val) (reg argl))
+#+end_src
+
+~argl~ debe preservarse alrededor de cada evaluación de operando excepto la primera (para que los argumentos acumulados hasta ahora no se pierdan), y ~env~ debe preservarse alrededor de cada evaluación de operando excepto la última (para uso por evaluaciones de operandos subsiguientes).
+
+Compilar este código de argumentos es un poco complicado, debido al tratamiento especial del primer operando a evaluar y la necesidad de preservar ~argl~ y ~env~ en diferentes lugares. El procedimiento ~construct-arglist~ toma como argumentos el código que evalúa los operandos individuales. Si no hay operandos en absoluto, simplemente emite la instrucción
+
+#+begin_src scheme
+(assign argl (const ()))
+#+end_src
+
+De lo contrario, ~construct-arglist~ crea código que inicializa ~argl~ con el último argumento, y concatena código que evalúa el resto de los argumentos y los adjunta a ~argl~ en sucesión. Para procesar los argumentos de último a primero, debemos invertir la lista de secuencias de código de operandos del orden suministrado por ~compile-application~.
+
+#+begin_src scheme
+(define (construct-arglist operand-codes)
+  (let ((operand-codes (reverse operand-codes)))
+    (if (null? operand-codes)
+        (make-instruction-sequence
+         '() '(argl)
+         '((assign argl (const ()))))
+        (let ((code-to-get-last-arg
+               (append-instruction-sequences
+                (car operand-codes)
+                (make-instruction-sequence
+                 '(val) '(argl)
+                 '((assign argl (op list) (reg val)))))))
+          (if (null? (cdr operand-codes))
+              code-to-get-last-arg
+              (preserving '(env)
+                          code-to-get-last-arg
+                          (code-to-get-rest-args
+                           (cdr operand-codes))))))))
+
+(define (code-to-get-rest-args operand-codes)
+  (let ((code-for-next-arg
+         (preserving '(argl)
+                     (car operand-codes)
+                     (make-instruction-sequence
+                      '(val argl) '(argl)
+                      '((assign argl
+                                (op cons) (reg val) (reg argl)))))))
+    (if (null? (cdr operand-codes))
+        code-for-next-arg
+        (preserving '(env)
+                    code-for-next-arg
+                    (code-to-get-rest-args (cdr operand-codes))))))
+#+end_src
+
+*Aplicación de procedimientos*
+
+Después de evaluar los elementos de una combinación, el código compilado debe aplicar el procedimiento en ~proc~ a los argumentos en ~argl~. El código realiza esencialmente el mismo despacho que el procedimiento ~apply~ en el evaluador metacircular de la sección [[#section-4.1.1][4.1.1]] o el punto de entrada ~apply-dispatch~ en el evaluador de control explícito de la sección [[#section-5.4.1][5.4.1]]. Verifica si el procedimiento a aplicar es un procedimiento primitivo o un procedimiento compilado. Para un procedimiento primitivo, usa ~apply-primitive-procedure~; veremos en breve cómo maneja los procedimientos compilados. El código de aplicación de procedimiento tiene la siguiente forma:
+
+#+begin_src scheme
+(test (op primitive-procedure?) (reg proc))
+ (branch (label primitive-branch))
+compiled-branch
+ <code to apply compiled procedure with given target and appropriate linkage>
+primitive-branch
+ (assign <TARGET>
+         (op apply-primitive-procedure)
+         (reg proc)
+         (reg argl))
+ <LINKAGE>
+after-call
+#+end_src
+
+Observa que la rama compilada debe saltar alrededor de la rama primitiva. Por lo tanto, si el enlazamiento para la llamada al procedimiento original era ~next~, la rama compuesta debe usar un enlazamiento que salte a una etiqueta que se inserta después de la rama primitiva. (Esto es similar al enlazamiento usado para la rama verdadera en ~compile-if~.)
+
+#+begin_src scheme
+(define (compile-procedure-call target linkage)
+  (let ((primitive-branch (make-label 'primitive-branch))
+        (compiled-branch (make-label 'compiled-branch))
+        (after-call (make-label 'after-call)))
+    (let ((compiled-linkage
+           (if (eq? linkage 'next) after-call linkage)))
+      (append-instruction-sequences
+       (make-instruction-sequence
+        '(proc) '()
+        '((test (op primitive-procedure?) (reg proc))
+          (branch (label ,primitive-branch))))
+       (parallel-instruction-sequences
+        (append-instruction-sequences
+         compiled-branch
+         (compile-proc-appl target compiled-linkage))
+        (append-instruction-sequences
+         primitive-branch
+         (end-with-linkage
+          linkage
+          (make-instruction-sequence
+           '(proc argl)
+           (list target)
+           '((assign ,target
+                     (op apply-primitive-procedure)
+                     (reg proc)
+                     (reg argl)))))))
+       after-call))))
+#+end_src
+
+Las ramas primitiva y compuesta, como las ramas verdadera y falsa en ~compile-if~, se concatenan usando ~parallel-instruction-sequences~ en lugar del ~append-instruction-sequences~ ordinario, porque no se ejecutarán secuencialmente.
+
+*Aplicación de procedimientos compilados*
+
+El código que maneja la aplicación de procedimientos es la parte más sutil del compilador, aunque las secuencias de instrucciones que genera son muy cortas. Un procedimiento compilado (como se construye mediante ~compile-lambda~) tiene un punto de entrada, que es una etiqueta que designa dónde comienza el código para el procedimiento. El código en este punto de entrada calcula un resultado en ~val~ y retorna ejecutando la instrucción ~(goto (reg continue))~. Así, podríamos esperar que el código para una aplicación de procedimiento compilado (a ser generado por ~compile-proc-appl~) con un objetivo y enlazamiento dados se vea así si el enlazamiento es una etiqueta
+
+#+begin_src scheme
+(assign continue (label proc-return))
+ (assign val (op compiled-procedure-entry) (reg proc))
+ (goto (reg val))
+proc-return
+ (assign <TARGET> (reg val))   ; included if target is not ~val~
+ (goto (label <LINKAGE>))   ; linkage code
+#+end_src
+
+o así si el enlazamiento es ~return~.
+
+#+begin_src scheme
+(save continue)
+ (assign continue (label proc-return))
+ (assign val (op compiled-procedure-entry) (reg proc))
+ (goto (reg val))
+proc-return
+ (assign <TARGET> (reg val))   ; included if target is not ~val~
+ (restore continue)
+ (goto (reg continue))   ; linkage code
+#+end_src
+
+Este código configura ~continue~ de manera que el procedimiento retornará a una etiqueta ~proc-return~ y salta al punto de entrada del procedimiento. El código en ~proc-return~ transfiere el resultado del procedimiento de ~val~ al registro objetivo (si es necesario) y luego salta a la ubicación especificada por el enlazamiento. (El enlazamiento es siempre ~return~ o una etiqueta, porque ~compile-procedure-call~ reemplaza un enlazamiento ~next~ para la rama de procedimiento compuesto por una etiqueta ~after-call~.)
+
+De hecho, si el objetivo no es ~val~, ese es exactamente el código que nuestro compilador generará.[fn:324] Sin embargo, usualmente el objetivo es ~val~ (la única vez que el compilador especifica un registro diferente es cuando se dirige la evaluación de un operador a ~proc~), así que el resultado del procedimiento se coloca directamente en el registro objetivo y no hay necesidad de retornar a una ubicación especial que lo copie. En su lugar, simplificamos el código configurando ~continue~ de manera que el procedimiento "retorne" directamente al lugar especificado por el enlazamiento del llamador:
+
+#+begin_src scheme
+<set up 'continue' for linkage>
+(assign val (op compiled-procedure-entry) (reg proc))
+(goto (reg val))
+#+end_src
+
+Si el enlazamiento es una etiqueta, configuramos ~continue~ de manera que el procedimiento retornará a esa etiqueta. (Es decir, el ~(goto (reg continue))~ con el que termina el procedimiento se vuelve equivalente al '(goto (label <LINKAGE>))' en ~proc-return~ arriba.)
+
+#+begin_src scheme
+(assign continue (label <LINKAGE>))
+(assign val (op compiled-procedure-entry) (reg proc))
+(goto (reg val))
+#+end_src
+
+Si el enlazamiento es ~return~, no necesitamos configurar ~continue~ en absoluto: ya contiene la ubicación deseada. (Es decir, el ~(goto (reg continue))~ con el que termina el procedimiento va directamente al lugar donde el ~(goto (reg continue))~ en ~proc-return~ habría ido.)
+
+#+begin_src scheme
+(assign val (op compiled-procedure-entry) (reg proc))
+(goto (reg val))
+#+end_src
+
+Con esta implementación del enlazamiento ~return~, el compilador genera código recursivo de cola. Llamar a un procedimiento como el paso final en un cuerpo de procedimiento hace una transferencia directa, sin guardar ninguna información en la pila.
+
+Supongamos en cambio que hubiéramos manejado el caso de una llamada a procedimiento con un enlazamiento de ~return~ y un objetivo de ~val~ como se muestra arriba para un objetivo no-~val~. Esto destruiría la recursión de cola. Nuestro sistema aún daría el mismo valor para cualquier expresión. Pero cada vez que llamáramos a un procedimiento, guardaríamos ~continue~ y retornaríamos después de la llamada para deshacer el guardado (inútil). Estos guardados extra se acumularían durante un anidamiento de llamadas a procedimientos.[fn:325]
+
+~compile-proc-appl~ genera el código de aplicación de procedimiento anterior considerando cuatro casos, dependiendo de si el objetivo para la llamada es ~val~ y si el enlazamiento es ~return~. Observa que las secuencias de instrucciones se declaran para modificar todos los registros, ya que ejecutar el cuerpo del procedimiento puede cambiar los registros de maneras arbitrarias.[fn:326] También nota que la secuencia de código para el caso con objetivo ~val~ y enlazamiento ~return~ se declara para necesitar ~continue~: aunque ~continue~ no se usa explícitamente en la secuencia de dos instrucciones, debemos estar seguros de que ~continue~ tendrá el valor correcto cuando entremos al procedimiento compilado.
+
+#+begin_src scheme
+(define (compile-proc-appl target linkage)
+  (cond ((and (eq? target 'val) (not (eq? linkage 'return)))
+         (make-instruction-sequence
+          '(proc) all-regs
+          '((assign continue (label ,linkage))
+            (assign val (op compiled-procedure-entry)
+                    (reg proc))
+            (goto (reg val)))))
+        ((and (not (eq? target 'val))
+              (not (eq? linkage 'return)))
+         (let ((proc-return (make-label 'proc-return)))
+           (make-instruction-sequence
+            '(proc) all-regs
+            '((assign continue (label ,proc-return))
+              (assign val (op compiled-procedure-entry)
+                      (reg proc))
+              (goto (reg val))
+              ,proc-return
+              (assign ,target (reg val))
+              (goto (label ,linkage))))))
+        ((and (eq? target 'val) (eq? linkage 'return))
+         (make-instruction-sequence
+          '(proc continue) all-regs
+          '((assign val (op compiled-procedure-entry)
+                    (reg proc))
+            (goto (reg val)))))
+        ((and (not (eq? target 'val)) (eq? linkage 'return))
+         (error "return linkage, target not val - COMPILE"
+                target))))
+#+end_src
+*** 5.5.4 Combinación de secuencias de instrucciones
+:properties:
+:custom_id: section-5.5.4
+:end:
+
+Esta sección describe los detalles sobre cómo se representan y combinan las secuencias de instrucciones. Recuerda de la sección [[#section-5.5.1][5.5.1]] que una secuencia de instrucciones se representa como una lista de los registros necesitados, los registros modificados, y las instrucciones reales. También consideraremos una etiqueta (símbolo) como un caso degenerado de una secuencia de instrucciones, que no necesita ni modifica ningún registro. Así que para determinar los registros necesitados y modificados por secuencias de instrucciones usamos los selectores
+
+#+begin_src scheme
+(define (registers-needed s)
+  (if (symbol? s) '() (car s)))
+
+(define (registers-modified s)
+  (if (symbol? s) '() (cadr s)))
+
+(define (statements s)
+  (if (symbol? s) (list s) (caddr s)))
+#+end_src
+
+y para determinar si una secuencia dada necesita o modifica un registro dado usamos los predicados
+
+#+begin_src scheme
+(define (needs-register? seq reg)
+  (memq reg (registers-needed seq)))
+
+(define (modifies-register? seq reg)
+  (memq reg (registers-modified seq)))
+#+end_src
+
+En términos de estos predicados y selectores, podemos implementar los diversos combinadores de secuencias de instrucciones usados a lo largo del compilador.
+
+El combinador básico es ~append-instruction-sequences~. Este toma como argumentos un número arbitrario de secuencias de instrucciones que deben ejecutarse secuencialmente y devuelve una secuencia de instrucciones cuyas sentencias son las sentencias de todas las secuencias concatenadas. El punto sutil es determinar los registros que son necesitados y modificados por la secuencia resultante. Modifica aquellos registros que son modificados por cualquiera de las secuencias; necesita aquellos registros que deben inicializarse antes de que la primera secuencia pueda ejecutarse (los registros necesitados por la primera secuencia), junto con aquellos registros necesitados por cualquiera de las otras secuencias que no son inicializados (modificados) por secuencias que la preceden.
+
+Las secuencias se concatenan de dos en dos mediante ~append-2-sequences~. Este toma dos secuencias de instrucciones ~seq1~ y ~seq2~ y devuelve la secuencia de instrucciones cuyas sentencias son las sentencias de ~seq1~ seguidas por las sentencias de ~seq2~, cuyos registros modificados son aquellos registros que son modificados por ~seq1~ o ~seq2~, y cuyos registros necesitados son los registros necesitados por ~seq1~ junto con aquellos registros necesitados por ~seq2~ que no son modificados por ~seq1~. (En términos de operaciones de conjuntos, el nuevo conjunto de registros necesitados es la unión del conjunto de registros necesitados por ~seq1~ con la diferencia de conjuntos de los registros necesitados por ~seq2~ y los registros modificados por ~seq1~.) Así, ~append-instruction-sequences~ se implementa de la siguiente manera:
+
+#+begin_src scheme
+(define (append-instruction-sequences . seqs)
+  (define (append-2-sequences seq1 seq2)
+    (make-instruction-sequence
+     (list-union (registers-needed seq1)
+                 (list-difference (registers-needed seq2)
+                                  (registers-modified seq1)))
+     (list-union (registers-modified seq1)
+                 (registers-modified seq2))
+     (append (statements seq1) (statements seq2))))
+  (define (append-seq-list seqs)
+    (if (null? seqs)
+        (empty-instruction-sequence)
+        (append-2-sequences (car seqs)
+                            (append-seq-list (cdr seqs)))))
+  (append-seq-list seqs))
+#+end_src
+
+Este procedimiento usa algunas operaciones simples para manipular conjuntos representados como listas, similar a la representación de conjuntos (no ordenados) descrita en la sección [[#section-2.3.3][2.3.3]]:
+
+#+begin_src scheme
+(define (list-union s1 s2)
+  (cond ((null? s1) s2)
+        ((memq (car s1) s2) (list-union (cdr s1) s2))
+        (else (cons (car s1) (list-union (cdr s1) s2)))))
+
+(define (list-difference s1 s2)
+  (cond ((null? s1) '())
+        ((memq (car s1) s2) (list-difference (cdr s1) s2))
+        (else (cons (car s1)
+                    (list-difference (cdr s1) s2)))))
+#+end_src
+
+~preserving~, el segundo combinador principal de secuencias de instrucciones, toma una lista de registros ~regs~ y dos secuencias de instrucciones ~seq1~ y ~seq2~ que deben ejecutarse secuencialmente. Devuelve una secuencia de instrucciones cuyas sentencias son las sentencias de ~seq1~ seguidas por las sentencias de ~seq2~, con instrucciones ~save~ y ~restore~ apropiadas alrededor de ~seq1~ para proteger los registros en ~regs~ que son modificados por ~seq1~ pero necesitados por ~seq2~. Para lograr esto, ~preserving~ primero crea una secuencia que tiene los ~save~s requeridos seguidos por las sentencias de ~seq1~ seguidas por los ~restore~s requeridos. Esta secuencia necesita los registros que están siendo guardados y restaurados además de los registros necesitados por ~seq1~, y modifica los registros modificados por ~seq1~ excepto los que están siendo guardados y restaurados. Esta secuencia aumentada y ~seq2~ se concatenan entonces de la manera usual. El siguiente procedimiento implementa esta estrategia recursivamente, recorriendo la lista de registros a preservar:[fn:327]
+
+#+begin_src scheme
+(define (preserving regs seq1 seq2)
+  (if (null? regs)
+      (append-instruction-sequences seq1 seq2)
+      (let ((first-reg (car regs)))
+        (if (and (needs-register? seq2 first-reg)
+                 (modifies-register? seq1 first-reg))
+            (preserving (cdr regs)
+                        (make-instruction-sequence
+                         (list-union (list first-reg)
+                                     (registers-needed seq1))
+                         (list-difference (registers-modified seq1)
+                                          (list first-reg))
+                         (append '((save ,first-reg))
+                                 (statements seq1)
+                                 '((restore ,first-reg))))
+                        seq2)
+            (preserving (cdr regs) seq1 seq2)))))
+#+end_src
+
+Otro combinador de secuencias, ~tack-on-instruction-sequence~, es usado por ~compile-lambda~ para concatenar un cuerpo de procedimiento a otra secuencia. Dado que el cuerpo del procedimiento no está "en línea" para ser ejecutado como parte de la secuencia combinada, su uso de registros no tiene impacto en el uso de registros de la secuencia en la que está incrustado. Por lo tanto ignoramos los conjuntos de registros necesitados y modificados del cuerpo del procedimiento cuando lo adjuntamos a la otra secuencia.
+
+#+begin_src scheme
+(define (tack-on-instruction-sequence seq body-seq)
+  (make-instruction-sequence
+   (registers-needed seq)
+   (registers-modified seq)
+   (append (statements seq) (statements body-seq))))
+#+end_src
+
+~compile-if~ y ~compile-procedure-call~ usan un combinador especial llamado ~parallel-instruction-sequences~ para concatenar las dos ramas alternativas que siguen a una prueba. Las dos ramas nunca se ejecutarán secuencialmente; para cualquier evaluación particular de la prueba, se entrará a una rama u otra. Debido a esto, los registros necesitados por la segunda rama aún son necesitados por la secuencia combinada, incluso si estos son modificados por la primera rama.
+
+#+begin_src scheme
+(define (parallel-instruction-sequences seq1 seq2)
+  (make-instruction-sequence
+   (list-union (registers-needed seq1)
+               (registers-needed seq2))
+   (list-union (registers-modified seq1)
+               (registers-modified seq2))
+   (append (statements seq1) (statements seq2))))
+#+end_src

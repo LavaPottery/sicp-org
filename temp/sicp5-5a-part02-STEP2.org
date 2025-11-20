@@ -1,0 +1,154 @@
+
+A veces necesitamos construir una secuencia de instrucciones sin sentencias:
+
+#+begin_src scheme
+(define (empty-instruction-sequence)
+  (make-instruction-sequence '() '() '()))
+#+end_src
+
+Los procedimientos para combinar secuencias de instrucciones se muestran en la sección [[#section-5.5.4][5.5.4]].
+
+**** Exercise 5.31
+:properties:
+:custom_id: exercise-5.31
+:end:
+
+Al evaluar una aplicación de procedimiento, el evaluador de control explícito siempre guarda y restaura el registro ~env~ alrededor de la evaluación del operador, guarda y restaura ~env~ alrededor de la evaluación de cada operando (excepto el final), guarda y restaura ~argl~ alrededor de la evaluación de cada operando, y guarda y restaura ~proc~ alrededor de la evaluación de la secuencia de operandos. Para cada una de las siguientes combinaciones, indica cuáles de estas operaciones ~save~ y ~restore~ son superfluas y por lo tanto podrían ser eliminadas por el mecanismo ~preserving~ del compilador:
+
+#+begin_src scheme
+(f 'x 'y)
+
+((f) 'x 'y)
+
+(f (g 'x) y)
+
+(f (g 'x) 'y)
+#+end_src
+
+**** Exercise 5.32
+:properties:
+:custom_id: exercise-5.32
+:end:
+
+Usando el mecanismo ~preserving~, el compilador evitará guardar y restaurar ~env~ alrededor de la evaluación del operador de una combinación en el caso donde el operador es un símbolo. También podríamos construir tales optimizaciones en el evaluador. De hecho, el evaluador de control explícito de la sección [[#section-5.4][5.4]] ya realiza una optimización similar, tratando las combinaciones sin operandos como un caso especial.
+
+a. Extiende el evaluador de control explícito para reconocer como una clase separada de expresiones las combinaciones cuyo operador es un símbolo, y para aprovechar este hecho al evaluar tales expresiones.
+
+b. Alyssa P. Hacker sugiere que extendiendo el evaluador para reconocer más y más casos especiales podríamos incorporar todas las optimizaciones del compilador, y que esto eliminaría la ventaja de la compilación por completo. ¿Qué opinas de esta idea?
+
+*** 5.5.2 Compilación de expresiones
+:properties:
+:custom_id: section-5.5.2
+:end:
+
+En esta sección y la siguiente implementamos los generadores de código a los que despacha el procedimiento ~compile~.
+
+*Compilación de código de enlazamiento*
+
+En general, la salida de cada generador de código terminará con instrucciones--generadas por el procedimiento ~compile-linkage~--que implementan el enlazamiento requerido. Si el enlazamiento es ~return~ entonces debemos generar la instrucción ~(goto (reg continue))~. Esto necesita el registro ~continue~ y no modifica ningún registro. Si el enlazamiento es ~next~, entonces no necesitamos incluir ninguna instrucción adicional. De lo contrario, el enlazamiento es una etiqueta, y generamos un ~goto~ a esa etiqueta, una instrucción que no necesita ni modifica ningún registro.[fn:321]
+
+#+begin_src scheme
+(define (compile-linkage linkage)
+  (cond ((eq? linkage 'return)
+         (make-instruction-sequence '(continue) '()
+                                    '((goto (reg continue)))))
+        ((eq? linkage 'next)
+         (empty-instruction-sequence))
+        (else
+         (make-instruction-sequence '() '()
+                                    '((goto (label ,linkage)))))))
+#+end_src
+
+El código de enlazamiento se concatena a una secuencia de instrucciones mediante ~preserving~ del registro ~continue~, ya que un enlazamiento ~return~ requerirá el registro ~continue~: si la secuencia de instrucciones dada modifica ~continue~ y el código de enlazamiento lo necesita, ~continue~ será guardado y restaurado.
+
+#+begin_src scheme
+(define (end-with-linkage linkage instruction-sequence)
+  (preserving '(continue)
+              instruction-sequence
+              (compile-linkage linkage)))
+#+end_src
+
+*Compilación de expresiones simples*
+
+Los generadores de código para expresiones auto-evaluables, citas, y variables construyen secuencias de instrucciones que asignan el valor requerido al registro objetivo y luego proceden según lo especificado por el descriptor de enlazamiento.
+
+#+begin_src scheme
+(define (compile-self-evaluating exp target linkage)
+  (end-with-linkage
+   linkage
+   (make-instruction-sequence
+    '() (list target)
+    '((assign ,target (const ,exp))))))
+
+(define (compile-quoted exp target linkage)
+  (end-with-linkage
+   linkage
+   (make-instruction-sequence
+    '() (list target)
+    '((assign ,target (const ,(text-of-quotation exp)))))))
+
+(define (compile-variable exp target linkage)
+  (end-with-linkage
+   linkage
+   (make-instruction-sequence
+    '(env) (list target)
+    '((assign ,target
+              (op lookup-variable-value)
+              (const ,exp)
+              (reg env))))))
+#+end_src
+
+Todas estas instrucciones de asignación modifican el registro objetivo, y la que busca una variable necesita el registro ~env~.
+
+Las asignaciones y definiciones se manejan de manera muy similar a como se hace en el intérprete. Generamos recursivamente código que calcula el valor a asignar a la variable, y le concatenamos una secuencia de dos instrucciones que realmente establece o define la variable y asigna el valor de toda la expresión (el símbolo ~ok~) al registro objetivo. La compilación recursiva tiene objetivo ~val~ y enlazamiento ~next~ de manera que el código pondrá su resultado en ~val~ y continuará con el código que se concatena después de él. La concatenación se hace preservando ~env~, ya que el entorno se necesita para establecer o definir la variable y el código para el valor de la variable podría ser la compilación de una expresión compleja que podría modificar los registros de maneras arbitrarias.
+
+#+begin_src scheme
+(define (compile-assignment exp target linkage)
+  (let ((var (assignment-variable exp))
+        (get-value-code
+         (compile (assignment-value exp) 'val 'next)))
+    (end-with-linkage
+     linkage
+     (preserving '(env)
+                 get-value-code
+                 (make-instruction-sequence
+                  '(env val) (list target)
+                  '((perform (op set-variable-value!)
+                             (const ,var)
+                             (reg val)
+                             (reg env))
+                    (assign ,target (const ok))))))))
+
+(define (compile-definition exp target linkage)
+  (let ((var (definition-variable exp))
+        (get-value-code
+         (compile (definition-value exp) 'val 'next)))
+    (end-with-linkage
+     linkage
+     (preserving '(env)
+                 get-value-code
+                 (make-instruction-sequence
+                  '(env val) (list target)
+                  '((perform (op define-variable!)
+                             (const ,var)
+                             (reg val)
+                             (reg env))
+                    (assign ,target (const ok))))))))
+#+end_src
+
+La secuencia de dos instrucciones concatenada requiere ~env~ y ~val~ y modifica el objetivo. Nota que aunque preservamos ~env~ para esta secuencia, no preservamos ~val~, porque el ~get-value-code~ está diseñado para colocar explícitamente su resultado en ~val~ para uso de esta secuencia. (De hecho, si preserváramos ~val~, tendríamos un error, porque esto causaría que los contenidos previos de ~val~ sean restaurados justo después de que se ejecuta el ~get-value-code~.)
+
+*Compilación de expresiones condicionales*
+
+El código para una expresión ~if~ compilada con un objetivo y enlazamiento dados tiene la forma
+
+#+begin_src scheme
+<compilation of predicate, target 'val', linkage 'next'>
+ (test (op false?) (reg val))
+ (branch (label false-branch))
+true-branch
+ <compilation of consequent with given target and given linkage or 'after-if'>
+false-branch
+ <compilation of alternative with given target and linkage>
+after-if
+#+end_src

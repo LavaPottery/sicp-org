@@ -1,0 +1,76 @@
+
+o así si el enlazamiento es ~return~.
+
+#+begin_src scheme
+(save continue)
+ (assign continue (label proc-return))
+ (assign val (op compiled-procedure-entry) (reg proc))
+ (goto (reg val))
+proc-return
+ (assign <TARGET> (reg val))   ; included if target is not ~val~
+ (restore continue)
+ (goto (reg continue))   ; linkage code
+#+end_src
+
+Este código configura ~continue~ de manera que el procedimiento retornará a una etiqueta ~proc-return~ y salta al punto de entrada del procedimiento. El código en ~proc-return~ transfiere el resultado del procedimiento de ~val~ al registro objetivo (si es necesario) y luego salta a la ubicación especificada por el enlazamiento. (El enlazamiento es siempre ~return~ o una etiqueta, porque ~compile-procedure-call~ reemplaza un enlazamiento ~next~ para la rama de procedimiento compuesto por una etiqueta ~after-call~.)
+
+De hecho, si el objetivo no es ~val~, ese es exactamente el código que nuestro compilador generará.[fn:324] Sin embargo, usualmente el objetivo es ~val~ (la única vez que el compilador especifica un registro diferente es cuando se dirige la evaluación de un operador a ~proc~), así que el resultado del procedimiento se coloca directamente en el registro objetivo y no hay necesidad de retornar a una ubicación especial que lo copie. En su lugar, simplificamos el código configurando ~continue~ de manera que el procedimiento "retorne" directamente al lugar especificado por el enlazamiento del llamador:
+
+#+begin_src scheme
+<set up 'continue' for linkage>
+(assign val (op compiled-procedure-entry) (reg proc))
+(goto (reg val))
+#+end_src
+
+Si el enlazamiento es una etiqueta, configuramos ~continue~ de manera que el procedimiento retornará a esa etiqueta. (Es decir, el ~(goto (reg continue))~ con el que termina el procedimiento se vuelve equivalente al '(goto (label <LINKAGE>))' en ~proc-return~ arriba.)
+
+#+begin_src scheme
+(assign continue (label <LINKAGE>))
+(assign val (op compiled-procedure-entry) (reg proc))
+(goto (reg val))
+#+end_src
+
+Si el enlazamiento es ~return~, no necesitamos configurar ~continue~ en absoluto: ya contiene la ubicación deseada. (Es decir, el ~(goto (reg continue))~ con el que termina el procedimiento va directamente al lugar donde el ~(goto (reg continue))~ en ~proc-return~ habría ido.)
+
+#+begin_src scheme
+(assign val (op compiled-procedure-entry) (reg proc))
+(goto (reg val))
+#+end_src
+
+Con esta implementación del enlazamiento ~return~, el compilador genera código recursivo de cola. Llamar a un procedimiento como el paso final en un cuerpo de procedimiento hace una transferencia directa, sin guardar ninguna información en la pila.
+
+Supongamos en cambio que hubiéramos manejado el caso de una llamada a procedimiento con un enlazamiento de ~return~ y un objetivo de ~val~ como se muestra arriba para un objetivo no-~val~. Esto destruiría la recursión de cola. Nuestro sistema aún daría el mismo valor para cualquier expresión. Pero cada vez que llamáramos a un procedimiento, guardaríamos ~continue~ y retornaríamos después de la llamada para deshacer el guardado (inútil). Estos guardados extra se acumularían durante un anidamiento de llamadas a procedimientos.[fn:325]
+
+~compile-proc-appl~ genera el código de aplicación de procedimiento anterior considerando cuatro casos, dependiendo de si el objetivo para la llamada es ~val~ y si el enlazamiento es ~return~. Observa que las secuencias de instrucciones se declaran para modificar todos los registros, ya que ejecutar el cuerpo del procedimiento puede cambiar los registros de maneras arbitrarias.[fn:326] También nota que la secuencia de código para el caso con objetivo ~val~ y enlazamiento ~return~ se declara para necesitar ~continue~: aunque ~continue~ no se usa explícitamente en la secuencia de dos instrucciones, debemos estar seguros de que ~continue~ tendrá el valor correcto cuando entremos al procedimiento compilado.
+
+#+begin_src scheme
+(define (compile-proc-appl target linkage)
+  (cond ((and (eq? target 'val) (not (eq? linkage 'return)))
+         (make-instruction-sequence
+          '(proc) all-regs
+          '((assign continue (label ,linkage))
+            (assign val (op compiled-procedure-entry)
+                    (reg proc))
+            (goto (reg val)))))
+        ((and (not (eq? target 'val))
+              (not (eq? linkage 'return)))
+         (let ((proc-return (make-label 'proc-return)))
+           (make-instruction-sequence
+            '(proc) all-regs
+            '((assign continue (label ,proc-return))
+              (assign val (op compiled-procedure-entry)
+                      (reg proc))
+              (goto (reg val))
+              ,proc-return
+              (assign ,target (reg val))
+              (goto (label ,linkage))))))
+        ((and (eq? target 'val) (eq? linkage 'return))
+         (make-instruction-sequence
+          '(proc continue) all-regs
+          '((assign val (op compiled-procedure-entry)
+                    (reg proc))
+            (goto (reg val)))))
+        ((and (not (eq? target 'val)) (eq? linkage 'return))
+         (error "return linkage, target not val - COMPILE"
+                target))))
+#+end_src

@@ -1,0 +1,110 @@
+*** 5.5.4 Combinación de secuencias de instrucciones
+:properties:
+:custom_id: section-5.5.4
+:end:
+
+Esta sección describe los detalles sobre cómo se representan y combinan las secuencias de instrucciones. Recuerda de la sección [[#section-5.5.1][5.5.1]] que una secuencia de instrucciones se representa como una lista de los registros necesitados, los registros modificados, y las instrucciones reales. También consideraremos una etiqueta (símbolo) como un caso degenerado de una secuencia de instrucciones, que no necesita ni modifica ningún registro. Así que para determinar los registros necesitados y modificados por secuencias de instrucciones usamos los selectores
+
+#+begin_src scheme
+(define (registers-needed s)
+  (if (symbol? s) '() (car s)))
+
+(define (registers-modified s)
+  (if (symbol? s) '() (cadr s)))
+
+(define (statements s)
+  (if (symbol? s) (list s) (caddr s)))
+#+end_src
+
+y para determinar si una secuencia dada necesita o modifica un registro dado usamos los predicados
+
+#+begin_src scheme
+(define (needs-register? seq reg)
+  (memq reg (registers-needed seq)))
+
+(define (modifies-register? seq reg)
+  (memq reg (registers-modified seq)))
+#+end_src
+
+En términos de estos predicados y selectores, podemos implementar los diversos combinadores de secuencias de instrucciones usados a lo largo del compilador.
+
+El combinador básico es ~append-instruction-sequences~. Este toma como argumentos un número arbitrario de secuencias de instrucciones que deben ejecutarse secuencialmente y devuelve una secuencia de instrucciones cuyas sentencias son las sentencias de todas las secuencias concatenadas. El punto sutil es determinar los registros que son necesitados y modificados por la secuencia resultante. Modifica aquellos registros que son modificados por cualquiera de las secuencias; necesita aquellos registros que deben inicializarse antes de que la primera secuencia pueda ejecutarse (los registros necesitados por la primera secuencia), junto con aquellos registros necesitados por cualquiera de las otras secuencias que no son inicializados (modificados) por secuencias que la preceden.
+
+Las secuencias se concatenan de dos en dos mediante ~append-2-sequences~. Este toma dos secuencias de instrucciones ~seq1~ y ~seq2~ y devuelve la secuencia de instrucciones cuyas sentencias son las sentencias de ~seq1~ seguidas por las sentencias de ~seq2~, cuyos registros modificados son aquellos registros que son modificados por ~seq1~ o ~seq2~, y cuyos registros necesitados son los registros necesitados por ~seq1~ junto con aquellos registros necesitados por ~seq2~ que no son modificados por ~seq1~. (En términos de operaciones de conjuntos, el nuevo conjunto de registros necesitados es la unión del conjunto de registros necesitados por ~seq1~ con la diferencia de conjuntos de los registros necesitados por ~seq2~ y los registros modificados por ~seq1~.) Así, ~append-instruction-sequences~ se implementa de la siguiente manera:
+
+#+begin_src scheme
+(define (append-instruction-sequences . seqs)
+  (define (append-2-sequences seq1 seq2)
+    (make-instruction-sequence
+     (list-union (registers-needed seq1)
+                 (list-difference (registers-needed seq2)
+                                  (registers-modified seq1)))
+     (list-union (registers-modified seq1)
+                 (registers-modified seq2))
+     (append (statements seq1) (statements seq2))))
+  (define (append-seq-list seqs)
+    (if (null? seqs)
+        (empty-instruction-sequence)
+        (append-2-sequences (car seqs)
+                            (append-seq-list (cdr seqs)))))
+  (append-seq-list seqs))
+#+end_src
+
+Este procedimiento usa algunas operaciones simples para manipular conjuntos representados como listas, similar a la representación de conjuntos (no ordenados) descrita en la sección [[#section-2.3.3][2.3.3]]:
+
+#+begin_src scheme
+(define (list-union s1 s2)
+  (cond ((null? s1) s2)
+        ((memq (car s1) s2) (list-union (cdr s1) s2))
+        (else (cons (car s1) (list-union (cdr s1) s2)))))
+
+(define (list-difference s1 s2)
+  (cond ((null? s1) '())
+        ((memq (car s1) s2) (list-difference (cdr s1) s2))
+        (else (cons (car s1)
+                    (list-difference (cdr s1) s2)))))
+#+end_src
+
+~preserving~, el segundo combinador principal de secuencias de instrucciones, toma una lista de registros ~regs~ y dos secuencias de instrucciones ~seq1~ y ~seq2~ que deben ejecutarse secuencialmente. Devuelve una secuencia de instrucciones cuyas sentencias son las sentencias de ~seq1~ seguidas por las sentencias de ~seq2~, con instrucciones ~save~ y ~restore~ apropiadas alrededor de ~seq1~ para proteger los registros en ~regs~ que son modificados por ~seq1~ pero necesitados por ~seq2~. Para lograr esto, ~preserving~ primero crea una secuencia que tiene los ~save~s requeridos seguidos por las sentencias de ~seq1~ seguidas por los ~restore~s requeridos. Esta secuencia necesita los registros que están siendo guardados y restaurados además de los registros necesitados por ~seq1~, y modifica los registros modificados por ~seq1~ excepto los que están siendo guardados y restaurados. Esta secuencia aumentada y ~seq2~ se concatenan entonces de la manera usual. El siguiente procedimiento implementa esta estrategia recursivamente, recorriendo la lista de registros a preservar:[fn:327]
+
+#+begin_src scheme
+(define (preserving regs seq1 seq2)
+  (if (null? regs)
+      (append-instruction-sequences seq1 seq2)
+      (let ((first-reg (car regs)))
+        (if (and (needs-register? seq2 first-reg)
+                 (modifies-register? seq1 first-reg))
+            (preserving (cdr regs)
+                        (make-instruction-sequence
+                         (list-union (list first-reg)
+                                     (registers-needed seq1))
+                         (list-difference (registers-modified seq1)
+                                          (list first-reg))
+                         (append '((save ,first-reg))
+                                 (statements seq1)
+                                 '((restore ,first-reg))))
+                        seq2)
+            (preserving (cdr regs) seq1 seq2)))))
+#+end_src
+
+Otro combinador de secuencias, ~tack-on-instruction-sequence~, es usado por ~compile-lambda~ para concatenar un cuerpo de procedimiento a otra secuencia. Dado que el cuerpo del procedimiento no está "en línea" para ser ejecutado como parte de la secuencia combinada, su uso de registros no tiene impacto en el uso de registros de la secuencia en la que está incrustado. Por lo tanto ignoramos los conjuntos de registros necesitados y modificados del cuerpo del procedimiento cuando lo adjuntamos a la otra secuencia.
+
+#+begin_src scheme
+(define (tack-on-instruction-sequence seq body-seq)
+  (make-instruction-sequence
+   (registers-needed seq)
+   (registers-modified seq)
+   (append (statements seq) (statements body-seq))))
+#+end_src
+
+~compile-if~ y ~compile-procedure-call~ usan un combinador especial llamado ~parallel-instruction-sequences~ para concatenar las dos ramas alternativas que siguen a una prueba. Las dos ramas nunca se ejecutarán secuencialmente; para cualquier evaluación particular de la prueba, se entrará a una rama u otra. Debido a esto, los registros necesitados por la segunda rama aún son necesitados por la secuencia combinada, incluso si estos son modificados por la primera rama.
+
+#+begin_src scheme
+(define (parallel-instruction-sequences seq1 seq2)
+  (make-instruction-sequence
+   (list-union (registers-needed seq1)
+               (registers-needed seq2))
+   (list-union (registers-modified seq1)
+               (registers-modified seq2))
+   (append (statements seq1) (statements seq2))))
+#+end_src
