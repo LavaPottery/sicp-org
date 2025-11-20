@@ -1,0 +1,728 @@
+* 5 Computación con Máquinas de Registros
+:properties:
+:custom_id: section-5
+:end:
+** Introducción
+:properties:
+:VISIBILITY: notoc
+:end:
+
+#+begin_quote
+Mi objetivo es mostrar que la máquina celestial no es una especie de ser divino y viviente, sino una especie de mecanismo de relojería (y quien cree que un reloj tiene alma atribuye la gloria del creador a la obra), en la medida en que casi todos los múltiples movimientos son causados por una fuerza muy simple y material, así como todos los movimientos del reloj son causados por un solo peso.
+
+Johannes Kepler (carta a Herwart von Hohenburg, 1605)
+#+end_quote
+
+Comenzamos este libro estudiando procesos y describiendo procesos en términos de procedimientos escritos en Lisp. Para explicar los significados de estos procedimientos, utilizamos una sucesión de modelos de evaluación: el modelo de sustitución del [[#section-1][Capítulo 1]], el modelo de entornos del [[#section-3][Capítulo 3]], y el evaluador metacircular del [[#section-4][Capítulo 4]]. Nuestro examen del evaluador metacircular, en particular, disipó gran parte del misterio de cómo se interpretan los lenguajes tipo Lisp. Pero incluso el evaluador metacircular deja preguntas importantes sin respuesta, porque no logra elucidar los mecanismos de control en un sistema Lisp. Por ejemplo, el evaluador no explica cómo la evaluación de una subexpresión logra devolver un valor a la expresión que usa este valor, ni tampoco el evaluador explica cómo algunos procedimientos recursivos generan procesos iterativos (es decir, se evalúan usando espacio constante) mientras que otros procedimientos recursivos generan procesos recursivos. Estas preguntas permanecen sin respuesta porque el evaluador metacircular es en sí mismo un programa Lisp y por lo tanto hereda la estructura de control del sistema Lisp subyacente. Para proporcionar una descripción más completa de la estructura de control del evaluador Lisp, debemos trabajar a un nivel más primitivo que Lisp mismo.
+
+En este capítulo describiremos procesos en términos de la operación paso a paso de una computadora tradicional. Tal computadora, o <<i330>> máquina de registros, ejecuta secuencialmente <<i188>> instrucciones que manipulan el contenido de un conjunto fijo de elementos de almacenamiento llamados <<i332>> registros. Una instrucción típica de una máquina de registros aplica una operación primitiva al contenido de algunos registros y asigna el resultado a otro registro. Nuestras descripciones de procesos ejecutados por máquinas de registros se parecerán mucho a programas en "lenguaje de máquina" para computadoras tradicionales. Sin embargo, en lugar de enfocarnos en el lenguaje de máquina de cualquier computadora en particular, examinaremos varios procedimientos Lisp y diseñaremos una máquina de registros específica para ejecutar cada procedimiento. Por lo tanto, abordaremos nuestra tarea desde la perspectiva de un arquitecto de hardware en lugar de la de un programador de computadoras en lenguaje de máquina. Al diseñar máquinas de registros, desarrollaremos mecanismos para implementar construcciones de programación importantes como la recursión. También presentaremos un lenguaje para describir diseños de máquinas de registros. En la sección [[#section-5.2][5.2]] implementaremos un programa Lisp que utiliza estas descripciones para simular las máquinas que diseñamos.
+
+La mayoría de las operaciones primitivas de nuestras máquinas de registros son muy simples. Por ejemplo, una operación podría sumar los números obtenidos de dos registros, produciendo un resultado que se almacenará en un tercer registro. Tal operación puede ser realizada por hardware fácilmente descrito. Sin embargo, para tratar con la estructura de listas, también usaremos las operaciones de memoria ~car~, ~cdr~ y ~cons~, que requieren un elaborado mecanismo de asignación de almacenamiento. En la sección [[#section-5.3][5.3]] estudiamos su implementación en términos de operaciones más elementales.
+
+En la sección [[#section-5.4][5.4]], después de haber acumulado experiencia formulando procedimientos simples como máquinas de registros, diseñaremos una máquina que lleve a cabo el algoritmo descrito por el evaluador metacircular de la sección [[#section-4.1][4.1]]. Esto llenará el vacío en nuestra comprensión de cómo se interpretan las expresiones Scheme, proporcionando un modelo explícito para los mecanismos de control en el evaluador. En la sección [[#section-5.5][5.5]] estudiaremos un compilador simple que traduce programas Scheme en secuencias de instrucciones que pueden ser ejecutadas directamente con los registros y operaciones de la máquina de registros del evaluador.
+
+** 5.1 Diseño de Máquinas de Registros
+:properties:
+:custom_id: section-5.1
+:end:
+
+Para diseñar una máquina de registros, debemos diseñar sus <<i95>> rutas de datos (registros y operaciones) y el <<i87>> controlador que secuencia estas operaciones. Para ilustrar el diseño de una máquina de registros simple, examinemos el Algoritmo de Euclides, que se usa para calcular el máximo común divisor (GCD) de dos enteros. Como vimos en la sección [[#section-1.2.5][1.2.5]], el Algoritmo de Euclides puede llevarse a cabo mediante un proceso iterativo, según lo especificado por el siguiente procedimiento:
+
+#+begin_src scheme
+(define (gcd a b)
+  (if (= b 0)
+      a
+      (gcd b (remainder a b))))
+#+end_src
+
+Una máquina para llevar a cabo este algoritmo debe mantener un registro de dos números, a y b, así que asumamos que estos números están almacenados en dos registros con esos nombres. Las operaciones básicas requeridas son verificar si el contenido del registro ~b~ es cero y calcular el resto del contenido del registro ~a~ dividido por el contenido del registro ~b~. La operación de resto es un proceso complejo, pero asumamos por el momento que tenemos un dispositivo primitivo que calcula restos. En cada ciclo del algoritmo GCD, el contenido del registro ~a~ debe ser reemplazado por el contenido del registro ~b~, y el contenido de ~b~ debe ser reemplazado por el resto del contenido antiguo de ~a~ dividido por el contenido antiguo de ~b~. Sería conveniente si estos reemplazos pudieran hacerse simultáneamente, pero en nuestro modelo de máquinas de registros asumiremos que solo un registro puede recibir un nuevo valor en cada paso. Para lograr los reemplazos, nuestra máquina usará un tercer registro "temporal", que llamaremos ~t~. (Primero el resto se colocará en ~t~, luego el contenido de ~b~ se colocará en ~a~, y finalmente el resto almacenado en ~t~ se colocará en ~b~.)
+
+Podemos ilustrar los registros y operaciones requeridos para esta máquina usando el diagrama de rutas de datos mostrado en la [[figure-5.1][Figura 5.1]]. En este diagrama, los registros (~a~, ~b~ y ~t~) están representados por rectángulos. Cada forma de asignar un valor a un registro se indica mediante una flecha con una ~X~ detrás de la punta, apuntando desde la fuente de datos hacia el registro. Podemos pensar en la ~X~ como un botón que, cuando se presiona, permite que el valor en la fuente "fluya" hacia el registro designado. La etiqueta junto a cada botón es el nombre que usaremos para referirnos al botón. Los nombres son arbitrarios y pueden elegirse para tener valor mnemotécnico (por ejemplo, ~a<-b~ denota presionar el botón que asigna el contenido del registro ~b~ al registro ~a~). La fuente de datos para un registro puede ser otro registro (como en la asignación ~a<-b~), un resultado de operación (como en la asignación ~t<-r~), o una constante (un valor incorporado que no se puede cambiar, representado en un diagrama de rutas de datos por un triángulo que contiene la constante).
+
+Una operación que calcula un valor a partir de constantes y el contenido de registros se representa en un diagrama de rutas de datos mediante un trapezoide que contiene un nombre para la operación. Por ejemplo, la caja marcada ~rem~ en la [[figure-5.1][Figura 5.1]] representa una operación que calcula el resto del contenido de los registros ~a~ y ~b~ a los que está conectada. Las flechas (sin botones) apuntan desde los registros de entrada y constantes hacia la caja, y las flechas conectan el valor de salida de la operación a los registros. Una prueba se representa mediante un círculo que contiene un nombre para la prueba. Por ejemplo, nuestra máquina GCD tiene una operación que prueba si el contenido del registro ~b~ es cero. Una prueba también tiene flechas desde sus registros de entrada y constantes, pero no tiene flechas de salida; su valor es usado por el controlador en lugar de por las rutas de datos. En general, el diagrama de rutas de datos muestra los registros y operaciones que se requieren para la máquina y cómo deben estar conectados. Si vemos las flechas como cables y los botones ~X~ como interruptores, el diagrama de rutas de datos es muy similar al diagrama de cableado de una máquina que podría construirse a partir de componentes eléctricos.
+
+<<figure-5.1>> Rutas de datos para una máquina GCD.
+
+#+begin_example
+                               ___
+ +-----+          +-----+     /   \
+ |  a  |<--(X)----|  b  +--->|  =  |
+ +--+--+   a<-b   +-+---+     \___/
+    |               |  ^        ^
+    +------+   +----+  |        |
+           |   |      (X) b<-t  |
+        .--+---+--.    |       / \
+         \  rem  /     |      / O \
+          \_____/      |     +-----+
+             |         |
+            (X) t<-r   |
+             |         |
+             V         |
+          +-----+      |
+          |  t  +------+
+          +-----+
+#+end_example
+
+Para que las rutas de datos realmente calculen GCDs, los botones deben presionarse en la secuencia correcta. Describiremos esta secuencia en términos de un diagrama de controlador, como se ilustra en la [[figure-5.2][Figura 5.2]]. Los elementos del diagrama de controlador indican cómo deben operarse los componentes de la ruta de datos. Las cajas rectangulares en el diagrama de controlador identifican botones de ruta de datos que deben presionarse, y las flechas describen la secuenciación de un paso al siguiente. El diamante en el diagrama representa una decisión. Se seguirá una de las dos flechas de secuencia, dependiendo del valor de la prueba de ruta de datos identificada en el diamante. Podemos interpretar el controlador en términos de una analogía física: Piense en el diagrama como un laberinto en el que rueda una canica. Cuando la canica rueda hacia una caja, presiona el botón de ruta de datos que está nombrado por la caja. Cuando la canica rueda hacia un nodo de decisión (como la prueba para ~b~ = 0), sale del nodo por el camino determinado por el resultado de la prueba indicada. Tomados en conjunto, las rutas de datos y el controlador describen completamente una máquina para calcular GCDs. Iniciamos el controlador (la canica rodante) en el lugar marcado ~start~, después de colocar números en los registros ~a~ y ~b~. Cuando el controlador alcanza ~done~, encontraremos el valor del GCD en el registro ~a~.
+
+<<figure-5.2>> Controlador para una máquina GCD.
+
+#+begin_example
+      start
+        |
+        V
+       / \ yes
+ +--->< = >-----> done
+ |     \ /
+ |      | no
+ |      V
+ |  +------+
+ |  | t<-r |
+ |  +---+--+
+ |      |
+ |      V
+ |  +------+
+ |  | a<-b |
+ |  +---+--+
+ |      |
+ |      V
+ |  +------+
+ +--+ b<-t |
+    +------+
+#+end_example
+
+**** Ejercicio 5.1
+:properties:
+:custom_id: exercise-5.1
+:end:
+
+Diseñe una máquina de registros para calcular factoriales usando el algoritmo iterativo especificado por el siguiente procedimiento. Dibuje diagramas de ruta de datos y controlador para esta máquina.
+
+#+begin_src scheme
+(define (factorial n)
+  (define (iter product counter)
+    (if (> counter n)
+        product
+        (iter (* counter product)
+              (+ counter 1))))
+  (iter 1 1))
+#+end_src
+
+*** 5.1.1 Un Lenguaje para Describir Máquinas de Registros
+:properties:
+:custom_id: section-5.1.1
+:end:
+
+Los diagramas de rutas de datos y controlador son adecuados para representar máquinas simples como GCD, pero son difíciles de manejar para describir máquinas grandes como un intérprete Lisp. Para hacer posible tratar con máquinas complejas, crearemos un lenguaje que presente, en forma textual, toda la información dada por los diagramas de rutas de datos y controlador. Comenzaremos con una notación que refleje directamente los diagramas.
+
+Definimos las rutas de datos de una máquina describiendo los registros y las operaciones. Para describir un registro, le damos un nombre y especificamos los botones que controlan la asignación a él. Damos a cada uno de estos botones un nombre y especificamos la fuente de los datos que entran al registro bajo el control del botón. (La fuente es un registro, una constante o una operación.) Para describir una operación, le damos un nombre y especificamos sus entradas (registros o constantes).
+
+Definimos el controlador de una máquina como una secuencia de <<i189>> instrucciones junto con <<i202>> etiquetas que identifican <<i121>> puntos de entrada en la secuencia. Una instrucción es una de las siguientes:
+
+- El nombre de un botón de ruta de datos que presionar para asignar un valor a un registro. (Esto corresponde a una caja en el diagrama de controlador.)
+
+- Una instrucción ~test~, que realiza una prueba especificada.
+
+- Una rama condicional (instrucción ~branch~) a una ubicación indicada por una etiqueta de controlador, basada en el resultado de la prueba anterior. (La prueba y la rama juntas corresponden a un diamante en el diagrama de controlador.) Si la prueba es falsa, el controlador debe continuar con la siguiente instrucción en la secuencia. De lo contrario, el controlador debe continuar con la instrucción después de la etiqueta.
+
+- Una rama incondicional (instrucción ~goto~) que nombra una etiqueta de controlador en la cual continuar la ejecución.
+
+La máquina comienza al principio de la secuencia de instrucciones del controlador y se detiene cuando la ejecución alcanza el final de la secuencia. Excepto cuando una rama cambia el flujo de control, las instrucciones se ejecutan en el orden en que están listadas.
+
+<<figure-5.3>> Una especificación de la máquina GCD.
+
+#+begin_src scheme
+(data-paths
+ (registers
+  ((name a)
+   (buttons ((name a<-b) (source (register b)))))
+  ((name b)
+   (buttons ((name b<-t) (source (register t)))))
+  ((name t)
+   (buttons ((name t<-r) (source (operation rem))))))
+
+ (operations
+  ((name rem)
+   (inputs (register a) (register b)))
+  ((name =)
+   (inputs (register b) (constant 0)))))
+
+(controller
+ test-b                    ; etiqueta
+ (test =)                  ; prueba
+ (branch (label gcd-done)) ; rama condicional
+ (t<-r)                    ; presión de botón
+ (a<-b)                    ; presión de botón
+ (b<-t)                    ; presión de botón
+ (goto (label test-b))     ; rama incondicional
+ gcd-done)                 ; etiqueta
+#+end_src
+
+La [[figure-5.3][Figura 5.3]] muestra la máquina GCD descrita de esta manera. Este ejemplo solo insinúa la generalidad de estas descripciones, ya que la máquina GCD es un caso muy simple: Cada registro tiene solo un botón, y cada botón y prueba se usa solo una vez en el controlador.
+
+Desafortunadamente, es difícil leer tal descripción. Para entender las instrucciones del controlador debemos referirnos constantemente a las definiciones de los nombres de los botones y los nombres de las operaciones, y para entender lo que hacen los botones puede que tengamos que referirnos a las definiciones de los nombres de las operaciones. Por lo tanto, transformaremos nuestra notación para combinar la información de las descripciones de rutas de datos y controlador de modo que la veamos toda junta.
+
+Para obtener esta forma de descripción, reemplazaremos los nombres arbitrarios de botones y operaciones por las definiciones de su comportamiento. Es decir, en lugar de decir (en el controlador) "Presionar botón ~t<-r~" y decir por separado (en las rutas de datos) "El botón ~t<-r~ asigna el valor de la operación ~rem~ al registro ~t~" y "Las entradas de la operación ~rem~ son los contenidos de los registros ~a~ y ~b~," diremos (en el controlador) "Presionar el botón que asigna al registro ~t~ el valor de la operación ~rem~ sobre los contenidos de los registros ~a~ y ~b~." De manera similar, en lugar de decir (en el controlador) "Realizar la prueba ~=~" y decir por separado (en las rutas de datos) "La prueba ~=~ opera sobre los contenidos del registro ~b~ y la constante 0," diremos "Realizar la prueba ~=~ sobre los contenidos del registro ~b~ y la constante 0." Omitiremos la descripción de la ruta de datos, dejando solo la secuencia del controlador. Así, la máquina GCD se describe como sigue:
+
+#+begin_src scheme
+(controller
+ test-b
+ (test (op =) (reg b) (const 0))
+ (branch (label gcd-done))
+ (assign t (op rem) (reg a) (reg b))
+ (assign a (reg b))
+ (assign b (reg t))
+ (goto (label test-b))
+ gcd-done)
+#+end_src
+
+Esta forma de descripción es más fácil de leer que la ilustrada en la [[figure-5.3][Figura 5.3]], pero también tiene desventajas:
+
+- Es más verbosa para máquinas grandes, porque las descripciones completas de los elementos de ruta de datos se repiten cada vez que los elementos se mencionan en la secuencia de instrucciones del controlador. (Esto no es un problema en el ejemplo GCD, porque cada operación y botón se usa solo una vez.) Además, repetir las descripciones de rutas de datos oscurece la estructura real de la ruta de datos de la máquina; no es obvio para una máquina grande cuántos registros, operaciones y botones hay y cómo están interconectados.
+
+- Debido a que las instrucciones del controlador en una definición de máquina se parecen a expresiones Lisp, es fácil olvidar que no son expresiones Lisp arbitrarias. Solo pueden denotar operaciones de máquina legales. Por ejemplo, las operaciones pueden operar directamente solo sobre constantes y los contenidos de registros, no sobre los resultados de otras operaciones.
+
+A pesar de estas desventajas, usaremos este lenguaje de máquinas de registros a lo largo de este capítulo, porque estaremos más preocupados por entender los controladores que por entender los elementos y conexiones en las rutas de datos. Sin embargo, debemos tener en cuenta que el diseño de rutas de datos es crucial en el diseño de máquinas reales.
+
+**** Ejercicio 5.2
+:properties:
+:custom_id: exercise-5.2
+:end:
+
+Use el lenguaje de máquina de registros para describir la máquina factorial iterativa del [[#exercise-5.1][Ejercicio 5.1]].
+
+*Acciones*
+
+Modifiquemos la máquina GCD para que podamos escribir los números cuyo GCD queremos y obtener la respuesta impresa en nuestro terminal. No discutiremos cómo hacer una máquina que pueda leer e imprimir, pero asumiremos (como hacemos cuando usamos ~read~ y ~display~ en Scheme) que están disponibles como operaciones primitivas.[fn:286]
+
+~read~ es como las operaciones que hemos estado usando en que produce un valor que puede almacenarse en un registro. Pero ~read~ no toma entradas de ningún registro; su valor depende de algo que sucede fuera de las partes de la máquina que estamos diseñando. Permitiremos que las operaciones de nuestra máquina tengan tal comportamiento, y por lo tanto dibujaremos y denotaremos el uso de ~read~ tal como hacemos con cualquier otra operación que calcule un valor.
+
+~print~, por otro lado, difiere de las operaciones que hemos estado usando de una manera fundamental: No produce un valor de salida para ser almacenado en un registro. Aunque tiene un efecto, este efecto no es sobre una parte de la máquina que estamos diseñando. Nos referiremos a este tipo de operación como una <<i8>> acción. Representaremos una acción en un diagrama de rutas de datos tal como representamos una operación que calcula un valor: como un trapezoide que contiene el nombre de la acción. Las flechas apuntan a la caja de acción desde cualquier entrada (registros o constantes). También asociamos un botón con la acción. Presionar el botón hace que la acción suceda. Para hacer que un controlador presione un botón de acción usamos un nuevo tipo de instrucción llamada ~perform~. Así, la acción de imprimir los contenidos del registro ~a~ se representa en una secuencia de controlador mediante la instrucción
+
+#+begin_src scheme
+(perform (op print) (reg a))
+#+end_src
+
+La [[figure-5.4][Figura 5.4]] muestra las rutas de datos y el controlador para la nueva máquina GCD. En lugar de hacer que la máquina se detenga después de imprimir la respuesta, la hemos hecho comenzar de nuevo, de modo que repetidamente lee un par de números, calcula su GCD e imprime el resultado. Esta estructura es como los bucles de control que usamos en los intérpretes del [[#section-4][Capítulo 4]].
+
+<<figure-5.4>> Una máquina GCD que lee entradas e imprime resultados.
+
+#+begin_example
+                    .--------.
+                     \ read /
+                      \____/
+                        |
+                +-------*------+
+                |              |
+         a<-rd (X)            (X) b<-rd
+                |              |
+                V              V           ___
+             +-----+        +-----+       /   \
+             |  a  |<--(X)--+  b  +----->|  =  |
+             +-+-+-+  a<-b  +-+---+       \___/
+               | |            |  ^          ^
+            +--+ +----+    +--+  |          |
+            |         |    |    (X) b<-t   / \
+            V         V    V     |        / O \
+       .---------.  .---------.  |       /_____\
+ --(X)->\ print /    \  rem  /   |
+    P    \_____/      \_____/    |
+                         |       |
+                        (X) t<-r |
+                         |       |
+                         V       |
+                      +-----+    |
+                      |  t  +----+
+                      +-----+
+#+end_example
+
+#+begin_src scheme
+ (controller
+  gcd-loop
+  (assign a (op read))
+  (assign b (op read))
+  test-b
+  (test (op =) (reg b) (const 0))
+  (branch (label gcd-done))
+  (assign t (op rem) (reg a) (reg b))
+  (assign a (reg b))
+  (assign b (reg t))
+  (goto (label test-b))
+  gcd-done
+  (perform (op print) (reg a))
+  (goto (label gcd-loop)))
+#+end_src
+
+*** 5.1.2 Abstracción en el Diseño de Máquinas
+:properties:
+:custom_id: section-5.1.2
+:end:
+
+A menudo definiremos una máquina para incluir operaciones "primitivas" que en realidad son muy complejas. Por ejemplo, en las secciones [[#section-5.4][5.4]] y [[#section-5.5][5.5]] trataremos las manipulaciones de entornos de Scheme como primitivas. Tal abstracción es valiosa porque nos permite ignorar los detalles de partes de una máquina para que podamos concentrarnos en otros aspectos del diseño. El hecho de que hayamos barrido mucha complejidad debajo de la alfombra, sin embargo, no significa que un diseño de máquina sea poco realista. Siempre podemos reemplazar las "primitivas" complejas por operaciones primitivas más simples.
+
+Consideremos la máquina GCD. La máquina tiene una instrucción que calcula el resto del contenido de los registros ~a~ y ~b~ y asigna el resultado al registro ~t~. Si queremos construir la máquina GCD sin usar una operación de resto primitiva, debemos especificar cómo calcular restos en términos de operaciones más simples, como la resta. De hecho, podemos escribir un procedimiento Scheme que encuentre restos de esta manera:
+
+#+begin_src scheme
+(define (remainder n d)
+  (if (< n d)
+      n
+      (remainder (- n d) d)))
+#+end_src
+
+Podemos así reemplazar la operación de resto en las rutas de datos de la máquina GCD con una operación de resta y una prueba de comparación. La [[figure-5.5][Figura 5.5]] muestra las rutas de datos y el controlador para la máquina elaborada. La instrucción
+
+<<figure-5.5>> Rutas de datos y controlador para la máquina GCD elaborada.
+
+#+begin_example
+                                     ___
+ +-----+         +-----+            /   \
+ |  a  |<--(X)---+  b  +-------*-->|  =  |
+ +--+--+   a<-b  +-+---+       |    \___/
+    |              |  ^        |
+   (X) t<-a        |  |        |
+    |              | (X) b<-t  |
+    V              |  |       _V_
+ +-----+           |  |      /   \
+ |  t  +-------*---|--*-----|  <  |
+ +-----+       |   |         \___/
+    ^          V   V
+    |        ---------
+   (X) t<-d   \  -  /
+    |          --+--
+    |            |
+    +------------+
+
+
+    start
+      |
+      V
+     / \ yes            +-------+
+ +->< = >----> done     | t<-d  |<--+
+ |   \ /                +---+---+   |
+ |    | no                  |       |
+ |    |                     V       |
+ |    |   +------+         / \ no   |
+ |    +-->| t<-a +------->< < >-----+
+ |        +------+         \ /
+ |                          | yes
+ |      +-------------------+
+ |      V
+ |  +-------+
+ |  | a<-b  |
+ |  +---+---+
+ |      |
+ |      V
+ |  +-------+
+ +--+ b<-t  |
+    +-------+
+#+end_example
+
+#+begin_src scheme
+(assign t (op rem) (reg a) (reg b))
+#+end_src
+
+en la definición del controlador GCD es reemplazada por una secuencia de instrucciones que contiene un bucle, como se muestra en la [[figure-5.6][Figura 5.6]].
+
+<<figure-5.6>> Secuencia de instrucciones del controlador para la máquina GCD en la [[figure-5.5][Figura 5.5]].
+
+#+begin_src scheme
+(controller
+ test-b
+ (test (op =) (reg b) (const 0))
+ (branch (label gcd-done))
+ (assign t (reg a))
+ rem-loop
+ (test (op <) (reg t) (reg b))
+ (branch (label rem-done))
+ (assign t (op -) (reg t) (reg b))
+ (goto (label rem-loop))
+ rem-done
+ (assign a (reg b))
+ (assign b (reg t))
+ (goto (label test-b))
+ gcd-done)
+#+end_src
+
+**** Ejercicio 5.3
+:properties:
+:custom_id: exercise-5.3
+:end:
+
+Diseñe una máquina para calcular raíces cuadradas usando el método de Newton, como se describe en la sección [[#section-1.1.7][1.1.7]]:
+
+#+begin_src scheme
+(define (sqrt x)
+  (define (good-enough? guess)
+    (< (abs (- (square guess) x)) 0.001))
+  (define (improve guess)
+    (average guess (/ x guess)))
+  (define (sqrt-iter guess)
+    (if (good-enough? guess)
+        guess
+        (sqrt-iter (improve guess))))
+  (sqrt-iter 1.0))
+#+end_src
+
+Comience asumiendo que las operaciones ~good-enough?~ e ~improve~ están disponibles como primitivas. Luego muestre cómo expandir estas en términos de operaciones aritméticas. Describa cada versión del diseño de la máquina ~sqrt~ dibujando un diagrama de rutas de datos y escribiendo una definición de controlador en el lenguaje de máquina de registros.
+
+*** 5.1.3 Subrutinas
+:properties:
+:custom_id: section-5.1.3
+:end:
+
+Al diseñar una máquina para realizar un cálculo, a menudo preferiríamos organizar que los componentes sean compartidos por diferentes partes del cálculo en lugar de duplicar los componentes. Consideremos una máquina que incluye dos cálculos GCD: uno que encuentra el GCD del contenido de los registros ~a~ y ~b~ y uno que encuentra el GCD del contenido de los registros ~c~ y ~d~. Podríamos comenzar asumiendo que tenemos una operación ~gcd~ primitiva, luego expandir las dos instancias de ~gcd~ en términos de operaciones más primitivas. La [[figure-5.7][Figura 5.7]] muestra solo las porciones GCD de las rutas de datos de la máquina resultante, sin mostrar cómo se conectan al resto de la máquina. La figura también muestra las porciones correspondientes de la secuencia del controlador de la máquina.
+
+<<figure-5.7>> Porciones de las rutas de datos y la secuencia del controlador para una máquina con dos cálculos GCD.
+
+#+begin_example
+                             ___                                 ___
+ +-----+        +-----+     /   \    +-----+        +-----+     /   \
+ |  a  |<-(X)---+  b  |--->|  =  |   |  c  |<-(X)---+  d  |--->|  =  |
+ +--+--+  a<-b  ++----+     \___/    +--+--+  c<-d  ++----+     \___/
+    |            |  ^         ^         |            |  ^         ^
+    `----.   .---'  |         |         `----.   .---'  |         |
+         V   V     (X) b<-t   |              V   V     (X) d<-t   |
+        -------     |        / \            -------     |        / \
+        \ rem /     |       /_0_\           \ rem /     |       /_0_\
+         --+--      |                        --+--      |
+           |        |                          |        |
+          (X) t<-r  |                         (X) s<-r  |
+           |        |                          |        |
+           V        |                          V        |
+        +-----+     |                       +-----+     |
+        |  t  +-----'                       |  s  +-----'
+        +-----+                             +-----+
+#+end_example
+
+#+begin_src scheme
+gcd-1
+ (test (op =) (reg b) (const 0))
+ (branch (label after-gcd-1))
+ (assign t (op rem) (reg a) (reg b))
+ (assign a (reg b))
+ (assign b (reg t))
+ (goto (label gcd-1))
+after-gcd-1
+   ...
+gcd-2
+ (test (op =) (reg d) (const 0))
+ (branch (label after-gcd-2))
+ (assign s (op rem) (reg c) (reg d))
+ (assign c (reg d))
+ (assign d (reg s))
+ (goto (label gcd-2))
+after-gcd-2
+#+end_src
+
+Esta máquina tiene dos cajas de operación de resto y dos cajas para probar igualdad. Si los componentes duplicados son complicados, como es la caja de resto, esta no será una forma económica de construir la máquina. Podemos evitar duplicar los componentes de ruta de datos usando los mismos componentes para ambos cálculos GCD, siempre que hacerlo no afecte el resto del cálculo de la máquina más grande. Si los valores en los registros ~a~ y ~b~ no se necesitan para cuando el controlador llega a ~gcd-2~ (o si estos valores pueden moverse a otros registros para su custodia), podemos cambiar la máquina para que use los registros ~a~ y ~b~, en lugar de los registros ~c~ y ~d~, al calcular el segundo GCD así como el primero. Si hacemos esto, obtenemos la secuencia del controlador mostrada en la [[figure-5.8][Figura 5.8]].
+
+Hemos eliminado los componentes de ruta de datos duplicados (de modo que las rutas de datos son nuevamente como en la [[figure-5.1][Figura 5.1]]), pero el controlador ahora tiene dos secuencias GCD que difieren solo en sus etiquetas de punto de entrada. Sería mejor reemplazar estas dos secuencias por ramas a una sola secuencia: una <<i373>> subrutina ~gcd~, al final de la cual ramificamos de vuelta al lugar correcto en la secuencia de instrucciones principal. Podemos lograr esto de la siguiente manera: Antes de ramificar a ~gcd~, colocamos un valor distintivo (como 0 o 1) en un registro especial, ~continue~. Al final de la subrutina ~gcd~ retornamos ya sea a ~after-gcd-1~ o a ~after-gcd-2~, dependiendo del valor del registro ~continue~. La [[figure-5.9][Figura 5.9]] muestra la porción relevante de la secuencia del controlador resultante, que incluye solo una copia única de las instrucciones ~gcd~.
+
+<<figure-5.8>> Porciones de la secuencia del controlador para una máquina que usa los mismos componentes de ruta de datos para dos cálculos GCD diferentes.
+
+#+begin_src scheme
+gcd-1
+ (test (op =) (reg b) (const 0))
+ (branch (label after-gcd-1))
+ (assign t (op rem) (reg a) (reg b))
+ (assign a (reg b))
+ (assign b (reg t))
+ (goto (label gcd-1))
+after-gcd-1
+  ...
+gcd-2
+ (test (op =) (reg b) (const 0))
+ (branch (label after-gcd-2))
+ (assign t (op rem) (reg a) (reg b))
+ (assign a (reg b))
+ (assign b (reg t))
+ (goto (label gcd-2))
+after-gcd-2
+#+end_src
+
+<<figure-5.9>> Uso de un registro ~continue~ para evitar la secuencia de controlador duplicada en la [[figure-5.8][Figura 5.8]].
+
+#+begin_src scheme
+gcd
+ (test (op =) (reg b) (const 0))
+ (branch (label gcd-done))
+ (assign t (op rem) (reg a) (reg b))
+ (assign a (reg b))
+ (assign b (reg t))
+ (goto (label gcd))
+gcd-done
+ (test (op =) (reg continue) (const 0))
+ (branch (label after-gcd-1))
+ (goto (label after-gcd-2))
+  ...
+;; Antes de ramificar a ~gcd~ desde el primer lugar donde
+;; se necesita, colocamos 0 en el registro ~continue~
+ (assign continue (const 0))
+ (goto (label gcd))
+after-gcd-1
+  ...
+;; Antes del segundo uso de ~gcd~, colocamos 1 en el registro ~continue~
+ (assign continue (const 1))
+ (goto (label gcd))
+after-gcd-2
+#+end_src
+
+<<figure-5.10>> Asignar etiquetas al registro ~continue~ simplifica y generaliza la estrategia mostrada en la [[figure-5.9][Figura 5.9]].
+
+#+begin_src scheme
+gcd
+ (test (op =) (reg b) (const 0))
+ (branch (label gcd-done))
+ (assign t (op rem) (reg a) (reg b))
+ (assign a (reg b))
+ (assign b (reg t))
+ (goto (label gcd))
+gcd-done
+ (goto (reg continue))
+   ...
+;; Antes de llamar a ~gcd~, asignamos a ~continue~
+;; la etiqueta a la cual ~gcd~ debe retornar.
+ (assign continue (label after-gcd-1))
+ (goto (label gcd))
+after-gcd-1
+   ...
+;; Aquí está la segunda llamada a ~gcd~, con una continuación diferente.
+ (assign continue (label after-gcd-2))
+ (goto (label gcd))
+after-gcd-2
+#+end_src
+
+Este es un enfoque razonable para manejar problemas pequeños, pero sería incómodo si hubiera muchas instancias de cálculos GCD en la secuencia del controlador. Para decidir dónde continuar ejecutando después de la subrutina ~gcd~, necesitaríamos pruebas en las rutas de datos e instrucciones de ramificación en el controlador para todos los lugares que usan ~gcd~. Un método más poderoso para implementar subrutinas es hacer que el registro ~continue~ contenga la etiqueta del punto de entrada en la secuencia del controlador en el cual debe continuar la ejecución cuando la subrutina termine. Implementar esta estrategia requiere un nuevo tipo de conexión entre las rutas de datos y el controlador de una máquina de registros: Debe haber una manera de asignar a un registro una etiqueta en la secuencia del controlador de tal manera que este valor pueda ser recuperado del registro y usado para continuar la ejecución en el punto de entrada designado.
+
+Para reflejar esta capacidad, extenderemos la instrucción ~assign~ del lenguaje de máquina de registros para permitir que un registro reciba como valor una etiqueta de la secuencia del controlador (como un tipo especial de constante). También extenderemos la instrucción ~goto~ para permitir que la ejecución continúe en el punto de entrada descrito por el contenido de un registro en lugar de solo en un punto de entrada descrito por una etiqueta constante. Usando estas nuevas construcciones podemos terminar la subrutina ~gcd~ con una rama a la ubicación almacenada en el registro ~continue~. Esto conduce a la secuencia del controlador mostrada en la [[figure-5.10][Figura 5.10]].
+
+Una máquina con más de una subrutina podría usar múltiples registros de continuación (por ejemplo, ~gcd-continue~, ~factorial-continue~) o podríamos hacer que todas las subrutinas compartan un solo registro ~continue~. Compartir es más económico, pero debemos tener cuidado si tenemos una subrutina (~sub1~) que llama a otra subrutina (~sub2~). A menos que ~sub1~ guarde el contenido de ~continue~ en algún otro registro antes de configurar ~continue~ para la llamada a ~sub2~, ~sub1~ no sabrá a dónde ir cuando termine. El mecanismo desarrollado en la siguiente sección para manejar la recursión también proporciona una mejor solución a este problema de llamadas a subrutinas anidadas.
+
+*** 5.1.4 Uso de una Pila para Implementar Recursión
+:properties:
+:custom_id: section-5.1.4
+:end:
+
+Con las ideas ilustradas hasta ahora, podemos implementar cualquier proceso iterativo especificando una máquina de registros que tenga un registro correspondiente a cada variable de estado del proceso. La máquina ejecuta repetidamente un bucle de controlador, cambiando el contenido de los registros, hasta que se satisfaga alguna condición de terminación. En cada punto de la secuencia del controlador, el estado de la máquina (que representa el estado del proceso iterativo) está completamente determinado por el contenido de los registros (los valores de las variables de estado).
+
+Sin embargo, implementar procesos recursivos requiere un mecanismo adicional. Consideremos el siguiente método recursivo para calcular factoriales, que examinamos por primera vez en la sección [[#section-1.2.1][1.2.1]]:
+
+#+begin_src scheme
+(define (factorial n)
+  (if (= n 1)
+      1
+      (* (factorial (- n 1)) n)))
+#+end_src
+
+Como vemos del procedimiento, calcular n! requiere calcular (n - 1)!. Nuestra máquina GCD, modelada en el procedimiento
+
+#+begin_src scheme
+(define (gcd a b)
+  (if (= b 0)
+      a
+      (gcd b (remainder a b))))
+#+end_src
+
+de manera similar tuvo que calcular otro GCD. Pero hay una diferencia importante entre el procedimiento ~gcd~, que reduce el cálculo original a un nuevo cálculo GCD, y ~factorial~, que requiere calcular otro factorial como un subproblema. En GCD, la respuesta al nuevo cálculo GCD es la respuesta al problema original. Para calcular el siguiente GCD, simplemente colocamos los nuevos argumentos en los registros de entrada de la máquina GCD y reutilizamos las rutas de datos de la máquina ejecutando la misma secuencia del controlador. Cuando la máquina termina de resolver el problema GCD final, ha completado todo el cálculo.
+
+En el caso del factorial (o cualquier proceso recursivo) la respuesta al nuevo subproblema factorial no es la respuesta al problema original. El valor obtenido para (n - 1)! debe multiplicarse por n para obtener la respuesta final. Si intentamos imitar el diseño GCD, y resolver el subproblema factorial decrementando el registro ~n~ y volviendo a ejecutar la máquina factorial, ya no tendremos disponible el valor antiguo de ~n~ por el cual multiplicar el resultado. Por lo tanto, necesitamos una segunda máquina factorial para trabajar en el subproblema. Este segundo cálculo factorial en sí mismo tiene un subproblema factorial, que requiere una tercera máquina factorial, y así sucesivamente. Dado que cada máquina factorial contiene otra máquina factorial dentro de ella, la máquina total contiene un anidamiento infinito de máquinas similares y por lo tanto no puede construirse a partir de un número fijo y finito de partes.
+
+Sin embargo, podemos implementar el proceso factorial como una máquina de registros si podemos arreglárnoslas para usar los mismos componentes para cada instancia anidada de la máquina. Específicamente, la máquina que calcula n! debe usar los mismos componentes para trabajar en el subproblema de calcular (n - 1)!, en el subproblema para (n - 2)!, y así sucesivamente. Esto es plausible porque, aunque el proceso factorial dicta que se necesita un número ilimitado de copias de la misma máquina para realizar un cálculo, solo una de estas copias necesita estar activa en cualquier momento dado. Cuando la máquina encuentra un subproblema recursivo, puede suspender el trabajo en el problema principal, reutilizar las mismas partes físicas para trabajar en el subproblema y luego continuar el cálculo suspendido.
+
+En el subproblema, el contenido de los registros será diferente de lo que era en el problema principal. (En este caso el registro ~n~ se decrementa.) Para poder continuar el cálculo suspendido, la máquina debe guardar el contenido de cualquier registro que se necesitará después de que se resuelva el subproblema para que estos puedan restaurarse para continuar el cálculo suspendido. En el caso del factorial, guardaremos el valor antiguo de ~n~, para ser restaurado cuando hayamos terminado de calcular el factorial del registro ~n~ decrementado.[fn:287]
+
+Dado que no hay un límite /a priori/ en la profundidad de las llamadas recursivas anidadas, es posible que necesitemos guardar un número arbitrario de valores de registro. Estos valores deben restaurarse en el orden inverso al que fueron guardados, ya que en un anidamiento de recursiones el último subproblema en ser ingresado es el primero en ser finalizado. Esto dicta el uso de una <<i361>> pila, o estructura de datos "último en entrar, primero en salir", para guardar valores de registro. Podemos extender el lenguaje de máquina de registros para incluir una pila agregando dos tipos de instrucciones: Los valores se colocan en la pila usando una instrucción ~save~ y se restauran de la pila usando una instrucción ~restore~. Después de que una secuencia de valores ha sido guardada (~save~) en la pila, una secuencia de ~restore~ recuperará estos valores en orden inverso.[fn:288]
+
+Con la ayuda de la pila, podemos reutilizar una sola copia de las rutas de datos de la máquina factorial para cada subproblema factorial. Hay un problema de diseño similar en la reutilización de la secuencia del controlador que opera las rutas de datos. Para reejecutar el cálculo factorial, el controlador no puede simplemente volver al principio, como con un proceso iterativo, porque después de resolver el subproblema (n - 1)! la máquina todavía debe multiplicar el resultado por n. El controlador debe suspender su cálculo de n!, resolver el subproblema (n - 1)! y luego continuar su cálculo de n!. Esta vista del cálculo factorial sugiere el uso del mecanismo de subrutina descrito en la sección [[#section-5.1.3][5.1.3]], que hace que el controlador use un registro ~continue~ para transferir a la parte de la secuencia que resuelve un subproblema y luego continuar donde lo dejó en el problema principal. Por lo tanto, podemos hacer una subrutina factorial que retorne al punto de entrada almacenado en el registro ~continue~. Alrededor de cada llamada a subrutina, guardamos y restauramos ~continue~ tal como hacemos con el registro ~n~, ya que cada "nivel" del cálculo factorial usará el mismo registro ~continue~. Es decir, la subrutina factorial debe poner un nuevo valor en ~continue~ cuando se llama a sí misma para un subproblema, pero necesitará el valor antiguo para retornar al lugar que la llamó para resolver un subproblema.
+
+La [[figure-5.11][Figura 5.11]] muestra las rutas de datos y el controlador para una máquina que implementa el procedimiento ~factorial~ recursivo. La máquina tiene una pila y tres registros, llamados ~n~, ~val~ y ~continue~. Para simplificar el diagrama de rutas de datos, no hemos nombrado los botones de asignación de registro, solo los botones de operación de pila (~sc~ y ~sn~ para guardar registros, ~rc~ y ~rn~ para restaurar registros). Para operar la máquina, colocamos en el registro ~n~ el número cuyo factorial deseamos calcular e iniciamos la máquina. Cuando la máquina alcanza ~fact-done~, el cálculo ha terminado y la respuesta se encontrará en el registro ~val~. En la secuencia del controlador, ~n~ y ~continue~ se guardan antes de cada llamada recursiva y se restauran al retornar de la llamada. Retornar de una llamada se logra ramificando a la ubicación almacenada en ~continue~. ~continue~ se inicializa cuando la máquina arranca de modo que el último retorno irá a ~fact-done~. El registro ~val~, que contiene el resultado del cálculo factorial, no se guarda antes de la llamada recursiva, porque el contenido antiguo de ~val~ no es útil después de que la subrutina retorna. Solo se necesita el nuevo valor, que es el valor producido por el subcálculo.
+
+Aunque en principio el cálculo factorial requiere una máquina infinita, la máquina en la [[figure-5.11][Figura 5.11]] es en realidad finita excepto por la pila, que es potencialmente ilimitada. Sin embargo, cualquier implementación física particular de una pila será de tamaño finito, y esto limitará la profundidad de llamadas recursivas que puede manejar la máquina. Esta implementación del factorial ilustra la estrategia general para realizar algoritmos recursivos como máquinas de registros ordinarias aumentadas con pilas. Cuando se encuentra un subproblema recursivo, guardamos en la pila los registros cuyos valores actuales se requerirán después de que se resuelva el subproblema, resolvemos el subproblema recursivo, luego restauramos los registros guardados y continuamos la ejecución en el problema principal. El registro ~continue~ siempre debe guardarse. Si hay otros registros que necesitan guardarse depende de la máquina particular, ya que no todos los cálculos recursivos necesitan los valores originales de los registros que se modifican durante la solución del subproblema (ver [[#exercise-5.4][Ejercicio 5.4]]).
+
+*Una doble recursión*
+
+Examinemos un proceso recursivo más complejo, el cálculo recursivo en árbol de los números de Fibonacci, que introdujimos en la sección [[#section-1.2.2][1.2.2]]:
+
+#+begin_src scheme
+(define (fib n)
+  (if (< n 2)
+      n
+      (+ (fib (- n 1)) (fib (- n 2)))))
+#+end_src
+
+Al igual que con el factorial, podemos implementar el cálculo de Fibonacci recursivo como una máquina de registros con registros ~n~, ~val~ y ~continue~. La máquina es más compleja que la del factorial, porque hay dos lugares en la secuencia del controlador donde necesitamos realizar llamadas recursivas: una vez para calcular Fib(n - 1) y una vez para calcular Fib(n - 2). Para prepararnos para cada una de estas llamadas, guardamos los registros cuyos valores se necesitarán más tarde, establecemos el registro ~n~ al número cuyo Fib necesitamos calcular recursivamente (n - 1 o n - 2), y asignamos a ~continue~ el punto de entrada en la secuencia principal al cual retornar (~afterfib-n-1~ o ~afterfib-n-2~, respectivamente). Luego vamos a ~fib-loop~. Cuando retornamos de la llamada recursiva, la respuesta está en ~val~. La [[figure-5.12][Figura 5.12]] muestra la secuencia del controlador para esta máquina.
+
+<<figure-5.11>> Una máquina factorial recursiva.
+
+#+begin_example
+                              ___
+                             /   \
+     +----------*-----------|  =  |
+     |          |            \___/
+    (X)         |              ^
+     |          |              |
+     V          |          +---+---+   sn    +-------+
+ +-------+      |          |       +---(X)-->|       |
+ |  val  |<-(X)-|----------+   n   |         | stack |
+ +-----+-+      |          |       |<--(X)---+       |
+   ^   |        |          +-------+   rn    +-+-----+
+   |   |        |            ^                 |   ^
+  (X)  |        |            |                 |   |
+   |   |   +----|--------*  (X)                |  (X) sc
+   |   |   |    |        |   |             rc (X)  |
+   |   |   |    *----.   |   |                 |   |
+   |   V   V    |    V   V   |                 V   |
+   |  -------   |   -------  |              +------+-+
+   |  \  *  /   |   \  -  /  |              |continue+--> controller
+   |   --+--    |    --+--   |              +--------+
+   |     |      |      |     |               ^      ^
+   +-----+      |      +-----+               |      |
+                |                           (X)    (X)
+                |                            |      |
+               / \                   after- / \    / \  fact-
+              /_1_\                  fact  /___\  /___\ done
+#+end_example
+
+#+begin_src scheme
+(controller
+ (assign continue (label fact-done))    ; configurar dirección final de retorno
+ fact-loop
+ (test (op =) (reg n) (const 1))
+ (branch (label base-case))
+ ;; Preparar para la llamada recursiva guardando ~n~ y ~continue~.
+ ;; Configurar ~continue~ para que el cálculo continúe
+ ;; en ~after-fact~ cuando la subrutina retorne.
+ (save continue)
+ (save n)
+ (assign n (op -) (reg n) (const 1))
+ (assign continue (label after-fact))
+ (goto (label fact-loop))
+ after-fact
+ (restore n)
+ (restore continue)
+ (assign val (op *) (reg n) (reg val))  ; ~val~ ahora contiene n(n - 1)!
+ (goto (reg continue))                  ; retornar al llamador
+ base-case
+ (assign val (const 1))                 ; caso base: 1! = 1
+ (goto (reg continue))                  ; retornar al llamador
+ fact-done)
+#+end_src
+
+<<figure-5.12>> Controlador para una máquina que calcula números de Fibonacci.
+
+#+begin_src scheme
+(controller
+ (assign continue (label fib-done))
+ fib-loop
+ (test (op <) (reg n) (const 2))
+ (branch (label immediate-answer))
+ ;; preparar para calcular Fib(n - 1)
+ (save continue)
+ (assign continue (label afterfib-n-1))
+ (save n)                             ; guardar valor antiguo de ~n~
+ (assign n (op -) (reg n) (const 1))  ; sobrescribir ~n~ a n - 1
+ (goto (label fib-loop))              ; realizar llamada recursiva
+ afterfib-n-1                         ; al retornar, ~val~ contiene Fib(n - 1)
+ (restore n)
+ (restore continue)
+ ;; preparar para calcular Fib(n - 2)
+ (assign n (op -) (reg n) (const 2))
+ (save continue)
+ (assign continue (label afterfib-n-2))
+ (save val)                           ; guardar Fib(n - 1)
+ (goto (label fib-loop))
+ afterfib-n-2                         ; al retornar, ~val~ contiene Fib(n - 2)
+ (assign n (reg val))                 ; ~n~ ahora contiene Fib(n - 2)
+ (restore val)                        ; ~val~ ahora contiene Fib(n - 1)
+ (restore continue)
+ (assign val                          ;  Fib(n - 1) +  Fib(n - 2)
+         (op +) (reg val) (reg n))
+ (goto (reg continue))                ; retornar al llamador, respuesta está en ~val~
+ immediate-answer
+ (assign val (reg n))                 ; caso base:  Fib(n) = n
+ (goto (reg continue))
+ fib-done)
+#+end_src
+
+**** Ejercicio 5.4
+:properties:
+:custom_id: exercise-5.4
+:end:
+
+Especifique máquinas de registros que implementen cada uno de los siguientes procedimientos. Para cada máquina, escriba una secuencia de instrucciones del controlador y dibuje un diagrama mostrando las rutas de datos.
+
+a. Exponenciación recursiva:
+
+#+begin_src scheme
+(define (expt b n)
+  (if (= n 0)
+      1
+      (* b (expt b (- n 1)))))
+#+end_src
+
+b. Exponenciación iterativa:
+
+#+begin_src scheme
+(define (expt b n)
+  (define (expt-iter counter product)
+    (if (= counter 0)
+        product
+        (expt-iter (- counter 1) (* b product))))
+  (expt-iter n 1))
+#+end_src
+
+**** Ejercicio 5.5
+:properties:
+:custom_id: exercise-5.5
+:end:
+
+Simule manualmente las máquinas factorial y Fibonacci, usando alguna entrada no trivial (que requiera la ejecución de al menos una llamada recursiva). Muestre el contenido de la pila en cada punto significativo de la ejecución.
+
+**** Ejercicio 5.6
+:properties:
+:custom_id: exercise-5.6
+:end:
+
+Ben Bitdiddle observa que la secuencia del controlador de la máquina de Fibonacci tiene un ~save~ extra y un ~restore~ extra, que pueden eliminarse para hacer una máquina más rápida. ¿Dónde están estas instrucciones?
+
+*** 5.1.5 Resumen de Instrucciones
+:properties:
+:custom_id: section-5.1.5
+:end:
+
+Una instrucción de controlador en nuestro lenguaje de máquina de registros tiene una de las siguientes formas, donde cada <INPUT_I> es '(reg <REGISTER-NAME>)' o '(const <CONSTANT-VALUE>)'. Estas instrucciones fueron introducidas en la sección [[#section-5.1.1][5.1.1]]:
+
+#+begin_src scheme
+(assign <REGISTER-NAME> (reg <REGISTER-NAME>))
+
+(assign <REGISTER-NAME> (const <CONSTANT-VALUE>))
+
+(assign <REGISTER-NAME> (op <OPERATION-NAME>) <INPUT_1> ... <INPUT_N>)
+
+(perform (op <OPERATION-NAME>) <INPUT_1> ... <INPUT_N>)
+
+(test (op <OPERATION-NAME>) <INPUT_1> ... <INPUT_N>)
+
+(branch (label <LABEL-NAME>))
+
+(goto (label <LABEL-NAME>))
+#+end_src
+
+El uso de registros para contener etiquetas fue introducido en la sección [[#section-5.1.3][5.1.3]]:
+
+#+begin_src scheme
+(assign <REGISTER-NAME> (label <LABEL-NAME>))
+
+(goto (reg <REGISTER-NAME>))
+#+end_src
+
+Las instrucciones para usar la pila fueron introducidas en la sección [[#section-5.1.4][5.1.4]]:
+
+#+begin_src scheme
+(save <REGISTER-NAME>)
+
+(restore <REGISTER-NAME>)
+#+end_src
+
+El único tipo de <CONSTANT-VALUE> que hemos visto hasta ahora es un número, pero más adelante usaremos cadenas, símbolos y listas. Por ejemplo, ~(const "abc")~ es la cadena ~"abc"~, ~(const abc)~ es el símbolo ~abc~, ~(const (a b c))~ es la lista ~(a b c)~, y ~(const ())~ es la lista vacía.
+

@@ -1,0 +1,41 @@
+*** 5.1.5 Resumen de Instrucciones
+:properties:
+:custom_id: section-5.1.5
+:end:
+
+Una instrucción de controlador en nuestro lenguaje de máquina de registros tiene una de las siguientes formas, donde cada <INPUT_I> es '(reg <REGISTER-NAME>)' o '(const <CONSTANT-VALUE>)'. Estas instrucciones fueron introducidas en la sección [[#section-5.1.1][5.1.1]]:
+
+#+begin_src scheme
+(assign <REGISTER-NAME> (reg <REGISTER-NAME>))
+
+(assign <REGISTER-NAME> (const <CONSTANT-VALUE>))
+
+(assign <REGISTER-NAME> (op <OPERATION-NAME>) <INPUT_1> ... <INPUT_N>)
+
+(perform (op <OPERATION-NAME>) <INPUT_1> ... <INPUT_N>)
+
+(test (op <OPERATION-NAME>) <INPUT_1> ... <INPUT_N>)
+
+(branch (label <LABEL-NAME>))
+
+(goto (label <LABEL-NAME>))
+#+end_src
+
+El uso de registros para contener etiquetas fue introducido en la sección [[#section-5.1.3][5.1.3]]:
+
+#+begin_src scheme
+(assign <REGISTER-NAME> (label <LABEL-NAME>))
+
+(goto (reg <REGISTER-NAME>))
+#+end_src
+
+Las instrucciones para usar la pila fueron introducidas en la sección [[#section-5.1.4][5.1.4]]:
+
+#+begin_src scheme
+(save <REGISTER-NAME>)
+
+(restore <REGISTER-NAME>)
+#+end_src
+
+El único tipo de <CONSTANT-VALUE> que hemos visto hasta ahora es un número, pero más adelante usaremos cadenas, símbolos y listas. Por ejemplo, ~(const "abc")~ es la cadena ~"abc"~, ~(const abc)~ es el símbolo ~abc~, ~(const (a b c))~ es la lista ~(a b c)~, y ~(const ())~ es la lista vacía.
+

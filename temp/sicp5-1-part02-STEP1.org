@@ -1,0 +1,145 @@
+*** 5.1.1 Un Lenguaje para Describir Máquinas de Registros
+:properties:
+:custom_id: section-5.1.1
+:end:
+
+Los diagramas de rutas de datos y controlador son adecuados para representar máquinas simples como GCD, pero son difíciles de manejar para describir máquinas grandes como un intérprete Lisp. Para hacer posible tratar con máquinas complejas, crearemos un lenguaje que presente, en forma textual, toda la información dada por los diagramas de rutas de datos y controlador. Comenzaremos con una notación que refleje directamente los diagramas.
+
+Definimos las rutas de datos de una máquina describiendo los registros y las operaciones. Para describir un registro, le damos un nombre y especificamos los botones que controlan la asignación a él. Damos a cada uno de estos botones un nombre y especificamos la fuente de los datos que entran al registro bajo el control del botón. (La fuente es un registro, una constante o una operación.) Para describir una operación, le damos un nombre y especificamos sus entradas (registros o constantes).
+
+Definimos el controlador de una máquina como una secuencia de <<i189>> instrucciones junto con <<i202>> etiquetas que identifican <<i121>> puntos de entrada en la secuencia. Una instrucción es una de las siguientes:
+
+- El nombre de un botón de ruta de datos que presionar para asignar un valor a un registro. (Esto corresponde a una caja en el diagrama de controlador.)
+
+- Una instrucción ~test~, que realiza una prueba especificada.
+
+- Una rama condicional (instrucción ~branch~) a una ubicación indicada por una etiqueta de controlador, basada en el resultado de la prueba anterior. (La prueba y la rama juntas corresponden a un diamante en el diagrama de controlador.) Si la prueba es falsa, el controlador debe continuar con la siguiente instrucción en la secuencia. De lo contrario, el controlador debe continuar con la instrucción después de la etiqueta.
+
+- Una rama incondicional (instrucción ~goto~) que nombra una etiqueta de controlador en la cual continuar la ejecución.
+
+La máquina comienza al principio de la secuencia de instrucciones del controlador y se detiene cuando la ejecución alcanza el final de la secuencia. Excepto cuando una rama cambia el flujo de control, las instrucciones se ejecutan en el orden en que están listadas.
+
+<<figure-5.3>> Una especificación de la máquina GCD.
+
+#+begin_src scheme
+(data-paths
+ (registers
+  ((name a)
+   (buttons ((name a<-b) (source (register b)))))
+  ((name b)
+   (buttons ((name b<-t) (source (register t)))))
+  ((name t)
+   (buttons ((name t<-r) (source (operation rem))))))
+
+ (operations
+  ((name rem)
+   (inputs (register a) (register b)))
+  ((name =)
+   (inputs (register b) (constant 0)))))
+
+(controller
+ test-b                    ; label
+ (test =)                  ; test
+ (branch (label gcd-done)) ; conditional branch
+ (t<-r)                    ; button push
+ (a<-b)                    ; button push
+ (b<-t)                    ; button push
+ (goto (label test-b))     ; unconditional branch
+ gcd-done)                 ; label
+#+end_src
+
+La [[figure-5.3][Figura 5.3]] muestra la máquina GCD descrita de esta manera. Este ejemplo solo insinúa la generalidad de estas descripciones, ya que la máquina GCD es un caso muy simple: Cada registro tiene solo un botón, y cada botón y prueba se usa solo una vez en el controlador.
+
+Desafortunadamente, es difícil leer tal descripción. Para entender las instrucciones del controlador debemos referirnos constantemente a las definiciones de los nombres de los botones y los nombres de las operaciones, y para entender lo que hacen los botones puede que tengamos que referirnos a las definiciones de los nombres de las operaciones. Por lo tanto, transformaremos nuestra notación para combinar la información de las descripciones de rutas de datos y controlador de modo que la veamos toda junta.
+
+Para obtener esta forma de descripción, reemplazaremos los nombres arbitrarios de botones y operaciones por las definiciones de su comportamiento. Es decir, en lugar de decir (en el controlador) "Presionar botón ~t<-r~" y decir por separado (en las rutas de datos) "El botón ~t<-r~ asigna el valor de la operación ~rem~ al registro ~t~" y "Las entradas de la operación ~rem~ son los contenidos de los registros ~a~ y ~b~," diremos (en el controlador) "Presionar el botón que asigna al registro ~t~ el valor de la operación ~rem~ sobre los contenidos de los registros ~a~ y ~b~." De manera similar, en lugar de decir (en el controlador) "Realizar la prueba ~=~" y decir por separado (en las rutas de datos) "La prueba ~=~ opera sobre los contenidos del registro ~b~ y la constante 0," diremos "Realizar la prueba ~=~ sobre los contenidos del registro ~b~ y la constante 0." Omitiremos la descripción de la ruta de datos, dejando solo la secuencia del controlador. Así, la máquina GCD se describe como sigue:
+
+#+begin_src scheme
+(controller
+ test-b
+ (test (op =) (reg b) (const 0))
+ (branch (label gcd-done))
+ (assign t (op rem) (reg a) (reg b))
+ (assign a (reg b))
+ (assign b (reg t))
+ (goto (label test-b))
+ gcd-done)
+#+end_src
+
+Esta forma de descripción es más fácil de leer que la ilustrada en la [[figure-5.3][Figura 5.3]], pero también tiene desventajas:
+
+- Es más verbosa para máquinas grandes, porque las descripciones completas de los elementos de ruta de datos se repiten cada vez que los elementos se mencionan en la secuencia de instrucciones del controlador. (Esto no es un problema en el ejemplo GCD, porque cada operación y botón se usa solo una vez.) Además, repetir las descripciones de rutas de datos oscurece la estructura real de la ruta de datos de la máquina; no es obvio para una máquina grande cuántos registros, operaciones y botones hay y cómo están interconectados.
+
+- Debido a que las instrucciones del controlador en una definición de máquina se parecen a expresiones Lisp, es fácil olvidar que no son expresiones Lisp arbitrarias. Solo pueden denotar operaciones de máquina legales. Por ejemplo, las operaciones pueden operar directamente solo sobre constantes y los contenidos de registros, no sobre los resultados de otras operaciones.
+
+A pesar de estas desventajas, usaremos este lenguaje de máquinas de registros a lo largo de este capítulo, porque estaremos más preocupados por entender los controladores que por entender los elementos y conexiones en las rutas de datos. Sin embargo, debemos tener en cuenta que el diseño de rutas de datos es crucial en el diseño de máquinas reales.
+
+**** Ejercicio 5.2
+:properties:
+:custom_id: exercise-5.2
+:end:
+
+Use el lenguaje de máquina de registros para describir la máquina factorial iterativa del [[#exercise-5.1][Ejercicio 5.1]].
+
+*Acciones*
+
+Modifiquemos la máquina GCD para que podamos escribir los números cuyo GCD queremos y obtener la respuesta impresa en nuestro terminal. No discutiremos cómo hacer una máquina que pueda leer e imprimir, pero asumiremos (como hacemos cuando usamos ~read~ y ~display~ en Scheme) que están disponibles como operaciones primitivas.[fn:286]
+
+~read~ es como las operaciones que hemos estado usando en que produce un valor que puede almacenarse en un registro. Pero ~read~ no toma entradas de ningún registro; su valor depende de algo que sucede fuera de las partes de la máquina que estamos diseñando. Permitiremos que las operaciones de nuestra máquina tengan tal comportamiento, y por lo tanto dibujaremos y denotaremos el uso de ~read~ tal como hacemos con cualquier otra operación que calcule un valor.
+
+~print~, por otro lado, difiere de las operaciones que hemos estado usando de una manera fundamental: No produce un valor de salida para ser almacenado en un registro. Aunque tiene un efecto, este efecto no es sobre una parte de la máquina que estamos diseñando. Nos referiremos a este tipo de operación como una <<i8>> acción. Representaremos una acción en un diagrama de rutas de datos tal como representamos una operación que calcula un valor: como un trapezoide que contiene el nombre de la acción. Las flechas apuntan a la caja de acción desde cualquier entrada (registros o constantes). También asociamos un botón con la acción. Presionar el botón hace que la acción suceda. Para hacer que un controlador presione un botón de acción usamos un nuevo tipo de instrucción llamada ~perform~. Así, la acción de imprimir los contenidos del registro ~a~ se representa en una secuencia de controlador mediante la instrucción
+
+#+begin_src scheme
+(perform (op print) (reg a))
+#+end_src
+
+La [[figure-5.4][Figura 5.4]] muestra las rutas de datos y el controlador para la nueva máquina GCD. En lugar de hacer que la máquina se detenga después de imprimir la respuesta, la hemos hecho comenzar de nuevo, de modo que repetidamente lee un par de números, calcula su GCD e imprime el resultado. Esta estructura es como los bucles de control que usamos en los intérpretes del [[#section-4][Capítulo 4]].
+
+<<figure-5.4>> Una máquina GCD que lee entradas e imprime resultados.
+
+#+begin_example
+                    .--------.
+                     \ read /
+                      \____/
+                        |
+                +-------*------+
+                |              |
+         a<-rd (X)            (X) b<-rd
+                |              |
+                V              V           ___
+             +-----+        +-----+       /   \
+             |  a  |<--(X)--+  b  +----->|  =  |
+             +-+-+-+  a<-b  +-+---+       \___/
+               | |            |  ^          ^
+            +--+ +----+    +--+  |          |
+            |         |    |    (X) b<-t   / \
+            V         V    V     |        / O \
+       .---------.  .---------.  |       /_____\
+ --(X)->\ print /    \  rem  /   |
+    P    \_____/      \_____/    |
+                         |       |
+                        (X) t<-r |
+                         |       |
+                         V       |
+                      +-----+    |
+                      |  t  +----+
+                      +-----+
+#+end_example
+
+#+begin_src scheme
+ (controller
+  gcd-loop
+  (assign a (op read))
+  (assign b (op read))
+  test-b
+  (test (op =) (reg b) (const 0))
+  (branch (label gcd-done))
+  (assign t (op rem) (reg a) (reg b))
+  (assign a (reg b))
+  (assign b (reg t))
+  (goto (label test-b))
+  gcd-done
+  (perform (op print) (reg a))
+  (goto (label gcd-loop)))
+#+end_src
+
