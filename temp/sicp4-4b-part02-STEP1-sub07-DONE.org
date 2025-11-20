@@ -1,0 +1,117 @@
+**** 4.4.4.7 Procedimientos de Sintaxis de Consultas
+:properties:
+:custom_id: section-4.4.4.7
+:end:
+
+~type~ y ~contents~, usados por ~qeval~ (sección [[#section-4.4.4.2][4.4.4.2]]), especifican que una forma especial se identifica por el símbolo en su ~car~. Son los mismos que los procedimientos ~type-tag~ y ~contents~ en la sección [[#section-2.4.2][2.4.2]], excepto por el mensaje de error.
+
+#+begin_src scheme
+(define (type exp)
+  (if (pair? exp)
+      (car exp)
+      (error "Expresión desconocida TYPE" exp)))
+
+(define (contents exp)
+  (if (pair? exp)
+      (cdr exp)
+      (error "Expresión desconocida CONTENTS" exp)))
+#+end_src
+
+Los siguientes procedimientos, usados por ~query-driver-loop~ (en la sección [[#section-4.4.4.1][4.4.4.1]]), especifican que reglas y aserciones se añaden a la base de datos mediante expresiones de la forma '(assert! <REGLA-O-ASERCIÓN>)':
+
+#+begin_src scheme
+(define (assertion-to-be-added? exp)
+  (eq? (type exp) 'assert!))
+
+(define (add-assertion-body exp)
+  (car (contents exp)))
+#+end_src
+
+Aquí están las definiciones de sintaxis para las formas especiales ~and~, ~or~, ~not~, y ~lisp-value~ (sección [[#section-4.4.4.2][4.4.4.2]]):
+
+#+begin_src scheme
+(define (empty-conjunction? exps) (null? exps))
+(define (first-conjunct exps) (car exps))
+(define (rest-conjuncts exps) (cdr exps))
+
+(define (empty-disjunction? exps) (null? exps))
+(define (first-disjunct exps) (car exps))
+(define (rest-disjuncts exps) (cdr exps))
+
+(define (negated-query exps) (car exps))
+
+(define (predicate exps) (car exps))
+(define (args exps) (cdr exps))
+#+end_src
+
+Los siguientes tres procedimientos definen la sintaxis de las reglas:
+
+#+begin_src scheme
+(define (rule? statement)
+  (tagged-list? statement 'rule))
+
+(define (conclusion rule) (cadr rule))
+
+(define (rule-body rule)
+  (if (null? (cddr rule))
+      '(always-true)
+      (caddr rule)))
+#+end_src
+
+~query-driver-loop~ (sección [[#section-4.4.4.1][4.4.4.1]]) llama a ~query-syntax-process~ para transformar variables de patrón en la expresión, que tienen la forma ~?symbol~, en el formato interno ~(?  symbol)~. Es decir, un patrón como ~(job ?x ?y)~ es realmente representado internamente por el sistema como ~(job (?  x) (?  y))~. Esto aumenta la eficiencia del procesamiento de consultas, ya que significa que el sistema puede verificar si una expresión es una variable de patrón verificando si el ~car~ de la expresión es el símbolo ~?~, en lugar de tener que extraer caracteres del símbolo. La transformación de sintaxis se logra mediante el siguiente procedimiento:[fn:285]
+
+#+begin_src scheme
+(define (query-syntax-process exp)
+  (map-over-symbols expand-question-mark exp))
+
+(define (map-over-symbols proc exp)
+  (cond ((pair? exp)
+         (cons (map-over-symbols proc (car exp))
+               (map-over-symbols proc (cdr exp))))
+        ((symbol? exp) (proc exp))
+        (else exp)))
+
+(define (expand-question-mark symbol)
+  (let ((chars (symbol->string symbol)))
+    (if (string=? (substring chars 0 1) "?")
+        (list '?
+              (string->symbol
+               (substring chars 1 (string-length chars))))
+        symbol)))
+#+end_src
+
+Una vez que las variables se transforman de esta manera, las variables en un patrón son listas que comienzan con ~?~, y los símbolos constantes (que necesitan ser reconocidos para la indexación de la base de datos, sección [[#section-4.4.4.5][4.4.4.5]]) son simplemente los símbolos.
+
+#+begin_src scheme
+(define (var? exp)
+  (tagged-list? exp '?))
+
+(define (constant-symbol? exp) (symbol? exp))
+#+end_src
+
+Las variables únicas se construyen durante la aplicación de reglas (en la sección [[#section-4.4.4.4][4.4.4.4]]) por medio de los siguientes procedimientos. El identificador único para una aplicación de regla es un número, que se incrementa cada vez que se aplica una regla.
+
+#+begin_src scheme
+(define rule-counter 0)
+
+(define (new-rule-application-id)
+  (set! rule-counter (+ 1 rule-counter))
+  rule-counter)
+
+(define (make-new-variable var rule-application-id)
+  (cons '? (cons rule-application-id (cdr var))))
+#+end_src
+
+Cuando ~query-driver-loop~ instancia la consulta para imprimir la respuesta, convierte cualquier variable de patrón sin ligar de vuelta a la forma correcta para imprimir, usando
+
+#+begin_src scheme
+(define (contract-question-mark variable)
+  (string->symbol
+   (string-append "?"
+                  (if (number? (cadr variable))
+                      (string-append (symbol->string (caddr variable))
+                                     "-"
+                                     (number->string (cadr variable)))
+                      (symbol->string (cadr variable))))))
+#+end_src
+

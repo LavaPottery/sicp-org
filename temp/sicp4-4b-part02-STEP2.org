@@ -1,0 +1,829 @@
+*** 4.4.4 Implementación del Sistema de Consultas
+:properties:
+:custom_id: section-4.4.4
+:end:
+
+La sección [[#section-4.4.2][4.4.2]] describió cómo funciona el sistema de consultas. Ahora completamos los detalles presentando una implementación completa del sistema.
+
+**** 4.4.4.1 El Bucle Conductor y la Instanciación
+:properties:
+:custom_id: section-4.4.4.1
+:end:
+
+El bucle conductor del sistema de consultas lee repetidamente expresiones de entrada. Si la expresión es una regla o aserción a añadir a la base de datos, entonces se añade la información. De lo contrario, se asume que la expresión es una consulta. El conductor pasa esta consulta al evaluador ~qeval~ junto con un flujo de marcos inicial que consiste en un único marco vacío. El resultado de la evaluación es un flujo de marcos generado al satisfacer la consulta con valores de variables encontrados en la base de datos. Estos marcos se usan para formar un nuevo flujo que consiste en copias de la consulta original en la que las variables se instancian con valores proporcionados por el flujo de marcos, y este flujo final se imprime en el terminal:
+
+#+begin_src scheme
+(define input-prompt ";;; Entrada de consulta:")
+(define output-prompt ";;; Resultados de consulta:")
+
+(define (query-driver-loop)
+  (prompt-for-input input-prompt)
+  (let ((q (query-syntax-process (read))))
+    (cond ((assertion-to-be-added? q)
+           (add-rule-or-assertion! (add-assertion-body q))
+           (newline)
+           (display "Aserción añadida a la base de datos.")
+           (query-driver-loop))
+          (else
+           (newline)
+           (display output-prompt)
+           (display-stream
+            (stream-map
+             (lambda (frame)
+               (instantiate q
+                   frame
+                 (lambda (v f)
+                   (contract-question-mark v))))
+             (qeval q (singleton-stream '()))))
+           (query-driver-loop)))))
+#+end_src
+
+Aquí, como en los otros evaluadores en este capítulo, usamos una sintaxis abstracta para las expresiones del lenguaje de consultas. La implementación de la sintaxis de expresiones, incluyendo el predicado ~assertion-to-be-added?~ y el selector ~add-assertion-body~, se da en la sección [[#section-4.4.4.7][4.4.4.7]]. ~add-rule-or-assertion!~ se define en la sección [[#section-4.4.4.5][4.4.4.5]].
+
+Antes de hacer cualquier procesamiento en una expresión de entrada, el bucle conductor la transforma sintácticamente en una forma que hace el procesamiento más eficiente. Esto implica cambiar la representación de las variables de patrón. Cuando se instancia la consulta, cualquier variable que permanece sin ligar se transforma de nuevo a la representación de entrada antes de ser impresa. Estas transformaciones se realizan mediante los dos procedimientos ~query-syntax-process~ y ~contract-question-mark~ (sección [[#section-4.4.4.7][4.4.4.7]]).
+
+Para instanciar una expresión, la copiamos, reemplazando cualquier variable en la expresión por sus valores en un marco dado. Los valores son ellos mismos instanciados, ya que podrían contener variables (por ejemplo, si ~?x~ en ~exp~ está ligada a ~?y~ como resultado de la unificación y ~?y~ está a su vez ligada a 5). La acción a tomar si una variable no puede ser instanciada se da mediante un argumento procedimental a ~instantiate~.
+
+#+begin_src scheme
+(define (instantiate exp frame unbound-var-handler)
+  (define (copy exp)
+    (cond ((var? exp)
+           (let ((binding (binding-in-frame exp frame)))
+             (if binding
+                 (copy (binding-value binding))
+                 (unbound-var-handler exp frame))))
+          ((pair? exp)
+           (cons (copy (car exp)) (copy (cdr exp))))
+          (else exp)))
+  (copy exp))
+#+end_src
+
+Los procedimientos que manipulan ligaduras se definen en la sección [[#section-4.4.4.8][4.4.4.8]].
+
+**** 4.4.4.2 El Evaluador
+:properties:
+:custom_id: section-4.4.4.2
+:end:
+
+El procedimiento ~qeval~, llamado por ~query-driver-loop~, es el evaluador básico del sistema de consultas. Toma como entradas una consulta y un flujo de marcos, y devuelve un flujo de marcos extendidos. Identifica formas especiales mediante un despacho dirigido por datos usando ~get~ y ~put~, tal como lo hicimos al implementar operaciones genéricas en el [[#section-2][Capítulo 2]]. Cualquier consulta que no se identifique como una forma especial se asume que es una consulta simple, a ser procesada por ~simple-query~.
+
+#+begin_src scheme
+(define (qeval query frame-stream)
+  (let ((qproc (get (type query) 'qeval)))
+    (if qproc
+        (qproc (contents query) frame-stream)
+        (simple-query query frame-stream))))
+#+end_src
+
+~type~ y ~contents~, definidos en la sección [[#section-4.4.4.7][4.4.4.7]], implementan la sintaxis abstracta de las formas especiales.
+
+*Consultas simples*
+
+El procedimiento ~simple-query~ maneja consultas simples. Toma como argumentos una consulta simple (un patrón) junto con un flujo de marcos, y devuelve el flujo formado al extender cada marco mediante todas las coincidencias en la base de datos de la consulta.
+
+#+begin_src scheme
+(define (simple-query query-pattern frame-stream)
+  (stream-flatmap
+   (lambda (frame)
+     (stream-append-delayed
+      (find-assertions query-pattern frame)
+      (delay (apply-rules query-pattern frame))))
+   frame-stream))
+#+end_src
+
+Para cada marco en el flujo de entrada, usamos ~find-assertions~ (sección [[#section-4.4.4.3][4.4.4.3]]) para emparejar el patrón contra todas las aserciones en la base de datos, produciendo un flujo de marcos extendidos, y usamos ~apply-rules~ (sección [[#section-4.4.4.4][4.4.4.4]]) para aplicar todas las reglas posibles, produciendo otro flujo de marcos extendidos. Estos dos flujos se combinan (usando ~stream-append-delayed~, sección [[#section-4.4.4.6][4.4.4.6]]) para hacer un flujo de todas las formas en que el patrón dado puede ser satisfecho de manera consistente con el marco original (ver [[#exercise-4.71][Ejercicio 4.71]]). Los flujos para los marcos de entrada individuales se combinan usando ~stream-flatmap~ (sección [[#section-4.4.4.6][4.4.4.6]]) para formar un gran flujo de todas las formas en que cualquiera de los marcos en el flujo de entrada original puede ser extendido para producir una coincidencia con el patrón dado.
+
+*Consultas compuestas*
+
+Las consultas ~and~ se manejan como se ilustra en la [[figure-4.5][Figura 4.5]] mediante el procedimiento ~conjoin~. ~conjoin~ toma como entradas los conjuntos y el flujo de marcos y devuelve el flujo de marcos extendidos. Primero, ~conjoin~ procesa el flujo de marcos para encontrar el flujo de todas las extensiones de marco posibles que satisfagan la primera consulta en la conjunción. Luego, usando esto como el nuevo flujo de marcos, aplica recursivamente ~conjoin~ al resto de las consultas.
+
+#+begin_src scheme
+(define (conjoin conjuncts frame-stream)
+  (if (empty-conjunction? conjuncts)
+      frame-stream
+      (conjoin (rest-conjuncts conjuncts)
+               (qeval (first-conjunct conjuncts)
+                      frame-stream))))
+#+end_src
+
+La expresión
+
+#+begin_src scheme
+(put 'and 'qeval conjoin)
+#+end_src
+
+configura ~qeval~ para despachar a ~conjoin~ cuando se encuentra una forma ~and~.
+
+Las consultas ~or~ se manejan de manera similar, como se muestra en la [[figure-4.6][Figura 4.6]]. Los flujos de salida para los diversos disyuntos del ~or~ se calculan por separado y se fusionan usando el procedimiento ~interleave-delayed~ de la sección [[#section-4.4.4.6][4.4.4.6]]. (Ver [[#exercise-4.71][Ejercicio 4.71]] y [[#exercise-4.72][Ejercicio 4.72]].)
+
+#+begin_src scheme
+(define (disjoin disjuncts frame-stream)
+  (if (empty-disjunction? disjuncts)
+      the-empty-stream
+      (interleave-delayed
+       (qeval (first-disjunct disjuncts) frame-stream)
+       (delay (disjoin (rest-disjuncts disjuncts)
+                       frame-stream)))))
+
+(put 'or 'qeval disjoin)
+#+end_src
+
+Los predicados y selectores para la sintaxis de conjuntos y disyuntos se dan en la sección [[#section-4.4.4.7][4.4.4.7]].
+
+*Filtros*
+
+~not~ se maneja mediante el método delineado en la sección [[#section-4.4.2][4.4.2]]. Intentamos extender cada marco en el flujo de entrada para satisfacer la consulta que se niega, e incluimos un marco dado en el flujo de salida solo si no puede ser extendido.
+
+#+begin_src scheme
+(define (negate operands frame-stream)
+  (stream-flatmap
+   (lambda (frame)
+     (if (stream-null? (qeval (negated-query operands)
+                              (singleton-stream frame)))
+         (singleton-stream frame)
+         the-empty-stream))
+   frame-stream))
+
+(put 'not 'qeval negate)
+#+end_src
+
+~lisp-value~ es un filtro similar a ~not~. Cada marco en el flujo se usa para instanciar las variables en el patrón, se aplica el predicado indicado, y los marcos para los cuales el predicado devuelve falso se filtran del flujo de entrada. Resulta un error si hay variables de patrón sin ligar.
+
+#+begin_src scheme
+(define (lisp-value call frame-stream)
+  (stream-flatmap
+   (lambda (frame)
+     (if (execute
+          (instantiate
+              call
+              frame
+            (lambda (v f)
+              (error "Variable de patrón desconocida - LISP-VALUE" v))))
+         (singleton-stream frame)
+         the-empty-stream))
+   frame-stream))
+
+(put 'lisp-value 'qeval lisp-value)
+#+end_src
+
+~execute~, que aplica el predicado a los argumentos, debe evaluar (~eval~) la expresión predicado para obtener el procedimiento a aplicar. Sin embargo, no debe evaluar los argumentos, ya que ya son los argumentos reales, no expresiones cuya evaluación (en Lisp) producirá los argumentos. Nótese que ~execute~ se implementa usando ~eval~ y ~apply~ del sistema Lisp subyacente.
+
+#+begin_src scheme
+(define (execute exp)
+  (apply (eval (predicate exp) user-initial-environment)
+         (args exp)))
+#+end_src
+
+La forma especial ~always-true~ proporciona una consulta que siempre se satisface. Ignora su contenido (normalmente vacío) y simplemente pasa todos los marcos en el flujo de entrada. ~always-true~ se usa por el selector ~rule-body~ (sección [[#section-4.4.4.7][4.4.4.7]]) para proporcionar cuerpos para reglas que fueron definidas sin cuerpos (es decir, reglas cuyas conclusiones siempre se satisfacen).
+
+#+begin_src scheme
+(define (always-true ignore frame-stream) frame-stream)
+
+(put 'always-true 'qeval always-true)
+#+end_src
+
+Los selectores que definen la sintaxis de ~not~ y ~lisp-value~ se dan en la sección [[#section-4.4.4.7][4.4.4.7]].
+
+**** 4.4.4.3 Búsqueda de Aserciones mediante Emparejamiento de Patrones
+:properties:
+:custom_id: section-4.4.4.3
+:end:
+
+~find-assertions~, llamado por ~simple-query~ (sección [[#section-4.4.4.2][4.4.4.2]]), toma como entrada un patrón y un marco. Devuelve un flujo de marcos, cada uno extendiendo el dado mediante una coincidencia de la base de datos del patrón dado. Usa ~fetch-assertions~ (sección [[#section-4.4.4.5][4.4.4.5]]) para obtener un flujo de todas las aserciones en la base de datos que deben verificarse para una coincidencia contra el patrón y el marco. La razón para ~fetch-assertions~ aquí es que a menudo podemos aplicar pruebas simples que eliminarán muchas de las entradas en la base de datos del conjunto de candidatos para una coincidencia exitosa. El sistema aún funcionaría si elimináramos ~fetch-assertions~ y simplemente verificáramos un flujo de todas las aserciones en la base de datos, pero el cómputo sería menos eficiente porque necesitaríamos hacer muchas más llamadas al emparejador.
+
+#+begin_src scheme
+(define (find-assertions pattern frame)
+  (stream-flatmap (lambda (datum)
+                    (check-an-assertion datum pattern frame))
+                  (fetch-assertions pattern frame)))
+#+end_src
+
+~check-an-assertion~ toma como argumentos un patrón, un objeto de datos (aserción), y un marco y devuelve o bien un flujo de un elemento que contiene el marco extendido o ~the-empty-stream~ si la coincidencia falla.
+
+#+begin_src scheme
+(define (check-an-assertion assertion query-pat query-frame)
+  (let ((match-result
+         (pattern-match query-pat assertion query-frame)))
+    (if (eq? match-result 'failed)
+        the-empty-stream
+        (singleton-stream match-result))))
+#+end_src
+
+El emparejador de patrones básico devuelve o bien el símbolo ~failed~ o una extensión del marco dado. La idea básica del emparejador es verificar el patrón contra los datos, elemento por elemento, acumulando ligaduras para las variables de patrón. Si el patrón y el objeto de datos son iguales, la coincidencia tiene éxito y devolvemos el marco de ligaduras acumuladas hasta ahora. De lo contrario, si el patrón es una variable extendemos el marco actual ligando la variable a los datos, siempre que esto sea consistente con las ligaduras ya en el marco. Si el patrón y los datos son ambos pares, (recursivamente) emparejamos el ~car~ del patrón contra el ~car~ de los datos para producir un marco; en este marco luego emparejamos el ~cdr~ del patrón contra el ~cdr~ de los datos. Si ninguno de estos casos es aplicable, la coincidencia falla y devolvemos el símbolo ~failed~.
+
+#+begin_src scheme
+(define (pattern-match pat dat frame)
+  (cond ((eq? frame 'failed) 'failed)
+        ((equal? pat dat) frame)
+        ((var? pat) (extend-if-consistent pat dat frame))
+        ((and (pair? pat) (pair? dat))
+         (pattern-match (cdr pat)
+                        (cdr dat)
+                        (pattern-match (car pat)
+                                       (car dat)
+                                       frame)))
+        (else 'failed)))
+#+end_src
+
+Aquí está el procedimiento que extiende un marco añadiendo una nueva ligadura, si esto es consistente con las ligaduras ya en el marco:
+
+#+begin_src scheme
+(define (extend-if-consistent var dat frame)
+  (let ((binding (binding-in-frame var frame)))
+    (if binding
+        (pattern-match (binding-value binding) dat frame)
+        (extend var dat frame))))
+#+end_src
+
+Si no hay ligadura para la variable en el marco, simplemente añadimos la ligadura de la variable a los datos. De lo contrario emparejamos, en el marco, los datos contra el valor de la variable en el marco. Si el valor almacenado contiene solo constantes, como debe ser si fue almacenado durante el emparejamiento de patrones por ~extend-if-consistent~, entonces la coincidencia simplemente prueba si los valores almacenado y nuevo son iguales. Si es así, devuelve el marco sin modificar; si no, devuelve una indicación de fallo. El valor almacenado puede, sin embargo, contener variables de patrón si fue almacenado durante la unificación (ver sección [[#section-4.4.4.4][4.4.4.4]]). El emparejamiento recursivo del patrón almacenado contra los nuevos datos añadirá o verificará ligaduras para las variables en este patrón. Por ejemplo, supongamos que tenemos un marco en el que ~?x~ está ligada a ~(f ?y)~ y ~?y~ no está ligada, y deseamos aumentar este marco mediante una ligadura de ~?x~ a ~(f b)~. Buscamos ~?x~ y encontramos que está ligada a ~(f ?y)~. Esto nos lleva a emparejar ~(f ?y)~ contra el nuevo valor propuesto ~(f b)~ en el mismo marco. Eventualmente esta coincidencia extiende el marco añadiendo una ligadura de ~?y~ a ~b~. ~?X~ permanece ligada a ~(f ?y)~. Nunca modificamos una ligadura almacenada y nunca almacenamos más de una ligadura para una variable dada.
+
+Los procedimientos usados por ~extend-if-consistent~ para manipular ligaduras se definen en la sección [[#section-4.4.4.8][4.4.4.8]].
+
+*Patrones con colas punteadas*
+
+Si un patrón contiene un punto seguido por una variable de patrón, la variable de patrón coincide con el resto de la lista de datos (en lugar del siguiente elemento de la lista de datos), tal como uno esperaría con la notación de cola punteada descrita en el [[#exercise-2.20][Ejercicio 2.20]]. Aunque el emparejador de patrones que acabamos de implementar no busca puntos, sí se comporta como queremos. Esto es porque el primitivo ~read~ de Lisp, que es usado por ~query-driver-loop~ para leer la consulta y representarla como una estructura de lista, trata los puntos de una manera especial.
+
+Cuando ~read~ ve un punto, en lugar de hacer que el siguiente elemento sea el siguiente elemento de una lista (el ~car~ de un ~cons~ cuyo ~cdr~ será el resto de la lista) hace que el siguiente elemento sea el ~cdr~ de la estructura de lista. Por ejemplo, la estructura de lista producida por ~read~ para el patrón ~(computer ?type)~ podría construirse evaluando la expresión ~(cons 'computer (cons '?type '()))~, y la de ~(computer .  ?type)~ podría construirse evaluando la expresión ~(cons 'computer '?type)~.
+
+Por lo tanto, a medida que ~pattern-match~ compara recursivamente 'car's y 'cdr's de una lista de datos y un patrón que tenía un punto, eventualmente empareja la variable después del punto (que es un ~cdr~ del patrón) contra una sublista de la lista de datos, ligando la variable a esa lista. Por ejemplo, emparejar el patrón ~(computer .  ?type)~ contra ~(computer programmer trainee)~ emparejará ~?type~ contra la lista ~(programmer trainee)~.
+
+**** 4.4.4.4 Reglas y Unificación
+:properties:
+:custom_id: section-4.4.4.4
+:end:
+
+~apply-rules~ es el análogo de regla de ~find-assertions~ (sección [[#section-4.4.4.3][4.4.4.3]]). Toma como entrada un patrón y un marco, y forma un flujo de marcos de extensión aplicando reglas de la base de datos. ~stream-flatmap~ mapea ~apply-a-rule~ a lo largo del flujo de reglas posiblemente aplicables (seleccionadas por ~fetch-rules~, sección [[#section-4.4.4.5][4.4.4.5]]) y combina los flujos de marcos resultantes.
+
+#+begin_src scheme
+(define (apply-rules pattern frame)
+  (stream-flatmap (lambda (rule)
+                    (apply-a-rule rule pattern frame))
+                  (fetch-rules pattern frame)))
+#+end_src
+
+~apply-a-rule~ aplica reglas usando el método delineado en la sección [[#section-4.4.2][4.4.2]]. Primero aumenta su marco de argumento unificando la conclusión de la regla con el patrón en el marco dado. Si esto tiene éxito, evalúa el cuerpo de la regla en este nuevo marco.
+
+Antes de que suceda cualquiera de esto, sin embargo, el programa renombra todas las variables en la regla con nuevos nombres únicos. La razón para esto es evitar que las variables para diferentes aplicaciones de reglas se confundan entre sí. Por ejemplo, si dos reglas ambas usan una variable llamada ~?x~, entonces cada una puede añadir una ligadura para ~?x~ al marco cuando se aplica. Estos dos ~?x~'s no tienen nada que ver uno con el otro, y no deberíamos dejarnos engañar pensando que las dos ligaduras deben ser consistentes. En lugar de renombrar variables, podríamos idear una estructura de ambiente más inteligente; sin embargo, el enfoque de renombrado que hemos elegido aquí es el más directo, aunque no el más eficiente. (Ver [[#exercise-4.79][Ejercicio 4.79]].) Aquí está el procedimiento ~apply-a-rule~:
+
+#+begin_src scheme
+(define (apply-a-rule rule query-pattern query-frame)
+  (let ((clean-rule (rename-variables-in rule)))
+    (let ((unify-result
+           (unify-match query-pattern
+                        (conclusion clean-rule)
+                        query-frame)))
+      (if (eq? unify-result 'failed)
+          the-empty-stream
+          (qeval (rule-body clean-rule)
+                 (singleton-stream unify-result))))))
+#+end_src
+
+Los selectores ~rule-body~ y ~conclusion~ que extraen partes de una regla se definen en la sección [[#section-4.4.4.7][4.4.4.7]].
+
+Generamos nombres de variables únicos asociando un identificador único (como un número) con cada aplicación de regla y combinando este identificador con los nombres de variables originales. Por ejemplo, si el identificador de aplicación de regla es 7, podríamos cambiar cada ~?x~ en la regla a ~?x-7~ y cada ~?y~ en la regla a ~?y-7~. (~make-new-variable~ y ~new-rule-application-id~ se incluyen con los procedimientos de sintaxis en la sección [[#section-4.4.4.7][4.4.4.7]].)
+
+#+begin_src scheme
+(define (rename-variables-in rule)
+  (let ((rule-application-id (new-rule-application-id)))
+    (define (tree-walk exp)
+      (cond ((var? exp)
+             (make-new-variable exp rule-application-id))
+            ((pair? exp)
+             (cons (tree-walk (car exp))
+                   (tree-walk (cdr exp))))
+            (else exp)))
+    (tree-walk rule)))
+#+end_src
+
+El algoritmo de unificación se implementa como un procedimiento que toma como entradas dos patrones y un marco y devuelve o bien el marco extendido o el símbolo ~failed~. El unificador es como el emparejador de patrones excepto que es simétrico--se permiten variables en ambos lados de la coincidencia. ~unify-match~ es básicamente lo mismo que ~pattern-match~, excepto que hay código extra (marcado "~***~" abajo) para manejar el caso donde el objeto en el lado derecho de la coincidencia es una variable.
+
+#+begin_src scheme
+(define (unify-match p1 p2 frame)
+  (cond ((eq? frame 'failed) 'failed)
+        ((equal? p1 p2) frame)
+        ((var? p1) (extend-if-possible p1 p2 frame))
+        ((var? p2) (extend-if-possible p2 p1 frame)) ; ***
+        ((and (pair? p1) (pair? p2))
+         (unify-match (cdr p1)
+                      (cdr p2)
+                      (unify-match (car p1)
+                                   (car p2)
+                                   frame)))
+        (else 'failed)))
+#+end_src
+
+En la unificación, como en el emparejamiento de patrones unilateral, queremos aceptar una extensión propuesta del marco solo si es consistente con las ligaduras existentes. El procedimiento ~extend-if-possible~ usado en la unificación es el mismo que el ~extend-if-consistent~ usado en el emparejamiento de patrones excepto por dos verificaciones especiales, marcadas "~***~" en el programa abajo. En el primer caso, si la variable que estamos tratando de emparejar no está ligada, pero el valor que estamos tratando de emparejarla es en sí mismo una variable (diferente), es necesario verificar si el valor está ligado, y si es así, emparejar su valor. Si ambas partes de la coincidencia no están ligadas, podemos ligar cualquiera a la otra.
+
+La segunda verificación trata con intentos de ligar una variable a un patrón que incluye esa variable. Tal situación puede ocurrir siempre que una variable se repite en ambos patrones. Consideremos, por ejemplo, unificar los dos patrones ~(?x ?x)~ y '(?y <EXPRESIÓN QUE INVOLUCRA ~?Y~>)' en un marco donde tanto ~?x~ como ~?y~ no están ligadas. Primero ~?x~ se empareja contra ~?y~, haciendo una ligadura de ~?x~ a ~?y~. Luego, la misma ~?x~ se empareja contra la expresión dada que involucra ~?y~. Dado que ~?x~ ya está ligada a ~?y~, esto resulta en emparejar ~?y~ contra la expresión. Si pensamos en el unificador como encontrando un conjunto de valores para las variables de patrón que hacen los patrones iguales, entonces estos patrones implican instrucciones para encontrar una ~?y~ tal que ~?y~ sea igual a la expresión que involucra ~?y~. No hay un método general para resolver tales ecuaciones, así que rechazamos tales ligaduras; estos casos son reconocidos por el predicado ~depends-on?~.[fn:284] Por otro lado, no queremos rechazar intentos de ligar una variable a sí misma. Por ejemplo, consideremos unificar ~(?x ?x)~ y ~(?y ?y)~. El segundo intento de ligar ~?x~ a ~?y~ empareja ~?y~ (el valor almacenado de ~?x~) contra ~?y~ (el nuevo valor de ~?x~). Esto se maneja mediante la cláusula ~equal?~ de ~unify-match~.
+
+#+begin_src scheme
+(define (extend-if-possible var val frame)
+  (let ((binding (binding-in-frame var frame)))
+    (cond (binding
+           (unify-match
+            (binding-value binding) val frame))
+          ((var? val)                   ; ***
+           (let ((binding (binding-in-frame val frame)))
+             (if binding
+                 (unify-match
+                  var (binding-value binding) frame)
+                 (extend var val frame))))
+          ((depends-on? val var frame)  ; ***
+           'failed)
+          (else (extend var val frame)))))
+#+end_src
+
+~depends-on?~ es un predicado que prueba si una expresión propuesta para ser el valor de una variable de patrón depende de la variable. Esto debe hacerse en relación al marco actual porque la expresión puede contener ocurrencias de una variable que ya tiene un valor que depende de nuestra variable de prueba. La estructura de ~depends-on?~ es un simple recorrido recursivo de árbol en el que sustituimos los valores de las variables cuando es necesario.
+
+#+begin_src scheme
+(define (depends-on? exp var frame)
+  (define (tree-walk e)
+    (cond ((var? e)
+           (if (equal? var e)
+               true
+               (let ((b (binding-in-frame e frame)))
+                 (if b
+                     (tree-walk (binding-value b))
+                     false))))
+          ((pair? e)
+           (or (tree-walk (car e))
+               (tree-walk (cdr e))))
+          (else false)))
+  (tree-walk exp))
+#+end_src
+
+**** 4.4.4.5 Mantenimiento de la Base de Datos
+:properties:
+:custom_id: section-4.4.4.5
+:end:
+
+Un problema importante en el diseño de lenguajes de programación lógica es el de organizar las cosas de manera que se examinen tan pocas entradas de base de datos irrelevantes como sea posible al verificar un patrón dado. En nuestro sistema, además de almacenar todas las aserciones en un gran flujo, almacenamos todas las aserciones cuyos 'car's son símbolos constantes en flujos separados, en una tabla indexada por el símbolo. Para obtener una aserción que pueda coincidir con un patrón, primero verificamos si el ~car~ del patrón es un símbolo constante. Si es así, devolvemos (para ser probadas usando el emparejador) todas las aserciones almacenadas que tienen el mismo ~car~. Si el ~car~ del patrón no es un símbolo constante, devolvemos todas las aserciones almacenadas. Métodos más inteligentes también podrían aprovechar la información en el marco, o tratar también de optimizar el caso donde el ~car~ del patrón no es un símbolo constante. Evitamos construir nuestros criterios para indexar (usando el ~car~, manejando solo el caso de símbolos constantes) en el programa; en su lugar llamamos a predicados y selectores que incorporan nuestros criterios.
+
+#+begin_src scheme
+(define THE-ASSERTIONS the-empty-stream)
+
+(define (fetch-assertions pattern frame)
+  (if (use-index? pattern)
+      (get-indexed-assertions pattern)
+      (get-all-assertions)))
+
+(define (get-all-assertions) THE-ASSERTIONS)
+
+(define (get-indexed-assertions pattern)
+  (get-stream (index-key-of pattern) 'assertion-stream))
+#+end_src
+
+~get-stream~ busca un flujo en la tabla y devuelve un flujo vacío si no hay nada almacenado allí.
+
+#+begin_src scheme
+(define (get-stream key1 key2)
+  (let ((s (get key1 key2)))
+    (if s s the-empty-stream)))
+#+end_src
+
+Las reglas se almacenan de manera similar, usando el ~car~ de la conclusión de la regla. Las conclusiones de reglas son patrones arbitrarios, sin embargo, por lo que difieren de las aserciones en que pueden contener variables. Un patrón cuyo ~car~ es un símbolo constante puede coincidir con reglas cuyas conclusiones comienzan con una variable así como reglas cuyas conclusiones tienen el mismo ~car~. Por lo tanto, al obtener reglas que podrían coincidir con un patrón cuyo ~car~ es un símbolo constante obtenemos todas las reglas cuyas conclusiones comienzan con una variable así como aquellas cuyas conclusiones tienen el mismo ~car~ que el patrón. Para este propósito almacenamos todas las reglas cuyas conclusiones comienzan con una variable en un flujo separado en nuestra tabla, indexado por el símbolo ~?~.
+
+#+begin_src scheme
+(define THE-RULES the-empty-stream)
+
+(define (fetch-rules pattern frame)
+  (if (use-index? pattern)
+      (get-indexed-rules pattern)
+      (get-all-rules)))
+
+(define (get-all-rules) THE-RULES)
+
+(define (get-indexed-rules pattern)
+  (stream-append
+   (get-stream (index-key-of pattern) 'rule-stream)
+   (get-stream '? 'rule-stream)))
+#+end_src
+
+~add-rule-or-assertion!~ es usado por ~query-driver-loop~ para añadir aserciones y reglas a la base de datos. Cada elemento se almacena en el índice, si es apropiado, y en un flujo de todas las aserciones o reglas en la base de datos.
+
+#+begin_src scheme
+(define (add-rule-or-assertion! assertion)
+  (if (rule? assertion)
+      (add-rule! assertion)
+      (add-assertion! assertion)))
+
+(define (add-assertion! assertion)
+  (store-assertion-in-index assertion)
+  (let ((old-assertions THE-ASSERTIONS))
+    (set! THE-ASSERTIONS
+      (cons-stream assertion old-assertions))
+    'ok))
+
+(define (add-rule! rule)
+  (store-rule-in-index rule)
+  (let ((old-rules THE-RULES))
+    (set! THE-RULES (cons-stream rule old-rules))
+    'ok))
+#+end_src
+
+Para realmente almacenar una aserción o una regla, verificamos si puede ser indexada. Si es así, la almacenamos en el flujo apropiado.
+
+#+begin_src scheme
+(define (store-assertion-in-index assertion)
+  (if (indexable? assertion)
+      (let ((key (index-key-of assertion)))
+        (let ((current-assertion-stream
+               (get-stream key 'assertion-stream)))
+          (put key
+               'assertion-stream
+               (cons-stream assertion
+                            current-assertion-stream))))))
+
+(define (store-rule-in-index rule)
+  (let ((pattern (conclusion rule)))
+    (if (indexable? pattern)
+        (let ((key (index-key-of pattern)))
+          (let ((current-rule-stream
+                 (get-stream key 'rule-stream)))
+            (put key
+                 'rule-stream
+                 (cons-stream rule
+                              current-rule-stream)))))))
+#+end_src
+
+Los siguientes procedimientos definen cómo se usa el índice de la base de datos. Un patrón (una aserción o una conclusión de regla) se almacenará en la tabla si comienza con una variable o un símbolo constante.
+
+#+begin_src scheme
+(define (indexable? pat)
+  (or (constant-symbol? (car pat))
+      (var? (car pat))))
+#+end_src
+
+La clave bajo la cual se almacena un patrón en la tabla es o bien ~?~ (si comienza con una variable) o el símbolo constante con el que comienza.
+
+#+begin_src scheme
+(define (index-key-of pat)
+  (let ((key (car pat)))
+    (if (var? key) '? key)))
+#+end_src
+
+El índice se usará para recuperar elementos que podrían coincidir con un patrón si el patrón comienza con un símbolo constante.
+
+#+begin_src scheme
+(define (use-index? pat)
+  (constant-symbol? (car pat)))
+#+end_src
+
+**** Ejercicio 4.70
+:properties:
+:custom_id: exercise-4.70
+:end:
+
+¿Cuál es el propósito de las ligaduras ~let~ en los procedimientos ~add-assertion!~ y ~add-rule!~? ¿Qué estaría mal con la siguiente implementación de ~add-assertion!~? Pista: Recuerda la definición del flujo infinito de unos en la sección [[#section-3.5.2][3.5.2]]: ~(define ones (cons-stream 1 ones))~.
+
+#+begin_src scheme
+(define (add-assertion! assertion)
+  (store-assertion-in-index assertion)
+  (set! THE-ASSERTIONS
+    (cons-stream assertion THE-ASSERTIONS))
+  'ok)
+#+end_src
+
+**** 4.4.4.6 Operaciones de Flujo
+:properties:
+:custom_id: section-4.4.4.6
+:end:
+
+El sistema de consultas usa unas pocas operaciones de flujo que no se presentaron en el [[#section-3][Capítulo 3]].
+
+~stream-append-delayed~ e ~interleave-delayed~ son justo como ~stream-append~ e ~interleave~ (sección [[#section-3.5.3][3.5.3]]), excepto que toman un argumento retrasado (como el procedimiento ~integral~ en la sección [[#section-3.5.4][3.5.4]]). Esto pospone los bucles en algunos casos (ver [[#exercise-4.71][Ejercicio 4.71]]).
+
+#+begin_src scheme
+(define (stream-append-delayed s1 delayed-s2)
+  (if (stream-null? s1)
+      (force delayed-s2)
+      (cons-stream
+       (stream-car s1)
+       (stream-append-delayed (stream-cdr s1) delayed-s2))))
+
+(define (interleave-delayed s1 delayed-s2)
+  (if (stream-null? s1)
+      (force delayed-s2)
+      (cons-stream
+       (stream-car s1)
+       (interleave-delayed (force delayed-s2)
+                           (delay (stream-cdr s1))))))
+#+end_src
+
+~stream-flatmap~, que se usa a lo largo del evaluador de consultas para mapear un procedimiento sobre un flujo de marcos y combinar los flujos de marcos resultantes, es el análogo de flujo del procedimiento ~flatmap~ introducido para listas ordinarias en la sección [[#section-2.2.3][2.2.3]]. A diferencia del ~flatmap~ ordinario, sin embargo, acumulamos los flujos con un proceso de intercalado, en lugar de simplemente añadirlos (ver [[#exercise-4.72][Ejercicio 4.72]] y [[#exercise-4.73][Ejercicio 4.73]]).
+
+#+begin_src scheme
+(define (stream-flatmap proc s)
+  (flatten-stream (stream-map proc s)))
+
+(define (flatten-stream stream)
+  (if (stream-null? stream)
+      the-empty-stream
+      (interleave-delayed
+       (stream-car stream)
+       (delay (flatten-stream (stream-cdr stream))))))
+#+end_src
+
+El evaluador también usa el siguiente procedimiento simple para generar un flujo que consiste en un único elemento:
+
+#+begin_src scheme
+(define (singleton-stream x)
+  (cons-stream x the-empty-stream))
+#+end_src
+
+**** 4.4.4.7 Procedimientos de Sintaxis de Consultas
+:properties:
+:custom_id: section-4.4.4.7
+:end:
+
+~type~ y ~contents~, usados por ~qeval~ (sección [[#section-4.4.4.2][4.4.4.2]]), especifican que una forma especial se identifica por el símbolo en su ~car~. Son los mismos que los procedimientos ~type-tag~ y ~contents~ en la sección [[#section-2.4.2][2.4.2]], excepto por el mensaje de error.
+
+#+begin_src scheme
+(define (type exp)
+  (if (pair? exp)
+      (car exp)
+      (error "Expresión desconocida TYPE" exp)))
+
+(define (contents exp)
+  (if (pair? exp)
+      (cdr exp)
+      (error "Expresión desconocida CONTENTS" exp)))
+#+end_src
+
+Los siguientes procedimientos, usados por ~query-driver-loop~ (en la sección [[#section-4.4.4.1][4.4.4.1]]), especifican que reglas y aserciones se añaden a la base de datos mediante expresiones de la forma '(assert! <REGLA-O-ASERCIÓN>)':
+
+#+begin_src scheme
+(define (assertion-to-be-added? exp)
+  (eq? (type exp) 'assert!))
+
+(define (add-assertion-body exp)
+  (car (contents exp)))
+#+end_src
+
+Aquí están las definiciones de sintaxis para las formas especiales ~and~, ~or~, ~not~, y ~lisp-value~ (sección [[#section-4.4.4.2][4.4.4.2]]):
+
+#+begin_src scheme
+(define (empty-conjunction? exps) (null? exps))
+(define (first-conjunct exps) (car exps))
+(define (rest-conjuncts exps) (cdr exps))
+
+(define (empty-disjunction? exps) (null? exps))
+(define (first-disjunct exps) (car exps))
+(define (rest-disjuncts exps) (cdr exps))
+
+(define (negated-query exps) (car exps))
+
+(define (predicate exps) (car exps))
+(define (args exps) (cdr exps))
+#+end_src
+
+Los siguientes tres procedimientos definen la sintaxis de las reglas:
+
+#+begin_src scheme
+(define (rule? statement)
+  (tagged-list? statement 'rule))
+
+(define (conclusion rule) (cadr rule))
+
+(define (rule-body rule)
+  (if (null? (cddr rule))
+      '(always-true)
+      (caddr rule)))
+#+end_src
+
+~query-driver-loop~ (sección [[#section-4.4.4.1][4.4.4.1]]) llama a ~query-syntax-process~ para transformar variables de patrón en la expresión, que tienen la forma ~?symbol~, en el formato interno ~(?  symbol)~. Es decir, un patrón como ~(job ?x ?y)~ es realmente representado internamente por el sistema como ~(job (?  x) (?  y))~. Esto aumenta la eficiencia del procesamiento de consultas, ya que significa que el sistema puede verificar si una expresión es una variable de patrón verificando si el ~car~ de la expresión es el símbolo ~?~, en lugar de tener que extraer caracteres del símbolo. La transformación de sintaxis se logra mediante el siguiente procedimiento:[fn:285]
+
+#+begin_src scheme
+(define (query-syntax-process exp)
+  (map-over-symbols expand-question-mark exp))
+
+(define (map-over-symbols proc exp)
+  (cond ((pair? exp)
+         (cons (map-over-symbols proc (car exp))
+               (map-over-symbols proc (cdr exp))))
+        ((symbol? exp) (proc exp))
+        (else exp)))
+
+(define (expand-question-mark symbol)
+  (let ((chars (symbol->string symbol)))
+    (if (string=? (substring chars 0 1) "?")
+        (list '?
+              (string->symbol
+               (substring chars 1 (string-length chars))))
+        symbol)))
+#+end_src
+
+Una vez que las variables se transforman de esta manera, las variables en un patrón son listas que comienzan con ~?~, y los símbolos constantes (que necesitan ser reconocidos para la indexación de la base de datos, sección [[#section-4.4.4.5][4.4.4.5]]) son simplemente los símbolos.
+
+#+begin_src scheme
+(define (var? exp)
+  (tagged-list? exp '?))
+
+(define (constant-symbol? exp) (symbol? exp))
+#+end_src
+
+Las variables únicas se construyen durante la aplicación de reglas (en la sección [[#section-4.4.4.4][4.4.4.4]]) por medio de los siguientes procedimientos. El identificador único para una aplicación de regla es un número, que se incrementa cada vez que se aplica una regla.
+
+#+begin_src scheme
+(define rule-counter 0)
+
+(define (new-rule-application-id)
+  (set! rule-counter (+ 1 rule-counter))
+  rule-counter)
+
+(define (make-new-variable var rule-application-id)
+  (cons '? (cons rule-application-id (cdr var))))
+#+end_src
+
+Cuando ~query-driver-loop~ instancia la consulta para imprimir la respuesta, convierte cualquier variable de patrón sin ligar de vuelta a la forma correcta para imprimir, usando
+
+#+begin_src scheme
+(define (contract-question-mark variable)
+  (string->symbol
+   (string-append "?"
+                  (if (number? (cadr variable))
+                      (string-append (symbol->string (caddr variable))
+                                     "-"
+                                     (number->string (cadr variable)))
+                      (symbol->string (cadr variable))))))
+#+end_src
+
+**** 4.4.4.8 Marcos y Ligaduras
+:properties:
+:custom_id: section-4.4.4.8
+:end:
+
+Los marcos se representan como listas de ligaduras, que son pares variable-valor:
+
+#+begin_src scheme
+(define (make-binding variable value)
+  (cons variable value))
+
+(define (binding-variable binding)
+  (car binding))
+
+(define (binding-value binding)
+  (cdr binding))
+
+(define (binding-in-frame variable frame)
+  (assoc variable frame))
+
+(define (extend variable value frame)
+  (cons (make-binding variable value) frame))
+#+end_src
+
+**** Ejercicio 4.71
+:properties:
+:custom_id: exercise-4.71
+:end:
+
+Louis Reasoner se pregunta por qué los procedimientos ~simple-query~ y ~disjoin~ (sección [[#section-4.4.4.2][4.4.4.2]]) se implementan usando operaciones ~delay~ explícitas, en lugar de estar definidos de la siguiente manera:
+
+#+begin_src scheme
+(define (simple-query query-pattern frame-stream)
+  (stream-flatmap
+   (lambda (frame)
+     (stream-append (find-assertions query-pattern frame)
+                    (apply-rules query-pattern frame)))
+   frame-stream))
+
+(define (disjoin disjuncts frame-stream)
+  (if (empty-disjunction? disjuncts)
+      the-empty-stream
+      (interleave
+       (qeval (first-disjunct disjuncts) frame-stream)
+       (disjoin (rest-disjuncts disjuncts) frame-stream))))
+#+end_src
+
+¿Puedes dar ejemplos de consultas donde estas definiciones más simples llevarían a un comportamiento indeseable?
+
+**** Ejercicio 4.72
+:properties:
+:custom_id: exercise-4.72
+:end:
+
+¿Por qué ~disjoin~ y ~stream-flatmap~ intercalan los flujos en lugar de simplemente añadirlos? Da ejemplos que ilustren por qué el intercalado funciona mejor. (Pista: ¿Por qué usamos ~interleave~ en la sección [[#section-3.5.3][3.5.3]]?)
+
+**** Ejercicio 4.73
+:properties:
+:custom_id: exercise-4.73
+:end:
+
+¿Por qué ~flatten-stream~ usa ~delay~ explícitamente? ¿Qué estaría mal al definirlo de la siguiente manera:
+
+#+begin_src scheme
+(define (flatten-stream stream)
+  (if (stream-null? stream)
+      the-empty-stream
+      (interleave
+       (stream-car stream)
+       (flatten-stream (stream-cdr stream)))))
+#+end_src
+
+**** Ejercicio 4.74
+:properties:
+:custom_id: exercise-4.74
+:end:
+
+Alyssa P. Hacker propone usar una versión más simple de ~stream-flatmap~ en ~negate~, ~lisp-value~, y ~find-assertions~. Ella observa que el procedimiento que se mapea sobre el flujo de marcos en estos casos siempre produce o bien el flujo vacío o un flujo singleton, por lo que no se necesita intercalado al combinar estos flujos.
+
+a. Completa las expresiones faltantes en el programa de Alyssa.
+
+#+begin_src scheme
+(define (simple-stream-flatmap proc s)
+  (simple-flatten (stream-map proc s)))
+
+(define (simple-flatten stream)
+  (stream-map <??>
+              (stream-filter <??> stream)))
+#+end_src
+
+b. ¿Cambia el comportamiento del sistema de consultas si lo cambiamos de esta manera?
+
+**** Ejercicio 4.75
+:properties:
+:custom_id: exercise-4.75
+:end:
+
+Implementa para el lenguaje de consultas una nueva forma especial llamada ~unique~. ~unique~ debe tener éxito si hay precisamente un elemento en la base de datos que satisface una consulta especificada. Por ejemplo,
+
+#+begin_src scheme
+(unique (job ?x (computer wizard)))
+#+end_src
+
+debe imprimir el flujo de un elemento
+
+#+begin_src scheme
+(unique (job (Bitdiddle Ben) (computer wizard)))
+#+end_src
+
+ya que Ben es el único mago de computadoras, y
+
+#+begin_src scheme
+(unique (job ?x (computer programmer)))
+#+end_src
+
+debe imprimir el flujo vacío, ya que hay más de un programador de computadoras. Además,
+
+#+begin_src scheme
+(and (job ?x ?j) (unique (job ?anyone ?j)))
+#+end_src
+
+debe listar todos los trabajos que son ocupados por solo una persona, y las personas que los ocupan.
+
+Hay dos partes para implementar ~unique~. La primera es escribir un procedimiento que maneje esta forma especial, y la segunda es hacer que ~qeval~ despache a ese procedimiento. La segunda parte es trivial, ya que ~qeval~ hace su despacho de una manera dirigida por datos. Si tu procedimiento se llama ~uniquely-asserted~, todo lo que necesitas hacer es
+
+#+begin_src scheme
+(put 'unique 'qeval uniquely-asserted)
+#+end_src
+
+y ~qeval~ despachará a este procedimiento para cada consulta cuyo ~type~ (~car~) sea el símbolo ~unique~.
+
+El problema real es escribir el procedimiento ~uniquely-asserted~. Este debe tomar como entrada el ~contents~ (~cdr~) de la consulta ~unique~, junto con un flujo de marcos. Para cada marco en el flujo, debe usar ~qeval~ para encontrar el flujo de todas las extensiones al marco que satisfagan la consulta dada. Cualquier flujo que no tenga exactamente un elemento en él debe ser eliminado. Los flujos restantes deben pasarse de vuelta para ser acumulados en un gran flujo que es el resultado de la consulta ~unique~. Esto es similar a la implementación de la forma especial ~not~.
+
+Prueba tu implementación formando una consulta que liste todas las personas que supervisan precisamente a una persona.
+
+**** Ejercicio 4.76
+:properties:
+:custom_id: exercise-4.76
+:end:
+
+Nuestra implementación de ~and~ como una combinación en serie de consultas ([[figure-4.5][Figura 4.5]]) es elegante, pero es ineficiente porque al procesar la segunda consulta del ~and~ debemos escanear la base de datos para cada marco producido por la primera consulta. Si la base de datos tiene n elementos, y una consulta típica produce un número de marcos de salida proporcional a n (digamos n/k), entonces escanear la base de datos para cada marco producido por la primera consulta requerirá n^2/k llamadas al emparejador de patrones. Otro enfoque sería procesar las dos cláusulas del ~and~ por separado, luego buscar todos los pares de marcos de salida que sean compatibles. Si cada consulta produce n/k marcos de salida, entonces esto significa que debemos realizar n^2/k^2 verificaciones de compatibilidad--un factor de k menos que el número de coincidencias requeridas en nuestro método actual.
+
+Idea una implementación de ~and~ que use esta estrategia. Debes implementar un procedimiento que tome dos marcos como entradas, verifique si las ligaduras en los marcos son compatibles, y, si es así, produzca un marco que fusione los dos conjuntos de ligaduras. Esta operación es similar a la unificación.
+
+**** Ejercicio 4.77
+:properties:
+:custom_id: exercise-4.77
+:end:
+
+En la sección [[#section-4.4.3][4.4.3]] vimos que ~not~ y ~lisp-value~ pueden causar que el lenguaje de consultas dé respuestas "incorrectas" si estas operaciones de filtrado se aplican a marcos en los que las variables no están ligadas. Idea una manera de arreglar esta deficiencia. Una idea es realizar el filtrado de manera "retrasada" añadiendo al marco una "promesa" de filtrar que se cumple solo cuando suficientes variables se han ligado para hacer la operación posible. Podríamos esperar para realizar el filtrado hasta que todas las demás operaciones se hayan realizado. Sin embargo, por eficiencia, nos gustaría realizar el filtrado tan pronto como sea posible para reducir el número de marcos intermedios generados.
+
+**** Ejercicio 4.78
+:properties:
+:custom_id: exercise-4.78
+:end:
+
+Rediseña el lenguaje de consultas como un programa no determinístico a ser implementado usando el evaluador de la sección [[#section-4.3][4.3]], en lugar de como un proceso de flujo. En este enfoque, cada consulta producirá una única respuesta (en lugar del flujo de todas las respuestas) y el usuario puede teclear ~try-again~ para ver más respuestas. Deberías encontrar que mucho del mecanismo que construimos en esta sección es subsumido por la búsqueda no determinística y el retroceso. Probablemente también encontrarás, sin embargo, que tu nuevo lenguaje de consultas tiene diferencias sutiles en comportamiento del implementado aquí. ¿Puedes encontrar ejemplos que ilustren esta diferencia?
+
+**** Ejercicio 4.79
+:properties:
+:custom_id: exercise-4.79
+:end:
+
+Cuando implementamos el evaluador Lisp en la sección [[#section-4.1][4.1]], vimos cómo usar ambientes locales para evitar conflictos de nombres entre los parámetros de procedimientos. Por ejemplo, al evaluar
+
+#+begin_src scheme
+(define (square x)
+  (* x x))
+
+(define (sum-of-squares x y)
+  (+ (square x) (square y)))
+
+(sum-of-squares 3 4)
+#+end_src
+
+no hay confusión entre la ~x~ en ~square~ y la ~x~ en ~sum-of-squares~, porque evaluamos el cuerpo de cada procedimiento en un ambiente que está especialmente construido para contener ligaduras para las variables locales. En el sistema de consultas, usamos una estrategia diferente para evitar conflictos de nombres al aplicar reglas. Cada vez que aplicamos una regla renombramos las variables con nuevos nombres que están garantizados de ser únicos. La estrategia análoga para el evaluador Lisp sería eliminar los ambientes locales y simplemente renombrar las variables en el cuerpo de un procedimiento cada vez que aplicamos el procedimiento.
+
+Implementa para el lenguaje de consultas un método de aplicación de reglas que usa ambientes en lugar de renombrado. Ve si puedes construir sobre tu estructura de ambiente para crear construcciones en el lenguaje de consultas para tratar con grandes sistemas, tales como el análogo de regla de procedimientos con estructura de bloque. ¿Puedes relacionar algo de esto con el problema de hacer deducciones en un contexto (p. ej., "Si supusiera que P fuera verdadero, entonces sería capaz de deducir A y B.") como un método de resolución de problemas? (Este problema es abierto. Una buena respuesta probablemente vale un doctorado.)
+

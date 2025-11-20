@@ -1,0 +1,43 @@
+**** Ejercicio 4.76
+:properties:
+:custom_id: exercise-4.76
+:end:
+
+Nuestra implementación de ~and~ como una combinación en serie de consultas ([[figure-4.5][Figura 4.5]]) es elegante, pero es ineficiente porque al procesar la segunda consulta del ~and~ debemos escanear la base de datos para cada marco producido por la primera consulta. Si la base de datos tiene n elementos, y una consulta típica produce un número de marcos de salida proporcional a n (digamos n/k), entonces escanear la base de datos para cada marco producido por la primera consulta requerirá n^2/k llamadas al emparejador de patrones. Otro enfoque sería procesar las dos cláusulas del ~and~ por separado, luego buscar todos los pares de marcos de salida que sean compatibles. Si cada consulta produce n/k marcos de salida, entonces esto significa que debemos realizar n^2/k^2 verificaciones de compatibilidad--un factor de k menos que el número de coincidencias requeridas en nuestro método actual.
+
+Idea una implementación de ~and~ que use esta estrategia. Debes implementar un procedimiento que tome dos marcos como entradas, verifique si las ligaduras en los marcos son compatibles, y, si es así, produzca un marco que fusione los dos conjuntos de ligaduras. Esta operación es similar a la unificación.
+
+**** Ejercicio 4.77
+:properties:
+:custom_id: exercise-4.77
+:end:
+
+En la sección [[#section-4.4.3][4.4.3]] vimos que ~not~ y ~lisp-value~ pueden causar que el lenguaje de consultas dé respuestas "incorrectas" si estas operaciones de filtrado se aplican a marcos en los que las variables no están ligadas. Idea una manera de arreglar esta deficiencia. Una idea es realizar el filtrado de manera "retrasada" añadiendo al marco una "promesa" de filtrar que se cumple solo cuando suficientes variables se han ligado para hacer la operación posible. Podríamos esperar para realizar el filtrado hasta que todas las demás operaciones se hayan realizado. Sin embargo, por eficiencia, nos gustaría realizar el filtrado tan pronto como sea posible para reducir el número de marcos intermedios generados.
+
+**** Ejercicio 4.78
+:properties:
+:custom_id: exercise-4.78
+:end:
+
+Rediseña el lenguaje de consultas como un programa no determinístico a ser implementado usando el evaluador de la sección [[#section-4.3][4.3]], en lugar de como un proceso de flujo. En este enfoque, cada consulta producirá una única respuesta (en lugar del flujo de todas las respuestas) y el usuario puede teclear ~try-again~ para ver más respuestas. Deberías encontrar que mucho del mecanismo que construimos en esta sección es subsumido por la búsqueda no determinística y el retroceso. Probablemente también encontrarás, sin embargo, que tu nuevo lenguaje de consultas tiene diferencias sutiles en comportamiento del implementado aquí. ¿Puedes encontrar ejemplos que ilustren esta diferencia?
+
+**** Ejercicio 4.79
+:properties:
+:custom_id: exercise-4.79
+:end:
+
+Cuando implementamos el evaluador Lisp en la sección [[#section-4.1][4.1]], vimos cómo usar ambientes locales para evitar conflictos de nombres entre los parámetros de procedimientos. Por ejemplo, al evaluar
+
+#+begin_src scheme
+(define (square x)
+  (* x x))
+
+(define (sum-of-squares x y)
+  (+ (square x) (square y)))
+
+(sum-of-squares 3 4)
+#+end_src
+
+no hay confusión entre la ~x~ en ~square~ y la ~x~ en ~sum-of-squares~, porque evaluamos el cuerpo de cada procedimiento en un ambiente que está especialmente construido para contener ligaduras para las variables locales. En el sistema de consultas, usamos una estrategia diferente para evitar conflictos de nombres al aplicar reglas. Cada vez que aplicamos una regla renombramos las variables con nuevos nombres que están garantizados de ser únicos. La estrategia análoga para el evaluador Lisp sería eliminar los ambientes locales y simplemente renombrar las variables en el cuerpo de un procedimiento cada vez que aplicamos el procedimiento.
+
+Implementa para el lenguaje de consultas un método de aplicación de reglas que usa ambientes en lugar de renombrado. Ve si puedes construir sobre tu estructura de ambiente para crear construcciones en el lenguaje de consultas para tratar con grandes sistemas, tales como el análogo de regla de procedimientos con estructura de bloque. ¿Puedes relacionar algo de esto con el problema de hacer deducciones en un contexto (p. ej., "Si supusiera que P fuera verdadero, entonces sería capaz de deducir A y B.") como un método de resolución de problemas? (Este problema es abierto. Una buena respuesta probablemente vale un doctorado.)

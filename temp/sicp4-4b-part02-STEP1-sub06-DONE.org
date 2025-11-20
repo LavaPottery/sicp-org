@@ -1,0 +1,62 @@
+**** Ejercicio 4.70
+:properties:
+:custom_id: exercise-4.70
+:end:
+
+¿Cuál es el propósito de las ligaduras ~let~ en los procedimientos ~add-assertion!~ y ~add-rule!~? ¿Qué estaría mal con la siguiente implementación de ~add-assertion!~? Pista: Recuerda la definición del flujo infinito de unos en la sección [[#section-3.5.2][3.5.2]]: ~(define ones (cons-stream 1 ones))~.
+
+#+begin_src scheme
+(define (add-assertion! assertion)
+  (store-assertion-in-index assertion)
+  (set! THE-ASSERTIONS
+    (cons-stream assertion THE-ASSERTIONS))
+  'ok)
+#+end_src
+
+**** 4.4.4.6 Operaciones de Flujo
+:properties:
+:custom_id: section-4.4.4.6
+:end:
+
+El sistema de consultas usa unas pocas operaciones de flujo que no se presentaron en el [[#section-3][Capítulo 3]].
+
+~stream-append-delayed~ e ~interleave-delayed~ son justo como ~stream-append~ e ~interleave~ (sección [[#section-3.5.3][3.5.3]]), excepto que toman un argumento retrasado (como el procedimiento ~integral~ en la sección [[#section-3.5.4][3.5.4]]). Esto pospone los bucles en algunos casos (ver [[#exercise-4.71][Ejercicio 4.71]]).
+
+#+begin_src scheme
+(define (stream-append-delayed s1 delayed-s2)
+  (if (stream-null? s1)
+      (force delayed-s2)
+      (cons-stream
+       (stream-car s1)
+       (stream-append-delayed (stream-cdr s1) delayed-s2))))
+
+(define (interleave-delayed s1 delayed-s2)
+  (if (stream-null? s1)
+      (force delayed-s2)
+      (cons-stream
+       (stream-car s1)
+       (interleave-delayed (force delayed-s2)
+                           (delay (stream-cdr s1))))))
+#+end_src
+
+~stream-flatmap~, que se usa a lo largo del evaluador de consultas para mapear un procedimiento sobre un flujo de marcos y combinar los flujos de marcos resultantes, es el análogo de flujo del procedimiento ~flatmap~ introducido para listas ordinarias en la sección [[#section-2.2.3][2.2.3]]. A diferencia del ~flatmap~ ordinario, sin embargo, acumulamos los flujos con un proceso de intercalado, en lugar de simplemente añadirlos (ver [[#exercise-4.72][Ejercicio 4.72]] y [[#exercise-4.73][Ejercicio 4.73]]).
+
+#+begin_src scheme
+(define (stream-flatmap proc s)
+  (flatten-stream (stream-map proc s)))
+
+(define (flatten-stream stream)
+  (if (stream-null? stream)
+      the-empty-stream
+      (interleave-delayed
+       (stream-car stream)
+       (delay (flatten-stream (stream-cdr stream))))))
+#+end_src
+
+El evaluador también usa el siguiente procedimiento simple para generar un flujo que consiste en un único elemento:
+
+#+begin_src scheme
+(define (singleton-stream x)
+  (cons-stream x the-empty-stream))
+#+end_src
+
