@@ -1,0 +1,667 @@
+*** 5.5.5 Un ejemplo de código compilado
+:properties:
+:custom_id: section-5.5.5
+:end:
+
+Ahora que hemos visto todos los elementos del compilador, examinemos un ejemplo de código compilado para ver cómo encajan las cosas. Compilaremos la definición de un procedimiento recursivo ~factorial~ llamando a ~compile~:
+
+#+begin_src scheme
+(compile
+ '(define (factorial n)
+    (if (= n 1)
+        1
+        (* (factorial (- n 1)) n)))
+ 'val
+ 'next)
+#+end_src
+
+Hemos especificado que el valor de la expresión ~define~ debe colocarse en el registro ~val~. No nos importa lo que haga el código compilado después de ejecutar el ~define~, por lo que nuestra elección de ~next~ como descriptor de enlace es arbitraria.
+
+~compile~ determina que la expresión es una definición, por lo que llama a ~compile-definition~ para compilar código que compute el valor a asignar (dirigido a ~val~), seguido de código para instalar la definición, seguido de código para poner el valor del ~define~ (que es el símbolo ~ok~) en el registro objetivo, seguido finalmente por el código de enlace. ~env~ se preserva alrededor del cálculo del valor, porque se necesita para instalar la definición. Como el enlace es ~next~, no hay código de enlace en este caso. El esqueleto del código compilado es por tanto
+
+#+begin_src scheme
+<guardar 'env' si es modificado por el código para calcular el valor>
+  <compilación del valor de la definición, objetivo 'val', enlace 'next'>
+  <restaurar 'env' si se guardó arriba>
+  (perform (op define-variable!)
+           (const factorial)
+           (reg val)
+           (reg env))
+  (assign val (const ok))
+#+end_src
+
+La expresión que se va a compilar para producir el valor de la variable ~factorial~ es una expresión ~lambda~ cuyo valor es el procedimiento que calcula factoriales. ~compile~ maneja esto llamando a ~compile-lambda~, que compila el cuerpo del procedimiento, lo etiqueta como un nuevo punto de entrada, y genera la instrucción que combinará el cuerpo del procedimiento en el nuevo punto de entrada con el entorno de ejecución y asignará el resultado a ~val~. La secuencia entonces salta alrededor del código de procedimiento compilado, que se inserta en este punto. El código del procedimiento en sí comienza extendiendo el entorno de definición del procedimiento con un marco que vincula el parámetro formal ~n~ al argumento del procedimiento. Luego viene el cuerpo del procedimiento propiamente dicho. Como este código para el valor de la variable no modifica el registro ~env~, las operaciones opcionales ~save~ y ~restore~ mostradas arriba no se generan. (El código del procedimiento en ~entry2~ no se ejecuta en este punto, por lo que su uso de ~env~ es irrelevante.) Por lo tanto, el esqueleto del código compilado se convierte en
+
+#+begin_src scheme
+(assign val (op make-compiled-procedure)
+        (label entry2)
+        (reg env))
+  (goto (label after-lambda1))
+entry2
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env (op extend-environment)
+              (const (n))
+              (reg argl)
+              (reg env))
+  <compilación del cuerpo del procedimiento>
+after-lambda1
+  (perform (op define-variable!)
+           (const factorial)
+           (reg val)
+           (reg env))
+  (assign val (const ok))
+#+end_src
+
+El cuerpo de un procedimiento siempre se compila (por ~compile-lambda-body~) como una secuencia con objetivo ~val~ y enlace ~return~. La secuencia en este caso consiste en una única expresión ~if~:
+
+#+begin_src scheme
+(if (= n 1)
+    1
+    (* (factorial (- n 1)) n))
+#+end_src
+
+~compile-if~ genera código que primero calcula el predicado (dirigido a ~val~), luego verifica el resultado y salta alrededor de la rama verdadera si el predicado es falso. ~env~ y ~continue~ se preservan alrededor del código del predicado, ya que pueden ser necesarios para el resto de la expresión ~if~. Como la expresión ~if~ es la expresión final (y única expresión) en la secuencia que constituye el cuerpo del procedimiento, su objetivo es ~val~ y su enlace es ~return~, por lo que las ramas verdadera y falsa se compilan ambas con objetivo ~val~ y enlace ~return~. (Es decir, el valor del condicional, que es el valor calculado por cualquiera de sus ramas, es el valor del procedimiento.)
+
+#+begin_src scheme
+<guardar 'continue', 'env' si son modificados por el predicado y necesarios para las ramas>
+  <compilación del predicado, objetivo 'val', enlace 'next'>
+  <restaurar 'continue', 'env' si se guardaron arriba>
+  (test (op false?) (reg val))
+  (branch (label false-branch4))
+true-branch5
+  <compilación de la rama verdadera, objetivo 'val', enlace 'return'>
+false-branch4
+  <compilación de la rama falsa, objetivo 'val', enlace 'return'>
+after-if3
+#+end_src
+
+El predicado ~(= n 1)~ es una llamada a procedimiento. Esto busca el operador (el símbolo ~=~) y coloca este valor en ~proc~. Luego ensambla los argumentos ~1~ y el valor de ~n~ en ~argl~. Después verifica si ~proc~ contiene un procedimiento primitivo o compuesto, y despacha a una rama primitiva o a una rama compuesta según corresponda. Ambas ramas se reanudan en la etiqueta ~after-call~. Los requisitos de preservar registros alrededor de la evaluación del operador y los operandos no resultan en ningún guardado de registros, porque en este caso esas evaluaciones no modifican los registros en cuestión.
+
+#+begin_src scheme
+(assign proc
+        (op lookup-variable-value) (const =) (reg env))
+  (assign val (const 1))
+  (assign argl (op list) (reg val))
+  (assign val (op lookup-variable-value) (const n) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch17))
+compiled-branch16
+  (assign continue (label after-call15))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+primitive-branch17
+  (assign val (op apply-primitive-procedure)
+              (reg proc)
+              (reg argl))
+after-call15
+#+end_src
+
+La rama verdadera, que es la constante 1, se compila (con objetivo ~val~ y enlace ~return~) a
+
+#+begin_src scheme
+(assign val (const 1))
+  (goto (reg continue))
+#+end_src
+
+El código para la rama falsa es otra llamada a procedimiento, donde el procedimiento es el valor del símbolo ~*~, y los argumentos son ~n~ y el resultado de otra llamada a procedimiento (una llamada a ~factorial~). Cada una de estas llamadas configura ~proc~ y ~argl~ y sus propias ramas primitivas y compuestas. [[figure-5.17][Figure 5.17]] muestra la compilación completa de la definición del procedimiento ~factorial~. Observa que las posibles operaciones ~save~ y ~restore~ de ~continue~ y ~env~ alrededor del predicado, mostradas arriba, de hecho se generan, porque estos registros son modificados por la llamada al procedimiento en el predicado y se necesitan para la llamada al procedimiento y el enlace ~return~ en las ramas.
+
+**** Exercise 5.33
+:properties:
+:custom_id: exercise-5.33
+:end:
+
+Considera la siguiente definición de un procedimiento factorial, que es ligeramente diferente de la dada anteriormente:
+
+#+begin_src scheme
+(define (factorial-alt n)
+  (if (= n 1)
+      1
+      (* n (factorial-alt (- n 1)))))
+#+end_src
+
+Compila este procedimiento y compara el código resultante con el producido para ~factorial~. Explica cualquier diferencia que encuentres. ¿Ejecuta alguno de los programas de forma más eficiente que el otro?
+
+**** Exercise 5.34
+:properties:
+:custom_id: exercise-5.34
+:end:
+
+Compila el procedimiento factorial iterativo
+
+#+begin_src scheme
+(define (factorial n)
+  (define (iter product counter)
+    (if (> counter n)
+        product
+        (iter (* counter product)
+              (+ counter 1))))
+  (iter 1 1))
+#+end_src
+
+Anota el código resultante, mostrando la diferencia esencial entre el código para las versiones iterativa y recursiva de ~factorial~ que hace que un proceso acumule espacio en la pila y el otro se ejecute en espacio constante de pila.
+
+<<figure-5.17>> Compilación de la definición del procedimiento ~factorial~
+
+#+begin_src scheme
+;; construir el procedimiento y saltar sobre el código del cuerpo del procedimiento
+(assign val
+        (op make-compiled-procedure) (label entry2) (reg env))
+  (goto (label after-lambda1))
+
+entry2     ; las llamadas a ~factorial~ entrarán aquí
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env
+          (op extend-environment) (const (n)) (reg argl) (reg env))
+;; comenzar el cuerpo del procedimiento real
+  (save continue)
+  (save env)
+
+;; calcular ~(= n 1)~
+  (assign proc (op lookup-variable-value) (const =) (reg env))
+  (assign val (const 1))
+  (assign argl (op list) (reg val))
+  (assign val (op lookup-variable-value) (const n) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch17))
+compiled-branch16
+  (assign continue (label after-call15))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+primitive-branch17
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+
+after-call15   ; ~val~ ahora contiene el resultado de ~(= n 1)~
+  (restore env)
+  (restore continue)
+  (test (op false?) (reg val))
+  (branch (label false-branch4))
+true-branch5  ; devolver 1
+  (assign val (const 1))
+  (goto (reg continue))
+
+false-branch4
+;; calcular y devolver ~(* (factorial (- n 1)) n)~
+  (assign proc (op lookup-variable-value) (const *) (reg env))
+  (save continue)
+  (save proc)   ; guardar procedimiento ~*~
+  (assign val (op lookup-variable-value) (const n) (reg env))
+  (assign argl (op list) (reg val))
+  (save argl)   ; guardar lista de argumentos parcial para ~*~
+
+;; calcular ~(factorial (- n 1))~, que es el otro argumento para ~*~
+  (assign proc
+          (op lookup-variable-value) (const factorial) (reg env))
+  (save proc)  ; guardar procedimiento ~factorial~
+#+end_src
+
+#+begin_src scheme
+;; calcular ~(- n 1)~, que es el argumento para ~factorial~
+(assign proc (op lookup-variable-value) (const -) (reg env))
+  (assign val (const 1))
+  (assign argl (op list) (reg val))
+  (assign val (op lookup-variable-value) (const n) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch8))
+compiled-branch7
+  (assign continue (label after-call6))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+primitive-branch8
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+
+after-call6   ; ~val~ ahora contiene el resultado de ~(- n 1)~
+  (assign argl (op list) (reg val))
+  (restore proc) ; restaurar ~factorial~
+;; aplicar ~factorial~
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch11))
+compiled-branch10
+  (assign continue (label after-call9))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+primitive-branch11
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+
+after-call9      ; ~val~ ahora contiene el resultado de ~(factorial (- n 1))~
+  (restore argl) ; restaurar lista de argumentos parcial para ~*~
+  (assign argl (op cons) (reg val) (reg argl))
+  (restore proc) ; restaurar ~*~
+  (restore continue)
+;; aplicar ~*~ y devolver su valor
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch14))
+compiled-branch13
+;; notar que un procedimiento compuesto aquí se llama de forma tail-recursiva
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+primitive-branch14
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  (goto (reg continue))
+after-call12
+after-if3
+after-lambda1
+;; asignar el procedimiento a la variable ~factorial~
+  (perform
+   (op define-variable!) (const factorial) (reg val) (reg env))
+  (assign val (const ok))
+#+end_src
+
+**** Exercise 5.35
+:properties:
+:custom_id: exercise-5.35
+:end:
+
+¿Qué expresión fue compilada para producir el código mostrado en [[figure-5.18][Figure 5.18]]?
+
+<<figure-5.18>> Un ejemplo de salida del compilador. Ver [[#exercise-5.35][Exercise 5.35]].
+
+#+begin_src scheme
+(assign val (op make-compiled-procedure) (label entry16)
+        (reg env))
+  (goto (label after-lambda15))
+entry16
+  (assign env (op compiled-procedure-env) (reg proc))
+  (assign env
+          (op extend-environment) (const (x)) (reg argl) (reg env))
+  (assign proc (op lookup-variable-value) (const +) (reg env))
+  (save continue)
+  (save proc)
+  (save env)
+  (assign proc (op lookup-variable-value) (const g) (reg env))
+  (save proc)
+  (assign proc (op lookup-variable-value) (const +) (reg env))
+  (assign val (const 2))
+  (assign argl (op list) (reg val))
+  (assign val (op lookup-variable-value) (const x) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch19))
+compiled-branch18
+  (assign continue (label after-call17))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+primitive-branch19
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+after-call17
+  (assign argl (op list) (reg val))
+  (restore proc)
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch22))
+compiled-branch21
+  (assign continue (label after-call20))
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+primitive-branch22
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+#+end_src
+
+#+begin_src scheme
+after-call20
+  (assign argl (op list) (reg val))
+  (restore env)
+  (assign val (op lookup-variable-value) (const x) (reg env))
+  (assign argl (op cons) (reg val) (reg argl))
+  (restore proc)
+  (restore continue)
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-branch25))
+compiled-branch24
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+primitive-branch25
+  (assign val (op apply-primitive-procedure) (reg proc) (reg argl))
+  (goto (reg continue))
+after-call23
+after-lambda15
+  (perform (op define-variable!) (const f) (reg val) (reg env))
+  (assign val (const ok))
+#+end_src
+
+**** Exercise 5.36
+:properties:
+:custom_id: exercise-5.36
+:end:
+
+¿Qué orden de evaluación produce nuestro compilador para los operandos de una combinación? ¿Es de izquierda a derecha, de derecha a izquierda, o algún otro orden? ¿Dónde en el compilador se determina este orden? Modifica el compilador para que produzca algún otro orden de evaluación. (Ver la discusión sobre el orden de evaluación para el evaluador de control explícito en la sección [[#section-5.4.1][5.4.1]].) ¿Cómo afecta el cambio del orden de evaluación de operandos a la eficiencia del código que construye la lista de argumentos?
+
+**** Exercise 5.37
+:properties:
+:custom_id: exercise-5.37
+:end:
+
+Una forma de entender el mecanismo ~preserving~ del compilador para optimizar el uso de la pila es ver qué operaciones extra se generarían si no usáramos esta idea. Modifica ~preserving~ para que siempre genere las operaciones ~save~ y ~restore~. Compila algunas expresiones simples e identifica las operaciones de pila innecesarias que se generan. Compara el código con el generado con el mecanismo ~preserving~ intacto.
+
+**** Exercise 5.38
+:properties:
+:custom_id: exercise-5.38
+:end:
+
+Nuestro compilador es inteligente para evitar operaciones de pila innecesarias, pero no es nada inteligente cuando se trata de compilar llamadas a los procedimientos primitivos del lenguaje en términos de las operaciones primitivas suministradas por la máquina. Por ejemplo, considera cuánto código se compila para calcular ~(+ a 1)~: El código configura una lista de argumentos en ~argl~, pone el procedimiento de adición primitivo (que encuentra buscando el símbolo ~+~ en el entorno) en ~proc~, y prueba si el procedimiento es primitivo o compuesto. El compilador siempre genera código para realizar la prueba, así como código para las ramas primitiva y compuesta (solo una de las cuales será ejecutada). No hemos mostrado la parte del controlador que implementa las primitivas, pero presumimos que estas instrucciones hacen uso de operaciones aritméticas primitivas en las rutas de datos de la máquina. Considera cuánto menos código se generaría si el compilador pudiera <<i268>> codificar abiertamente primitivas--es decir, si pudiera generar código para usar directamente estas operaciones primitivas de la máquina. La expresión ~(+ a 1)~ podría compilarse en algo tan simple como [fn:328]
+
+#+begin_src scheme
+(assign val (op lookup-variable-value) (const a) (reg env))
+(assign val (op +) (reg val) (const 1))
+#+end_src
+
+En este ejercicio extenderemos nuestro compilador para soportar codificación abierta de primitivas seleccionadas. Se generará código de propósito especial para llamadas a estos procedimientos primitivos en lugar del código general de aplicación de procedimientos. Para soportar esto, aumentaremos nuestra máquina con registros de argumentos especiales ~arg1~ y ~arg2~. Las operaciones aritméticas primitivas de la máquina tomarán sus entradas de ~arg1~ y ~arg2~. Los resultados pueden ponerse en ~val~, ~arg1~, o ~arg2~.
+
+El compilador debe ser capaz de reconocer la aplicación de una primitiva con código abierto en el programa fuente. Aumentaremos el despacho en el procedimiento ~compile~ para reconocer los nombres de estas primitivas además de las palabras reservadas (las formas especiales) que actualmente reconoce.[fn:329] Para cada forma especial nuestro compilador tiene un generador de código. En este ejercicio construiremos una familia de generadores de código para las primitivas con código abierto.
+
+a. Las primitivas con código abierto, a diferencia de las formas especiales, todas necesitan que sus operandos sean evaluados. Escribe un generador de código ~spread-arguments~ para uso de todos los generadores de código con codificación abierta. ~spread-arguments~ debe tomar una lista de operandos y compilar los operandos dados dirigidos a registros de argumentos sucesivos. Ten en cuenta que un operando puede contener una llamada a una primitiva con código abierto, por lo que los registros de argumentos tendrán que ser preservados durante la evaluación de operandos.
+
+b. Para cada uno de los procedimientos primitivos =, *, -, y +, escribe un generador de código que tome una combinación con ese operador, junto con un objetivo y un descriptor de enlace, y produzca código para distribuir los argumentos en los registros y luego realizar la operación dirigida al objetivo dado con el enlace dado. Solo necesitas manejar expresiones con dos operandos. Haz que ~compile~ despache a estos generadores de código.
+
+c. Prueba tu nuevo compilador con el ejemplo ~factorial~. Compara el código resultante con el resultado producido sin codificación abierta.
+
+d. Extiende tus generadores de código para ~+~ y ~*~ para que puedan manejar expresiones con números arbitrarios de operandos. Una expresión con más de dos operandos tendrá que compilarse en una secuencia de operaciones, cada una con solo dos entradas.
+
+*** 5.5.6 Direccionamiento léxico
+:properties:
+:custom_id: section-5.5.6
+:end:
+
+Una de las optimizaciones más comunes realizadas por los compiladores es la optimización de búsqueda de variables. Nuestro compilador, tal como lo hemos implementado hasta ahora, genera código que usa la operación ~lookup-variable-value~ de la máquina evaluadora. Esto busca una variable comparándola con cada variable que está actualmente vinculada, trabajando marco por marco hacia afuera a través del entorno de ejecución. Esta búsqueda puede ser costosa si los marcos están profundamente anidados o si hay muchas variables. Por ejemplo, considera el problema de buscar el valor de ~x~ mientras se evalúa la expresión ~(* x y z)~ en una aplicación del procedimiento que es devuelto por
+
+#+begin_src scheme
+(let ((x 3) (y 4))
+  (lambda (a b c d e)
+    (let ((y (* a b x))
+          (z (+ c d x)))
+      (* x y z))))
+#+end_src
+
+Como una expresión ~let~ es solo azúcar sintáctica para una combinación ~lambda~, esta expresión es equivalente a
+
+#+begin_src scheme
+((lambda (x y)
+   (lambda (a b c d e)
+     ((lambda (y z) (* x y z))
+      (* a b x)
+      (+ c d x))))
+ 3
+ 4)
+#+end_src
+
+Cada vez que ~lookup-variable-value~ busca ~x~, debe determinar que el símbolo ~x~ no es ~eq?~ a ~y~ o ~z~ (en el primer marco), ni a ~a~, ~b~, ~c~, ~d~, o ~e~ (en el segundo marco). Asumiremos, por el momento, que nuestros programas no usan ~define~--que las variables se vinculan solo con ~lambda~. Como nuestro lenguaje tiene alcance léxico, el entorno de ejecución para cualquier expresión tendrá una estructura que es paralela a la estructura léxica del programa en el que aparece la expresión.[fn:330] Así, el compilador puede saber, cuando analiza la expresión anterior, que cada vez que se aplique el procedimiento la variable ~x~ en ~(* x y z)~ se encontrará dos marcos hacia afuera desde el marco actual y será la primera variable en ese marco.
+
+Podemos explotar este hecho inventando un nuevo tipo de operación de búsqueda de variables, ~lexical-address-lookup~, que toma como argumentos un entorno y una <<i204>> dirección léxica que consiste en dos números: un <<i146>> número de marco, que especifica cuántos marcos hay que saltar, y un <<i115>> número de desplazamiento, que especifica cuántas variables hay que saltar en ese marco. ~lexical-address-lookup~ producirá el valor de la variable almacenada en esa dirección léxica relativa al entorno actual. Si añadimos la operación ~lexical-address-lookup~ a nuestra máquina, podemos hacer que el compilador genere código que referencie variables usando esta operación, en lugar de ~lookup-variable-value~. De manera similar, nuestro código compilado puede usar una nueva operación ~lexical-address-set!~ en lugar de ~set-variable-value!~.
+
+Para generar tal código, el compilador debe ser capaz de determinar la dirección léxica de una variable de la que está a punto de compilar una referencia. La dirección léxica de una variable en un programa depende de dónde se encuentre uno en el código. Por ejemplo, en el siguiente programa, la dirección de ~x~ en la expresión <E1> es (2,0)--dos marcos hacia atrás y la primera variable en el marco. En ese punto ~y~ está en la dirección (0,0) y ~c~ está en la dirección (1,2). En la expresión <E2>, ~x~ está en (1,0), ~y~ está en (1,1), y ~c~ está en (0,2).
+
+#+begin_src scheme
+((lambda (x y)
+   (lambda (a b c d e)
+     ((lambda (y z) <E1>)
+      <E2>
+      (+ c d x))))
+ 3
+ 4)
+#+end_src
+
+Una forma de que el compilador produzca código que use direccionamiento léxico es mantener una estructura de datos llamada <<i71>> entorno de tiempo de compilación. Esto lleva un registro de qué variables estarán en qué posiciones en qué marcos en el entorno de ejecución cuando se ejecute una operación particular de acceso a variables. El entorno de tiempo de compilación es una lista de marcos, cada uno conteniendo una lista de variables. (Por supuesto, no habrá valores vinculados a las variables, ya que los valores no se calculan en tiempo de compilación.) El entorno de tiempo de compilación se convierte en un argumento adicional para ~compile~ y se pasa a cada generador de código. La llamada de nivel superior a ~compile~ usa un entorno de tiempo de compilación vacío. Cuando se compila un cuerpo ~lambda~, ~compile-lambda-body~ extiende el entorno de tiempo de compilación con un marco que contiene los parámetros del procedimiento, de modo que la secuencia que constituye el cuerpo se compila con ese entorno extendido. En cada punto de la compilación, ~compile-variable~ y ~compile-assignment~ usan el entorno de tiempo de compilación para generar las direcciones léxicas apropiadas.
+
+[[#exercise-5.39][Exercise 5.39]] hasta [[#exercise-5.43][Exercise 5.43]] describen cómo completar este esbozo de la estrategia de direccionamiento léxico para incorporar búsqueda léxica en el compilador. [[#exercise-5.44][Exercise 5.44]] describe otro uso para el entorno de tiempo de compilación.
+
+**** Exercise 5.39
+:properties:
+:custom_id: exercise-5.39
+:end:
+
+Escribe un procedimiento ~lexical-address-lookup~ que implemente la nueva operación de búsqueda. Debe tomar dos argumentos--una dirección léxica y un entorno de ejecución--y devolver el valor de la variable almacenada en la dirección léxica especificada. ~lexical-address-lookup~ debe señalar un error si el valor de la variable es el símbolo ~*unassigned*~.[fn:331] También escribe un procedimiento ~lexical-address-set!~ que implemente la operación que cambia el valor de la variable en una dirección léxica especificada.
+
+**** Exercise 5.40
+:properties:
+:custom_id: exercise-5.40
+:end:
+
+Modifica el compilador para mantener el entorno de tiempo de compilación como se describió anteriormente. Es decir, añade un argumento entorno-de-tiempo-de-compilación a ~compile~ y a los diversos generadores de código, y extiéndelo en ~compile-lambda-body~.
+
+**** Exercise 5.41
+:properties:
+:custom_id: exercise-5.41
+:end:
+
+Escribe un procedimiento ~find-variable~ que tome como argumentos una variable y un entorno de tiempo de compilación y devuelva la dirección léxica de la variable con respecto a ese entorno. Por ejemplo, en el fragmento de programa que se muestra arriba, el entorno de tiempo de compilación durante la compilación de la expresión <E1> es ~((y z) (a b c d e) (x y))~. ~find-variable~ debe producir
+
+#+begin_src scheme
+(find-variable 'c '((y z) (a b c d e) (x y)))
+(1 2)
+
+(find-variable 'x '((y z) (a b c d e) (x y)))
+(2 0)
+
+(find-variable 'w '((y z) (a b c d e) (x y)))
+not-found
+#+end_src
+
+**** Exercise 5.42
+:properties:
+:custom_id: exercise-5.42
+:end:
+
+Usando ~find-variable~ de [[#exercise-5.41][Exercise 5.41]], reescribe ~compile-variable~ y ~compile-assignment~ para generar instrucciones de dirección léxica. En los casos donde ~find-variable~ devuelve ~not-found~ (es decir, donde la variable no está en el entorno de tiempo de compilación), debes hacer que los generadores de código usen las operaciones del evaluador, como antes, para buscar la vinculación. (El único lugar donde puede estar una variable que no se encuentra en tiempo de compilación es en el entorno global, que es parte del entorno de ejecución pero no es parte del entorno de tiempo de compilación.[fn:332] Así, si lo deseas, puedes hacer que las operaciones del evaluador busquen directamente en el entorno global, que puede obtenerse con la operación ~(op get-global-environment)~, en lugar de hacer que busquen en todo el entorno de ejecución encontrado en ~env~.) Prueba el compilador modificado en algunos casos simples, tales como la combinación ~lambda~ anidada al principio de esta sección.
+
+**** Exercise 5.43
+:properties:
+:custom_id: exercise-5.43
+:end:
+
+Argumentamos en la sección [[#section-4.1.6][4.1.6]] que las definiciones internas para estructura de bloques no deben considerarse 'define's "reales". Más bien, un cuerpo de procedimiento debe interpretarse como si las variables internas que se están definiendo se instalaran como variables ~lambda~ ordinarias inicializadas a sus valores correctos usando ~set!~. La sección [[#section-4.1.6][4.1.6]] y [[#exercise-4.16][Exercise 4.16]] mostraron cómo modificar el intérprete metacircular para lograr esto mediante el escaneo de definiciones internas. Modifica el compilador para realizar la misma transformación antes de que compile un cuerpo de procedimiento.
+
+**** Exercise 5.44
+:properties:
+:custom_id: exercise-5.44
+:end:
+
+En esta sección nos hemos enfocado en el uso del entorno de tiempo de compilación para producir direcciones léxicas. Pero hay otros usos para los entornos de tiempo de compilación. Por ejemplo, en [[#exercise-5.38][Exercise 5.38]] aumentamos la eficiencia del código compilado mediante la codificación abierta de procedimientos primitivos. Nuestra implementación trató los nombres de procedimientos con código abierto como palabras reservadas. Si un programa fuera a revincular tal nombre, el mecanismo descrito en [[#exercise-5.38][Exercise 5.38]] todavía lo codificaría abiertamente como una primitiva, ignorando la nueva vinculación. Por ejemplo, considera el procedimiento
+
+#+begin_src scheme
+(lambda (+ * a b x y)
+  (+ (* a x) (* b y)))
+#+end_src
+
+que calcula una combinación lineal de ~x~ y ~y~. Podríamos llamarlo con argumentos ~+matrix~, ~*matrix~, y cuatro matrices, pero el compilador de codificación abierta todavía codificaría abiertamente el ~+~ y el ~*~ en ~(+ (* a x) (* b y))~ como ~+~ y ~*~ primitivos. Modifica el compilador de codificación abierta para consultar el entorno de tiempo de compilación con el fin de compilar el código correcto para expresiones que involucren los nombres de procedimientos primitivos. (El código funcionará correctamente siempre que el programa no haga ~define~ o ~set!~ de estos nombres.)
+
+*** 5.5.7 Interfaz entre código compilado y el evaluador
+:properties:
+:custom_id: section-5.5.7
+:end:
+
+Aún no hemos explicado cómo cargar código compilado en la máquina evaluadora ni cómo ejecutarlo. Asumiremos que la máquina evaluadora de control explícito ha sido definida como en la sección [[#section-5.4.4][5.4.4]], con las operaciones adicionales especificadas en la nota al pie [fn:38]. Implementaremos un procedimiento ~compile-and-go~ que compila una expresión Scheme, carga el código objeto resultante en la máquina evaluadora, y hace que la máquina ejecute el código en el entorno global del evaluador, imprima el resultado, y entre en el bucle controlador del evaluador. También modificaremos el evaluador para que las expresiones interpretadas puedan llamar a procedimientos compilados así como a los interpretados. Entonces podemos poner un procedimiento compilado en la máquina y usar el evaluador para llamarlo:
+
+#+begin_src scheme
+(compile-and-go
+ '(define (factorial n)
+    (if (= n 1)
+        1
+        (* (factorial (- n 1)) n))))
+ ;;; EC-Eval value:
+ok
+
+ ;;; EC-Eval input:
+(factorial 5)
+;;; EC-Eval value:
+120
+#+end_src
+
+Para permitir que el evaluador maneje procedimientos compilados (por ejemplo, para evaluar la llamada a ~factorial~ arriba), necesitamos cambiar el código en ~apply-dispatch~ (sección [[#section-5.4.1][5.4.1]]) para que reconozca procedimientos compilados (como distintos de procedimientos compuestos o primitivos) y transfiera el control directamente al punto de entrada del código compilado:[fn:333]
+
+#+begin_src scheme
+apply-dispatch
+  (test (op primitive-procedure?) (reg proc))
+  (branch (label primitive-apply))
+  (test (op compound-procedure?) (reg proc))
+  (branch (label compound-apply))
+  (test (op compiled-procedure?) (reg proc))
+  (branch (label compiled-apply))
+  (goto (label unknown-procedure-type))
+
+compiled-apply
+  (restore continue)
+  (assign val (op compiled-procedure-entry) (reg proc))
+  (goto (reg val))
+#+end_src
+
+Observa la restauración de ~continue~ en ~compiled-apply~. Recuerda que el evaluador fue dispuesto de manera que en ~apply-dispatch~, la continuación estaría en la parte superior de la pila. El punto de entrada del código compilado, por otro lado, espera que la continuación esté en ~continue~, por lo que ~continue~ debe ser restaurado antes de que se ejecute el código compilado.
+
+Para permitirnos ejecutar algo de código compilado cuando iniciamos la máquina evaluadora, añadimos una instrucción ~branch~ al principio de la máquina evaluadora, que hace que la máquina vaya a un nuevo punto de entrada si el registro ~flag~ está establecido.[fn:334]
+
+#+begin_src scheme
+(branch (label external-entry)) ; ramificar si ~flag~ está establecido
+read-eval-print-loop
+  (perform (op initialize-stack))
+  ...
+#+end_src
+
+~external-entry~ asume que la máquina se inicia con ~val~ conteniendo la ubicación de una secuencia de instrucciones que pone un resultado en ~val~ y termina con ~(goto (reg continue))~. Comenzar en este punto de entrada salta a la ubicación designada por ~val~, pero primero asigna ~continue~ para que la ejecución retorne a ~print-result~, que imprime el valor en ~val~ y luego va al principio del bucle leer-evaluar-imprimir del evaluador.[fn:335]
+
+#+begin_src scheme
+external-entry
+  (perform (op initialize-stack))
+  (assign env (op get-global-environment))
+  (assign continue (label print-result))
+  (goto (reg val))
+#+end_src
+
+Ahora podemos usar el siguiente procedimiento para compilar una definición de procedimiento, ejecutar el código compilado, y ejecutar el bucle leer-evaluar-imprimir para que podamos probar el procedimiento. Porque queremos que el código compilado retorne a la ubicación en ~continue~ con su resultado en ~val~, compilamos la expresión con un objetivo de ~val~ y un enlace de ~return~. Para transformar el código objeto producido por el compilador en instrucciones ejecutables para la máquina de registros del evaluador, usamos el procedimiento ~assemble~ del simulador de máquina de registros (sección [[#section-5.2.2][5.2.2]]). Luego inicializamos el registro ~val~ para que apunte a la lista de instrucciones, establecemos el ~flag~ para que el evaluador vaya a ~external-entry~, y iniciamos el evaluador.
+
+#+begin_src scheme
+(define (compile-and-go expression)
+  (let ((instructions
+         (assemble (statements
+                    (compile expression 'val 'return))
+                   eceval)))
+    (set! the-global-environment (setup-environment))
+    (set-register-contents! eceval 'val instructions)
+    (set-register-contents! eceval 'flag true)
+    (start eceval)))
+#+end_src
+
+Si hemos configurado el monitoreo de pila, como al final de la sección [[#section-5.4.4][5.4.4]], podemos examinar el uso de pila del código compilado:
+
+#+begin_src scheme
+(compile-and-go
+ '(define (factorial n)
+    (if (= n 1)
+        1
+        (* (factorial (- n 1)) n))))
+
+(total-pushes = 0 maximum-depth = 0)
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+(factorial 5)
+(total-pushes = 31 maximum-depth = 14)
+;;; EC-Eval value:
+120
+#+end_src
+
+Compara este ejemplo con la evaluación de ~(factorial 5)~ usando la versión interpretada del mismo procedimiento, mostrada al final de la sección [[#section-5.4.4][5.4.4]]. La versión interpretada requirió 144 empujes y una profundidad máxima de pila de 28. Esto ilustra la optimización que resulta de nuestra estrategia de compilación.
+
+*Interpretación y compilación*
+
+Con los programas en esta sección, ahora podemos experimentar con las estrategias alternativas de ejecución de interpretación y compilación.[fn:336] Un intérprete eleva la máquina al nivel del programa del usuario; un compilador baja el programa del usuario al nivel del lenguaje de máquina. Podemos considerar el lenguaje Scheme (o cualquier lenguaje de programación) como una familia coherente de abstracciones erigida sobre el lenguaje de máquina. Los intérpretes son buenos para el desarrollo y depuración interactiva de programas porque los pasos de ejecución del programa están organizados en términos de estas abstracciones, y por lo tanto son más inteligibles para el programador. El código compilado puede ejecutarse más rápido, porque los pasos de ejecución del programa están organizados en términos del lenguaje de máquina, y el compilador es libre de hacer optimizaciones que atraviesan las abstracciones de nivel superior.[fn:337]
+
+Las alternativas de interpretación y compilación también conducen a diferentes estrategias para portar lenguajes a nuevas computadoras. Supongamos que deseamos implementar Lisp para una nueva máquina. Una estrategia es comenzar con el evaluador de control explícito de la sección [[#section-5.4][5.4]] y traducir sus instrucciones a instrucciones para la nueva máquina. Una estrategia diferente es comenzar con el compilador y cambiar los generadores de código para que generen código para la nueva máquina. La segunda estrategia nos permite ejecutar cualquier programa Lisp en la nueva máquina compilándolo primero con el compilador ejecutándose en nuestro sistema Lisp original, y enlazándolo con una versión compilada de la biblioteca de tiempo de ejecución.[fn:338] Mejor aún, podemos compilar el compilador mismo, y ejecutar esto en la nueva máquina para compilar otros programas Lisp.[fn:339] O podemos compilar uno de los intérpretes de la sección [[#section-4.1][4.1]] para producir un intérprete que se ejecute en la nueva máquina.
+
+**** Exercise 5.45
+:properties:
+:custom_id: exercise-5.45
+:end:
+
+Al comparar las operaciones de pila usadas por el código compilado con las operaciones de pila usadas por el evaluador para el mismo cálculo, podemos determinar en qué medida el compilador optimiza el uso de la pila, tanto en velocidad (reduciendo el número total de operaciones de pila) como en espacio (reduciendo la profundidad máxima de pila). Comparar este uso optimizado de pila con el rendimiento de una máquina de propósito especial para el mismo cálculo da alguna indicación de la calidad del compilador.
+
+a. [[#exercise-5.27][Exercise 5.27]] te pidió que determinaras, como una función de n, el número de empujes y la profundidad máxima de pila necesarios por el evaluador para calcular n! usando el procedimiento factorial recursivo dado arriba. [[#exercise-5.14][Exercise 5.14]] te pidió que hicieras las mismas mediciones para la máquina factorial de propósito especial mostrada en [[figure-5.11][Figure 5.11]]. Ahora realiza el mismo análisis usando el procedimiento ~factorial~ compilado.
+
+   Toma la razón del número de empujes en la versión compilada al número de empujes en la versión interpretada, y haz lo mismo para la profundidad máxima de pila. Como el número de operaciones y la profundidad de pila usadas para calcular n! son lineales en n, estas razones deberían aproximarse a constantes a medida que n se hace grande. ¿Cuáles son estas constantes? De manera similar, encuentra las razones del uso de pila en la máquina de propósito especial al uso en la versión interpretada.
+
+   Compara las razones para código de propósito especial versus código interpretado con las razones para código compilado versus código interpretado. Deberías encontrar que la máquina de propósito especial lo hace mucho mejor que el código compilado, ya que el código del controlador hecho a mano debería ser mucho mejor que lo que produce nuestro compilador rudimentario de propósito general.
+
+b. ¿Puedes sugerir mejoras al compilador que lo ayudarían a generar código que se acerque más en rendimiento a la versión hecha a mano?
+
+**** Exercise 5.46
+:properties:
+:custom_id: exercise-5.46
+:end:
+
+Lleva a cabo un análisis como el de [[#exercise-5.45][Exercise 5.45]] para determinar la efectividad de compilar el procedimiento Fibonacci recursivo de árbol
+
+#+begin_src scheme
+(define (fib n)
+  (if (< n 2)
+      n
+      (+ (fib (- n 1)) (fib (- n 2)))))
+#+end_src
+
+comparado con la efectividad de usar la máquina Fibonacci de propósito especial de [[figure-5.12][Figure 5.12]]. (Para la medición del rendimiento interpretado, ver [[#exercise-5.29][Exercise 5.29]].) Para Fibonacci, el recurso de tiempo usado no es lineal en n; por lo tanto las razones de operaciones de pila no se aproximarán a un valor límite que sea independiente de n.
+
+**** Exercise 5.47
+:properties:
+:custom_id: exercise-5.47
+:end:
+
+Esta sección describió cómo modificar el evaluador de control explícito para que el código interpretado pueda llamar a procedimientos compilados. Muestra cómo modificar el compilador para que los procedimientos compilados puedan llamar no solo a procedimientos primitivos y procedimientos compilados, sino también a procedimientos interpretados. Esto requiere modificar ~compile-procedure-call~ para manejar el caso de procedimientos compuestos (interpretados). Asegúrate de manejar todas las mismas combinaciones de ~target~ y ~linkage~ que en ~compile-proc-appl~. Para hacer la aplicación real del procedimiento, el código necesita saltar al punto de entrada ~compound-apply~ del evaluador. Esta etiqueta no puede ser referenciada directamente en el código objeto (ya que el ensamblador requiere que todas las etiquetas referenciadas por el código que está ensamblando estén definidas allí), por lo que añadiremos un registro llamado ~compapp~ a la máquina evaluadora para contener este punto de entrada, y añadiremos una instrucción para inicializarlo:
+
+#+begin_src scheme
+(assign compapp (label compound-apply))
+  (branch (label external-entry)) ; ramificar si ~flag~ está establecido
+read-eval-print-loop
+  ...
+#+end_src
+
+Para probar tu código, comienza definiendo un procedimiento ~f~ que llame a un procedimiento ~g~. Usa ~compile-and-go~ para compilar la definición de ~f~ e iniciar el evaluador. Ahora, escribiendo en el evaluador, define ~g~ e intenta llamar a ~f~.
+
+**** Exercise 5.48
+:properties:
+:custom_id: exercise-5.48
+:end:
+
+La interfaz ~compile-and-go~ implementada en esta sección es incómoda, ya que el compilador puede ser llamado solo una vez (cuando se inicia la máquina evaluadora). Aumenta la interfaz compilador-intérprete proporcionando una primitiva ~compile-and-run~ que pueda ser llamada desde dentro del evaluador de control explícito de la siguiente manera:
+
+#+begin_src scheme
+;;; EC-Eval input:
+(compile-and-run
+ '(define (factorial n)
+    (if (= n 1)
+        1
+        (* (factorial (- n 1)) n))))
+;;; EC-Eval value:
+ok
+
+;;; EC-Eval input:
+(factorial 5)
+;;; EC-Eval value:
+120
+#+end_src
+
+**** Exercise 5.49
+:properties:
+:custom_id: exercise-5.49
+:end:
+
+Como alternativa a usar el bucle leer-evaluar-imprimir del evaluador de control explícito, diseña una máquina de registros que realice un bucle leer-compilar-ejecutar-imprimir. Es decir, la máquina debería ejecutar un bucle que lea una expresión, la compile, ensamble y ejecute el código resultante, e imprima el resultado. Esto es fácil de ejecutar en nuestra configuración simulada, ya que podemos hacer arreglos para llamar a los procedimientos ~compile~ y ~assemble~ como "operaciones de máquina de registros".
+
+**** Exercise 5.50
+:properties:
+:custom_id: exercise-5.50
+:end:
+
+Usa el compilador para compilar el evaluador metacircular de la sección [[#section-4.1][4.1]] y ejecuta este programa usando el simulador de máquina de registros. (Para compilar más de una definición a la vez, puedes empaquetar las definiciones en un ~begin~.) El intérprete resultante se ejecutará muy lentamente debido a los múltiples niveles de interpretación, pero lograr que todos los detalles funcionen es un ejercicio instructivo.
+
+**** Exercise 5.51
+:properties:
+:custom_id: exercise-5.51
+:end:
+
+Desarrolla una implementación rudimentaria de Scheme en C (o algún otro lenguaje de bajo nivel de tu elección) traduciendo el evaluador de control explícito de la sección [[#section-5.4][5.4]] a C. Para ejecutar este código también necesitarás proporcionar rutinas apropiadas de asignación de almacenamiento y otro soporte de tiempo de ejecución.
+
+**** Exercise 5.52
+:properties:
+:custom_id: exercise-5.52
+:end:
+
+Como contrapunto al ejercicio [[#exercise-5.51][Exercise 5.51]], modifica el compilador para que compile procedimientos Scheme en secuencias de instrucciones C. Compila el evaluador metacircular de la sección [[#section-4.1][4.1]] para producir un intérprete Scheme escrito en C.
