@@ -1,0 +1,344 @@
+*** 3.5.2 Infinite Streams
+:properties:
+:custom_id: section-3.5.2
+:end:
+
+We have seen how to support the illusion of manipulating streams as complete entities even though, in actuality, we compute only as much of the stream as we need to access.  We can exploit this technique to represent sequences efficiently as streams, even if the sequences are very long.  What is more striking, we can use streams to represent sequences that are infinitely long.  For instance, consider the following definition of the stream of positive integers:
+
+#+begin_src scheme
+(define (integers-starting-from n)
+  (cons-stream n (integers-starting-from (+ n 1))))
+
+(define integers (integers-starting-from 1))
+#+end_src
+
+This makes sense because ~integers~ will be a pair whose ~car~ is 1 and whose ~cdr~ is a promise to produce the integers beginning with 2.  This is an infinitely long stream, but in any given time we can examine only a finite portion of it.  Thus, our programs will never know that the entire infinite stream is not there.
+
+Using ~integers~ we can define other infinite streams, such as the stream of integers that are not divisible by 7:
+
+#+begin_src scheme
+(define (divisible? x y) (= (remainder x y) 0))
+
+(define no-sevens
+  (stream-filter (lambda (x) (not (divisible? x 7)))
+                 integers))
+#+end_src
+
+Then we can find integers not divisible by 7 simply by accessing elements of this stream:
+
+#+begin_src scheme
+(stream-ref no-sevens 100)
+117
+#+end_src
+
+In analogy with ~integers~, we can define the infinite stream of Fibonacci numbers:
+
+#+begin_src scheme
+(define (fibgen a b)
+  (cons-stream a (fibgen b (+ a b))))
+
+(define fibs (fibgen 0 1))
+#+end_src
+
+~fibs~ is a pair whose ~car~ is 0 and whose ~cdr~ is a promise to evaluate ~(fibgen 1 1)~.  When we evaluate this delayed ~(fibgen 1 1)~, it will produce a pair whose ~car~ is 1 and whose ~cdr~ is a promise to evaluate ~(fibgen 1 2)~, and so on.
+
+For a look at a more exciting infinite stream, we can generalize the ~no-sevens~ example to construct the infinite stream of prime numbers, using a method known as the <<i355>> sieve of Eratosthenes.[fn:188] We start with the integers beginning with 2, which is the first prime.  To get the rest of the primes, we start by filtering the multiples of 2 from the rest of the integers.  This leaves a stream beginning with 3, which is the next prime.  Now we filter the multiples of 3 from the rest of this stream.  This leaves a stream beginning with 5, which is the next prime, and so on.  In other words, we construct the primes by a sieving process, described as follows: To sieve a stream ~S~, form a stream whose first element is the first element of ~S~ and the rest of which is obtained by filtering all multiples of the first element of ~S~ out of the rest of ~S~ and sieving the result.  This process is readily described in terms of stream operations:
+
+#+begin_src scheme
+(define (sieve stream)
+  (cons-stream
+   (stream-car stream)
+   (sieve (stream-filter
+           (lambda (x)
+             (not (divisible? x (stream-car stream))))
+           (stream-cdr stream)))))
+
+(define primes (sieve (integers-starting-from 2)))
+#+end_src
+
+Now to find a particular prime we need only ask for it:
+
+#+begin_src scheme
+(stream-ref primes 50)
+233
+#+end_src
+
+It is interesting to contemplate the signal-processing system set up by ~sieve~, shown in the "Henderson diagram" in [[figure-3.31][Figure 3.31]].[fn:189] The input stream feeds into an "un~cons~er" that separates the first element of the stream from the rest of the stream.  The first element is used to construct a divisibility filter, through which the rest is passed, and the output of the filter is fed to another sieve box.  Then the original first element is ~cons~ed onto the output of the internal sieve to form the output stream.  Thus, not only is the stream infinite, but the signal processor is also infinite, because the sieve contains a sieve within it.
+
+<<figure-3.31>> The prime sieve viewed as a signal-processing system.
+
+#+begin_example
+   +---------------------------------------------------------------+
+   | sieve                                                         |
+   |                                                               |
+   |        __/|                                        |\__       |
+   |     __/car|........................................|   \__    |
+   |   _/      |           :                            |      \_  |
+ ----><_       |           V                            |  cons _>---->
+   |    \__    |    +------------+    +------------+    |    __/   |
+   |       \cdr|--->| filter:    |    | sieve      |--->| __/      |
+   |          \|    |            |--->|            |    |/         |
+   |                | not        |    |            |               |
+   |                | divisible? |    |            |               |
+   |                +------------+    +------------+               |
+   +---------------------------------------------------------------+
+#+end_example
+
+*Defining streams implicitly*
+
+The ~integers~ and ~fibs~ streams above were defined by specifying "generating" procedures that explicitly compute the stream elements one by one.  An alternative way to specify streams is to take advantage of delayed evaluation to define streams implicitly.  For example, the following expression defines the stream ~ones~ to be an infinite stream of ones:
+
+#+begin_src scheme
+(define ones (cons-stream 1 ones))
+#+end_src
+
+This works much like the definition of a recursive procedure: ~ones~ is a pair whose ~car~ is 1 and whose ~cdr~ is a promise to evaluate ~ones~.  Evaluating the ~cdr~ gives us again a 1 and a promise to evaluate ~ones~, and so on.
+
+We can do more interesting things by manipulating streams with operations such as ~add-streams~, which produces the elementwise sum of two given streams:[fn:190]
+
+#+begin_src scheme
+(define (add-streams s1 s2)
+  (stream-map + s1 s2))
+#+end_src
+
+Now we can define the integers as follows:
+
+#+begin_src scheme
+(define integers (cons-stream 1 (add-streams ones integers)))
+#+end_src
+
+This defines ~integers~ to be a stream whose first element is 1 and the rest of which is the sum of ~ones~ and ~integers~.  Thus, the second element of ~integers~ is 1 plus the first element of ~integers~, or 2; the third element of ~integers~ is 1 plus the second element of ~integers~, or 3; and so on.  This definition works because, at any point, enough of the ~integers~ stream has been generated so that we can feed it back into the definition to produce the next integer.
+
+We can define the Fibonacci numbers in the same style:
+
+#+begin_src scheme
+(define fibs
+  (cons-stream 0
+               (cons-stream 1
+                            (add-streams (stream-cdr fibs)
+                                         fibs))))
+#+end_src
+
+This definition says that ~fibs~ is a stream beginning with 0 and 1, such that the rest of the stream can be generated by adding ~fibs~ to itself shifted by one place:
+
+#+begin_example
+       1  1  2  3  5  8   13  21  ... = ~(stream-cdr fibs)~
+       0  1  1  2  3  5   8   13  ... = ~fibs~
+ 0  1  1  2  3  5  8  13  21  34  ... = ~fibs~
+#+end_example
+
+~scale-stream~ is another useful procedure in formulating such stream definitions.  This multiplies each item in a stream by a given constant:
+
+#+begin_src scheme
+(define (scale-stream stream factor)
+  (stream-map (lambda (x) (* x factor)) stream))
+#+end_src
+
+For example,
+
+#+begin_src scheme
+(define double (cons-stream 1 (scale-stream double 2)))
+#+end_src
+
+produces the stream of powers of 2: 1, 2, 4, 8, 16, 32, ....
+
+An alternate definition of the stream of primes can be given by starting with the integers and filtering them by testing for primality.  We will need the first prime, 2, to get started:
+
+#+begin_src scheme
+(define primes
+  (cons-stream
+   2
+   (stream-filter prime? (integers-starting-from 3))))
+#+end_src
+
+This definition is not so straightforward as it appears, because we will test whether a number n is prime by checking whether n is divisible by a prime (not by just any integer) less than or equal to [sqrt](n):
+
+#+begin_src scheme
+(define (prime? n)
+  (define (iter ps)
+    (cond ((> (square (stream-car ps)) n) true)
+          ((divisible? n (stream-car ps)) false)
+          (else (iter (stream-cdr ps)))))
+  (iter primes))
+#+end_src
+
+This is a recursive definition, since ~primes~ is defined in terms of the ~prime?~ predicate, which itself uses the ~primes~ stream.  The reason this procedure works is that, at any point, enough of the ~primes~ stream has been generated to test the primality of the numbers we need to check next.  That is, for every n we test for primality, either n is not prime (in which case there is a prime already generated that divides it) or n is prime (in which case there is a prime already generated--i.e., a prime less than n--that is greater than [sqrt](n)).[fn:191]
+
+**** Exercise 3.53
+:properties:
+:custom_id: exercise-3.53
+:end:
+
+Without running the program, describe the elements of the stream defined by
+
+#+begin_src scheme
+(define s (cons-stream 1 (add-streams s s)))
+#+end_src
+
+**** Exercise 3.54
+:properties:
+:custom_id: exercise-3.54
+:end:
+
+Define a procedure ~mul-streams~, analogous to ~add-streams~, that produces the elementwise product of its two input streams.  Use this together with the stream of ~integers~ to complete the following definition of the stream whose nth element (counting from 0) is n + 1 factorial:
+
+#+begin_src scheme
+(define factorials (cons-stream 1 (mul-streams <??> <??>)))
+#+end_src
+
+**** Exercise 3.55
+:properties:
+:custom_id: exercise-3.55
+:end:
+
+Define a procedure ~partial-sums~ that takes as argument a stream S and returns the stream whose elements are S_0, S_0 + S_1, S_0 + S_1 + S_2, ....  For example, ~(partial-sums integers)~ should be the stream 1, 3, 6, 10, 15, ....
+
+**** Exercise 3.56
+:properties:
+:custom_id: exercise-3.56
+:end:
+
+A famous problem, first raised by R. Hamming, is to enumerate, in ascending order with no repetitions, all positive integers with no prime factors other than 2, 3, or 5.  One obvious way to do this is to simply test each integer in turn to see whether it has any factors other than 2, 3, and 5.  But this is very inefficient, since, as the integers get larger, fewer and fewer of them fit the requirement.  As an alternative, let us call the required stream of numbers ~S~ and notice the following facts about it.
+
+- ~S~ begins with 1.
+- The elements of ~(scale-stream S 2)~ are also elements of ~S~.
+- The same is true for ~(scale-stream S 3)~ and ~(scale-stream 5 S)~.
+- These are all the elements of ~S~.
+
+Now all we have to do is combine elements from these sources.  For this we define a procedure ~merge~ that combines two ordered streams into one ordered result stream, eliminating repetitions:
+
+#+begin_src scheme
+(define (merge s1 s2)
+  (cond ((stream-null? s1) s2)
+        ((stream-null? s2) s1)
+        (else
+         (let ((s1car (stream-car s1))
+               (s2car (stream-car s2)))
+           (cond ((< s1car s2car)
+                  (cons-stream s1car (merge (stream-cdr s1) s2)))
+                 ((> s1car s2car)
+                  (cons-stream s2car (merge s1 (stream-cdr s2))))
+                 (else
+                  (cons-stream s1car
+                               (merge (stream-cdr s1)
+                                      (stream-cdr s2)))))))))
+#+end_src
+
+Then the required stream may be constructed with ~merge~, as follows:
+
+#+begin_src scheme
+(define S (cons-stream 1 (merge <??> <??>)))
+#+end_src
+
+Fill in the missing expressions in the places marked <??> above.
+
+**** Exercise 3.57
+:properties:
+:custom_id: exercise-3.57
+:end:
+
+How many additions are performed when we compute the nth Fibonacci number using the definition of ~fibs~ based on the ~add-streams~ procedure?  Show that the number of additions would be exponentially greater if we had implemented '(delay <EXP>)' simply as '(lambda () <EXP>)', without using the optimization provided by the ~memo-proc~ procedure described in section [[#section-3.5.1][3.5.1]].[fn:192]
+
+**** Exercise 3.58
+:properties:
+:custom_id: exercise-3.58
+:end:
+
+Give an interpretation of the stream computed by the following procedure:
+
+#+begin_src scheme
+(define (expand num den radix)
+  (cons-stream
+   (quotient (* num radix) den)
+   (expand (remainder (* num radix) den) den radix)))
+#+end_src
+
+(~Quotient~ is a primitive that returns the integer quotient of two integers.)  What are the successive elements produced by ~(expand 1 7 10)~?  What is produced by ~(expand 3 8 10)~?
+
+**** Exercise 3.59
+:properties:
+:custom_id: exercise-3.59
+:end:
+
+In section [[#section-2.5.3][2.5.3]] we saw how to implement a polynomial arithmetic system representing polynomials as lists of terms.  In a similar way, we can work with <<i289>> power series, such as
+
+#+begin_example
+                x^2     x^3       x^4
+ e^x = 1 + x + ----- + ----- + --------- + ...
+                 2     3 * 2   4 * 3 * 2
+
+              x^2       x^4
+ cos x = 1 - ----- + --------- - ...
+               2     4 * 3 * 2
+
+              x^3         x^5
+ sin x = x - ----- + ------------- - ...
+             3 * 2   5 * 4 * 3 * 2
+#+end_example
+
+represented as infinite streams.  We will represent the series a_0 + a_1 x + a_2 x^2 + a_3 x^3 + ... as the stream whose elements are the coefficients a_0, a_1, a_2, a_3, ....
+
+a. The integral of the series a_0 + a_1 x + a_2 x^2 + a_3 x^3 + ... is the series
+
+#+begin_example
+              1             1             1
+ c + a_0 x + --- x_1 r^2 + --- a_2 r^3 + --- a_3 r^4 + ...
+              2             3             4
+#+end_example
+
+where c is any constant.  Define a procedure ~integrate-series~ that takes as input a stream a_0, a_1, a_2, ... representing a power series and returns the stream a_0, (1/2)a_1, (1/3)a_2, ... of coefficients of the non-constant terms of the integral of the series.  (Since the result has no constant term, it doesn't represent a power series; when we use ~integrate-series~, we will ~cons~ on the appropriate constant.)
+
+b. The function x |-> e^x is its own derivative.  This implies that e^x and the integral of e^x are the same series, except for the constant term, which is e^0 = 1.  Accordingly, we can generate the series for e^x as
+
+#+begin_src scheme
+(define exp-series
+  (cons-stream 1 (integrate-series exp-series)))
+#+end_src
+
+Show how to generate the series for sine and cosine, starting from the facts that the derivative of sine is cosine and the derivative of cosine is the negative of sine:
+
+#+begin_src scheme
+(define cosine-series
+  (cons-stream 1 <??>))
+
+(define sine-series
+  (cons-stream 0 <??>))
+#+end_src
+
+**** Exercise 3.60
+:properties:
+:custom_id: exercise-3.60
+:end:
+
+With power series represented as streams of coefficients as in [[#exercise-3.59][Exercise 3.59]], adding series is implemented by ~add-streams~.  Complete the definition of the following procedure for multiplying series:
+
+#+begin_src scheme
+(define (mul-series s1 s2)
+  (cons-stream <??> (add-streams <??> <??>)))
+#+end_src
+
+You can test your procedure by verifying that sin^2 x + cos^2 x = 1, using the series from [[#exercise-3.59][Exercise 3.59]].
+
+**** Exercise 3.61
+:properties:
+:custom_id: exercise-3.61
+:end:
+
+Let S be a power series ([[#exercise-3.59][Exercise 3.59]]) whose constant term is 1.  Suppose we want to find the power series 1/S, that is, the series X such that S * X = 1.  Write S = 1 + S_R where S_R is the part of S after the constant term.  Then we can solve for X as follows:
+
+#+begin_example
+         S * X = 1
+ (1 + S_R) * X = 1
+   X + S_R * X = 1
+             X = 1 - S_R * X
+#+end_example
+
+In other words, X is the power series whose constant term is 1 and whose higher-order terms are given by the negative of S_R times X. Use this idea to write a procedure ~invert-unit-series~ that computes 1/S for a power series S with constant term 1.  You will need to use ~mul-series~ from [[#exercise-3.60][Exercise 3.60]].
+
+**** Exercise 3.62
+:properties:
+:custom_id: exercise-3.62
+:end:
+
+Use the results of [[#exercise-3.60][Exercise 3.60]] and [[#exercise-3.61][Exercise 3.61]] to define a procedure ~div-series~ that divides two power series.  ~div-series~ should work for any two series, provided that the denominator series begins with a nonzero constant term.  (If the denominator has a zero constant term, then ~div-series~ should signal an error.)  Show how to use ~div-series~ together with the result of [[#exercise-3.59][Exercise 3.59]] to generate the power series for tangent.
+

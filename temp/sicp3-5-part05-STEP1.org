@@ -1,0 +1,123 @@
+*** 3.5.5 Modularidad de programas funcionales y modularidad de objetos
+:properties:
+:custom_id: section-3.5.5
+:end:
+
+Como vimos en la sección [[#section-3.1.2][3.1.2]], uno de los principales beneficios de introducir la asignación es que podemos aumentar la modularidad de nuestros sistemas encapsulando, u "ocultando", partes del estado de un sistema grande dentro de variables locales. Los modelos de flujo pueden proporcionar una modularidad equivalente sin el uso de asignación. Como ilustración, podemos reimplementar la estimación de Monte Carlo de \pi, que examinamos en la sección [[#section-3.1.2][3.1.2]], desde un punto de vista de procesamiento de flujos.
+
+El problema clave de modularidad era que deseábamos ocultar el estado interno de un generador de números aleatorios de los programas que usaban números aleatorios. Comenzamos con un procedimiento ~rand-update~, cuyos valores sucesivos proporcionaban nuestro suministro de números aleatorios, y usamos esto para producir un generador de números aleatorios:
+
+#+begin_src scheme
+(define rand
+  (let ((x random-init))
+    (lambda ()
+      (set! x (rand-update x))
+      x)))
+#+end_src
+
+En la formulación de flujos no hay un generador de números aleatorios /per se/, solo un flujo de números aleatorios producidos por llamadas sucesivas a ~rand-update~:
+
+#+begin_src scheme
+(define random-numbers
+  (cons-stream random-init
+               (stream-map rand-update random-numbers)))
+#+end_src
+
+Usamos esto para construir el flujo de resultados del experimento de Cesàro realizado en pares consecutivos en el flujo ~random-numbers~:
+
+#+begin_src scheme
+(define cesaro-stream
+  (map-successive-pairs (lambda (r1 r2) (= (gcd r1 r2) 1))
+                        random-numbers))
+
+(define (map-successive-pairs f s)
+  (cons-stream
+   (f (stream-car s) (stream-car (stream-cdr s)))
+   (map-successive-pairs f (stream-cdr (stream-cdr s)))))
+#+end_src
+
+El ~cesaro-stream~ ahora se alimenta a un procedimiento ~monte-carlo~, que produce un flujo de estimaciones de probabilidades. Los resultados luego se convierten en un flujo de estimaciones de \pi. Esta versión del programa no necesita un parámetro que indique cuántas pruebas realizar. Mejores estimaciones de \pi (de realizar más experimentos) se obtienen mirando más lejos en el flujo ~pi~:
+
+#+begin_src scheme
+(define (monte-carlo experiment-stream passed failed)
+  (define (next passed failed)
+    (cons-stream
+     (/ passed (+ passed failed))
+     (monte-carlo
+      (stream-cdr experiment-stream) passed failed)))
+  (if (stream-car experiment-stream)
+      (next (+ passed 1) failed)
+      (next passed (+ failed 1))))
+
+(define pi
+  (stream-map (lambda (p) (sqrt (/ 6 p)))
+              (monte-carlo cesaro-stream 0 0)))
+#+end_src
+
+Hay considerable modularidad en este enfoque, porque aún podemos formular un procedimiento ~monte-carlo~ general que pueda lidiar con experimentos arbitrarios. Sin embargo, no hay asignación ni estado local.
+
+**** Ejercicio 3.81
+:properties:
+:custom_id: exercise-3.81
+:end:
+
+El [[#exercise-3.6][Ejercicio 3.6]] discutió la generalización del generador de números aleatorios para permitir reiniciar la secuencia de números aleatorios para producir secuencias repetibles de números "aleatorios". Produce una formulación de flujo de este mismo generador que opere sobre un flujo de entrada de solicitudes para ~generate~ un nuevo número aleatorio o para ~reset~ la secuencia a un valor especificado y que produzca el flujo deseado de números aleatorios. No uses asignación en tu solución.
+
+**** Ejercicio 3.82
+:properties:
+:custom_id: exercise-3.82
+:end:
+
+Rehaz el [[#exercise-3.5][Ejercicio 3.5]] sobre integración de Monte Carlo en términos de flujos. La versión de flujo de ~estimate-integral~ no tendrá un argumento que indique cuántas pruebas realizar. En cambio, producirá un flujo de estimaciones basadas en sucesivamente más pruebas.
+
+*Una visión funcional del tiempo*
+
+Volvamos ahora a los problemas de objetos y estado que se plantearon al comienzo de este capítulo y examinémoslos bajo una nueva luz. Introdujimos la asignación y los objetos mutables para proporcionar un mecanismo para la construcción modular de programas que modelan sistemas con estado. Construimos objetos computacionales con variables de estado locales y usamos la asignación para modificar estas variables. Modelamos el comportamiento temporal de los objetos en el mundo mediante el comportamiento temporal de los objetos computacionales correspondientes.
+
+Ahora hemos visto que los flujos proporcionan una forma alternativa de modelar objetos con estado local. Podemos modelar una cantidad cambiante, como el estado local de algún objeto, usando un flujo que representa la historia temporal de estados sucesivos. En esencia, representamos el tiempo explícitamente, usando flujos, de modo que desacoplamos el tiempo en nuestro mundo simulado de la secuencia de eventos que tienen lugar durante la evaluación. De hecho, debido a la presencia de ~delay~ puede haber poca relación entre el tiempo simulado en el modelo y el orden de eventos durante la evaluación.
+
+Para contrastar estos dos enfoques de modelado, reconsideremos la implementación de un "procesador de retiros" que monitorea el saldo en una cuenta bancaria. En la sección [[#section-3.1.3][3.1.3]] implementamos una versión simplificada de tal procesador:
+
+#+begin_src scheme
+(define (make-simplified-withdraw balance)
+  (lambda (amount)
+    (set! balance (- balance amount))
+    balance))
+#+end_src
+
+Las llamadas a ~make-simplified-withdraw~ producen objetos computacionales, cada uno con una variable de estado local ~balance~ que se decrementa por llamadas sucesivas al objeto. El objeto toma un ~amount~ como argumento y devuelve el nuevo saldo. Podemos imaginar al usuario de una cuenta bancaria escribiendo una secuencia de entradas a tal objeto y observando la secuencia de valores devueltos mostrados en una pantalla.
+
+Alternativamente, podemos modelar un procesador de retiros como un procedimiento que toma como entrada un saldo y un flujo de cantidades a retirar y produce el flujo de saldos sucesivos en la cuenta:
+
+#+begin_src scheme
+(define (stream-withdraw balance amount-stream)
+  (cons-stream
+   balance
+   (stream-withdraw (- balance (stream-car amount-stream))
+                    (stream-cdr amount-stream))))
+#+end_src
+
+~stream-withdraw~ implementa una función matemática bien definida cuya salida está completamente determinada por su entrada. Supongamos, sin embargo, que la entrada ~amount-stream~ es el flujo de valores sucesivos escritos por el usuario y que el flujo resultante de saldos se muestra. Entonces, desde la perspectiva del usuario que está escribiendo valores y observando resultados, el proceso de flujo tiene el mismo comportamiento que el objeto creado por ~make-simplified-withdraw~. Sin embargo, con la versión de flujo, no hay asignación, no hay variable de estado local y, en consecuencia, ninguna de las dificultades teóricas que encontramos en la sección [[#section-3.1.3][3.1.3]]. ¡Sin embargo, el sistema tiene estado!
+
+Esto es realmente notable. Aunque ~stream-withdraw~ implementa una función matemática bien definida cuyo comportamiento no cambia, la percepción del usuario aquí es la de interactuar con un sistema que tiene un estado cambiante. Una forma de resolver esta paradoja es darse cuenta de que es la existencia temporal del usuario la que impone estado en el sistema. Si el usuario pudiera dar un paso atrás de la interacción y pensar en términos de flujos de saldos en lugar de transacciones individuales, el sistema parecería sin estado.[fn:201]
+
+Desde el punto de vista de una parte de un proceso complejo, las otras partes parecen cambiar con el tiempo. Tienen estado local variable en el tiempo oculto. Si deseamos escribir programas que modelen este tipo de descomposición natural en nuestro mundo (como lo vemos desde nuestro punto de vista como parte de ese mundo) con estructuras en nuestro ordenador, hacemos objetos computacionales que no son funcionales; deben cambiar con el tiempo. Modelamos el estado con variables de estado locales, y modelamos los cambios de estado con asignaciones a esas variables. Al hacer esto, hacemos que el tiempo de ejecución de un cálculo modele el tiempo en el mundo del que somos parte, y así obtenemos "objetos" en nuestro ordenador.
+
+El modelado con objetos es poderoso e intuitivo, en gran parte porque esto coincide con la percepción de interactuar con un mundo del que somos parte. Sin embargo, como hemos visto repetidamente a lo largo de este capítulo, estos modelos plantean problemas espinosos de restringir el orden de los eventos y de sincronizar múltiples procesos. La posibilidad de evitar estos problemas ha estimulado el desarrollo de <<i155>> lenguajes de programación funcional, que no incluyen ninguna provisión para asignación o datos mutables. En tal lenguaje, todos los procedimientos implementan funciones matemáticas bien definidas de sus argumentos, cuyo comportamiento no cambia. El enfoque funcional es extremadamente atractivo para lidiar con sistemas concurrentes.[fn:202]
+
+Por otro lado, si miramos de cerca, podemos ver problemas relacionados con el tiempo infiltrándose también en los modelos funcionales. Un área particularmente problemática surge cuando deseamos diseñar sistemas interactivos, especialmente aquellos que modelan interacciones entre entidades independientes. Por ejemplo, considera una vez más la implementación de un sistema bancario que permite cuentas bancarias conjuntas. En un sistema convencional que usa asignación y objetos, modelaríamos el hecho de que Peter y Paul comparten una cuenta haciendo que tanto Peter como Paul envíen sus solicitudes de transacción al mismo objeto de cuenta bancaria, como vimos en la sección [[#section-3.1.3][3.1.3]]. Desde el punto de vista del flujo, donde no hay "objetos" /per se/, ya hemos indicado que una cuenta bancaria puede modelarse como un proceso que opera sobre un flujo de solicitudes de transacción para producir un flujo de respuestas. En consecuencia, podríamos modelar el hecho de que Peter y Paul tienen una cuenta bancaria conjunta fusionando el flujo de solicitudes de transacción de Peter con el flujo de solicitudes de Paul y alimentando el resultado al proceso de flujo de cuenta bancaria, como se muestra en la [[figure-3.38][Figura 3.38]].
+
+<<figure-3.38>> Una cuenta bancaria conjunta, modelada fusionando dos flujos de solicitudes de transacción.
+
+#+begin_example
+ Peter's requests   +---------+     +---------+
+ ------------------>|         |     |         |
+ Paul's requests    |  merge  |---->| bank    |---->
+ ------------------>|         |     | account |
+                    +---------+     +---------+
+#+end_example
+
+El problema con esta formulación está en la noción de <<i232>> fusión. No servirá fusionar los dos flujos simplemente tomando alternativamente una solicitud de Peter y una solicitud de Paul. Supongamos que Paul accede a la cuenta solo muy raramente. Difícilmente podríamos forzar a Peter a esperar a que Paul acceda a la cuenta antes de que pudiera emitir una segunda transacción. Sin embargo, tal fusión se implemente, debe intercalar los dos flujos de transacción de alguna manera que esté restringida por el "tiempo real" según lo perciben Peter y Paul, en el sentido de que, si Peter y Paul se encuentran, pueden estar de acuerdo en que ciertas transacciones se procesaron antes de la reunión, y otras transacciones se procesaron después de la reunión.[fn:203] Esta es precisamente la misma restricción con la que tuvimos que lidiar en la sección [[#section-3.4.1][3.4.1]], donde encontramos la necesidad de introducir sincronización explícita para garantizar un orden "correcto" de eventos en el procesamiento concurrente de objetos con estado. Por lo tanto, en un intento de apoyar el estilo funcional, la necesidad de fusionar entradas de diferentes agentes reintroduce los mismos problemas que el estilo funcional estaba destinado a eliminar.
+
+Comenzamos este capítulo con el objetivo de construir modelos computacionales cuya estructura coincida con nuestra percepción del mundo real que estamos tratando de modelar. Podemos modelar el mundo como una colección de objetos separados, limitados en el tiempo, interactuando con estado, o podemos modelar el mundo como una unidad única, atemporal y sin estado. Cada visión tiene ventajas poderosas, pero ninguna visión por sí sola es completamente satisfactoria. Aún no ha surgido una gran unificación.[fn:204]
+
