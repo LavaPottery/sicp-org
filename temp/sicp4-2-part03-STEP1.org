@@ -1,0 +1,104 @@
+*** 4.2.3 Streams como listas perezosas
+:properties:
+:custom_id: section-4.2.3
+:end:
+
+En la sección [[#section-3.5.1][3.5.1]], mostramos cómo implementar streams como listas retrasadas. Introdujimos las formas especiales ~delay~ y ~cons-stream~, que nos permitieron construir una "promesa" de calcular el ~cdr~ de un stream, sin realmente cumplir esa promesa hasta más tarde. Podríamos usar esta técnica general de introducir formas especiales siempre que necesitemos más control sobre el proceso de evaluación, pero esto es incómodo. Por un lado, una forma especial no es un objeto de primera clase como un procedimiento, por lo que no podemos usarla junto con procedimientos de orden superior.[fn:243] Además, nos vimos obligados a crear streams como un nuevo tipo de objeto de datos similar pero no idéntico a las listas, y esto nos requirió reimplementar muchas operaciones de lista ordinarias (~map~, ~append~, y demás) para usar con streams.
+
+Con evaluación perezosa, los streams y las listas pueden ser idénticos, por lo que no hay necesidad de formas especiales ni de operaciones separadas de lista y stream. Todo lo que necesitamos hacer es arreglar las cosas de modo que ~cons~ sea no estricto. Una manera de lograr esto es extender el evaluador perezoso para permitir primitivas no estrictas, e implementar ~cons~ como una de estas. Una manera más fácil es recordar (sección [[#section-2.1.3][2.1.3]]) que no hay necesidad fundamental de implementar ~cons~ como una primitiva en absoluto. En cambio, podemos representar pares como procedimientos:[fn:244]
+
+#+begin_src scheme
+(define (cons x y)
+  (lambda (m) (m x y)))
+
+(define (car z)
+  (z (lambda (p q) p)))
+
+(define (cdr z)
+  (z (lambda (p q) q)))
+#+end_src
+
+En términos de estas operaciones básicas, las definiciones estándar de las operaciones de lista funcionarán con listas infinitas (streams) así como con las finitas, y las operaciones de stream pueden implementarse como operaciones de lista. Aquí hay algunos ejemplos:
+
+#+begin_src scheme
+(define (list-ref items n)
+  (if (= n 0)
+      (car items)
+      (list-ref (cdr items) (- n 1))))
+
+(define (map proc items)
+  (if (null? items)
+      '()
+      (cons (proc (car items))
+            (map proc (cdr items)))))
+
+(define (scale-list items factor)
+  (map (lambda (x) (* x factor))
+       items))
+
+(define (add-lists list1 list2)
+  (cond ((null? list1) list2)
+        ((null? list2) list1)
+        (else (cons (+ (car list1) (car list2))
+                    (add-lists (cdr list1) (cdr list2))))))
+
+(define ones (cons 1 ones))
+
+(define integers (cons 1 (add-lists ones integers)))
+
+;;; L-Eval input:
+(list-ref integers 17)
+;;; L-Eval value:
+18
+#+end_src
+
+Nota que estas listas perezosas son incluso más perezosas que los streams del [[#section-3][Capítulo 3]]: El ~car~ de la lista, así como el ~cdr~, se retrasa.[fn:245] De hecho, incluso acceder al ~car~ o ~cdr~ de un par perezoso no necesita forzar el valor de un elemento de lista. El valor será forzado solo cuando realmente se necesite - por ejemplo, para usarse como argumento de una primitiva, o para imprimirse como una respuesta.
+
+Los pares perezosos también ayudan con el problema que surgió con los streams en la sección [[#section-3.5.4][3.5.4]], donde encontramos que formular modelos de stream de sistemas con bucles puede requerir que salpiquemos nuestros programas con operaciones ~delay~ explícitas, más allá de las proporcionadas por ~cons-stream~. Con evaluación perezosa, todos los argumentos de los procedimientos se retrasan uniformemente. Por ejemplo, podemos implementar procedimientos para integrar listas y resolver ecuaciones diferenciales como originalmente pretendíamos en la sección [[#section-3.5.4][3.5.4]]:
+
+#+begin_src scheme
+(define (integral integrand initial-value dt)
+  (define int
+    (cons initial-value
+          (add-lists (scale-list integrand dt)
+                     int)))
+  int)
+
+(define (solve f y0 dt)
+  (define y (integral dy y0 dt))
+  (define dy (map f y))
+  y)
+
+;;; L-Eval input:
+(list-ref (solve (lambda (x) x) 1 0.001) 1000)
+;;; L-Eval value:
+2.716924
+#+end_src
+
+**** Ejercicio 4.32
+:properties:
+:custom_id: exercise-4.32
+:end:
+
+Da algunos ejemplos que ilustren la diferencia entre los streams del [[#section-3][Capítulo 3]] y las listas perezosas "más perezosas" descritas en esta sección. ¿Cómo puedes aprovechar esta pereza adicional?
+
+**** Ejercicio 4.33
+:properties:
+:custom_id: exercise-4.33
+:end:
+
+Ben Bitdiddle prueba la implementación de lista perezosa dada arriba evaluando la expresión
+
+#+begin_src scheme
+(car '(a b c))
+#+end_src
+
+Para su sorpresa, esto produce un error. Después de pensarlo un poco, se da cuenta de que las "listas" obtenidas al leer expresiones citadas son diferentes de las listas manipuladas por las nuevas definiciones de ~cons~, ~car~, y ~cdr~. Modifica el tratamiento del evaluador de expresiones citadas de modo que las listas citadas tecleadas en el bucle controlador produzcan verdaderas listas perezosas.
+
+**** Ejercicio 4.34
+:properties:
+:custom_id: exercise-4.34
+:end:
+
+Modifica el bucle controlador para el evaluador de modo que los pares perezosos y las listas se impriman de alguna manera razonable. (¿Qué vas a hacer con las listas infinitas?) También puede que necesites modificar la representación de los pares perezosos de modo que el evaluador pueda identificarlos para imprimirlos.
+
