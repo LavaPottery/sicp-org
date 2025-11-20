@@ -1,0 +1,336 @@
+*** 4.3.2 Ejemplos de Programas No Deterministas
+:properties:
+:custom_id: section-4.3.2
+:end:
+
+La sección [[#section-4.3.3][4.3.3]] describe la implementación del evaluador ~amb~. Primero, sin embargo, damos algunos ejemplos de cómo puede usarse. La ventaja de la programación no determinista es que podemos suprimir los detalles de cómo se lleva a cabo la búsqueda, expresando así nuestros programas a un nivel más alto de abstracción.
+
+*Acertijos Lógicos*
+
+El siguiente acertijo (tomado de Dinesman 1968) es típico de una gran clase de acertijos lógicos simples:
+
+#+begin_quote
+Baker, Cooper, Fletcher, Miller y Smith viven en diferentes pisos de un edificio de apartamentos que contiene solo cinco pisos. Baker no vive en el piso superior. Cooper no vive en el piso inferior. Fletcher no vive ni en el piso superior ni en el inferior. Miller vive en un piso más alto que Cooper. Smith no vive en un piso adyacente al de Fletcher. Fletcher no vive en un piso adyacente al de Cooper. ¿Dónde vive cada uno?
+#+end_quote
+
+Podemos determinar quién vive en cada piso de una manera directa enumerando todas las posibilidades e imponiendo las restricciones dadas:[fn:252]
+
+#+begin_src scheme
+(define (multiple-dwelling)
+  (let ((baker (amb 1 2 3 4 5))
+        (cooper (amb 1 2 3 4 5))
+        (fletcher (amb 1 2 3 4 5))
+        (miller (amb 1 2 3 4 5))
+        (smith (amb 1 2 3 4 5)))
+    (require
+     (distinct? (list baker cooper fletcher miller smith)))
+    (require (not (= baker 5)))
+    (require (not (= cooper 1)))
+    (require (not (= fletcher 5)))
+    (require (not (= fletcher 1)))
+    (require (> miller cooper))
+    (require (not (= (abs (- smith fletcher)) 1)))
+    (require (not (= (abs (- fletcher cooper)) 1)))
+    (list (list 'baker baker)
+          (list 'cooper cooper)
+          (list 'fletcher fletcher)
+          (list 'miller miller)
+          (list 'smith smith))))
+#+end_src
+
+Evaluar la expresión ~(multiple-dwelling)~ produce el resultado
+
+#+begin_src scheme
+((baker 3) (cooper 2) (fletcher 4) (miller 5) (smith 1))
+#+end_src
+
+Aunque este procedimiento simple funciona, es muy lento. El [[#exercise-4.39][Exercise 4.39]] y el [[#exercise-4.40][Exercise 4.40]] discuten algunas mejoras posibles.
+
+**** Exercise 4.38
+:properties:
+:custom_id: exercise-4.38
+:end:
+
+Modifica el procedimiento multiple-dwelling para omitir el requisito de que Smith y Fletcher no vivan en pisos adyacentes. ¿Cuántas soluciones hay para este acertijo modificado?
+
+**** Exercise 4.39
+:properties:
+:custom_id: exercise-4.39
+:end:
+
+¿Afecta el orden de las restricciones en el procedimiento multiple-dwelling a la respuesta? ¿Afecta al tiempo para encontrar una respuesta? Si crees que importa, demuestra un programa más rápido obtenido del dado reordenando las restricciones. Si crees que no importa, argumenta tu caso.
+
+**** Exercise 4.40
+:properties:
+:custom_id: exercise-4.40
+:end:
+
+En el problema de multiple dwelling, ¿cuántos conjuntos de asignaciones hay de personas a pisos, tanto antes como después del requisito de que las asignaciones de piso sean distintas? Es muy ineficiente generar todas las asignaciones posibles de personas a pisos y luego dejar al retroceso eliminarlas. Por ejemplo, la mayoría de las restricciones dependen de solo una o dos de las variables persona-piso, y por lo tanto pueden imponerse antes de que se hayan seleccionado pisos para todas las personas. Escribe y demuestra un procedimiento no determinista mucho más eficiente que resuelva este problema basándose en generar solo aquellas posibilidades que no están ya descartadas por restricciones previas. (Pista: Esto requerirá un anidamiento de expresiones ~let~.)
+
+**** Exercise 4.41
+:properties:
+:custom_id: exercise-4.41
+:end:
+
+Escribe un programa ordinario de Scheme para resolver el acertijo de multiple dwelling.
+
+**** Exercise 4.42
+:properties:
+:custom_id: exercise-4.42
+:end:
+
+Resuelve el siguiente acertijo de "Mentirosos" (de Phillips 1934):
+
+Cinco colegialas se presentaron a un examen. Sus padres--así pensaban--mostraron un grado indebido de interés en el resultado. Por lo tanto, acordaron que, al escribir a casa sobre el examen, cada chica haría una declaración verdadera y una falsa. Las siguientes son los pasajes relevantes de sus cartas:
+
+- Betty: "Kitty quedó segunda en el examen. Yo solo quedé tercera."
+- Ethel: "Te alegrará saber que quedé primera. Joan quedó segunda."
+- Joan: "Quedé tercera, y la pobre Ethel quedó última."
+- Kitty: "Quedé segunda. Mary solo quedó cuarta."
+- Mary: "Quedé cuarta. El primer lugar lo ocupó Betty."
+
+¿Cuál fue de hecho el orden en que quedaron las cinco chicas?
+
+**** Exercise 4.43
+:properties:
+:custom_id: exercise-4.43
+:end:
+
+Usa el evaluador ~amb~ para resolver el siguiente acertijo:[fn:253]
+
+El padre de Mary Ann Moore tiene un yate y también cada uno de sus cuatro amigos: Colonel Downing, Mr. Hall, Sir Barnacle Hood y Dr. Parker. Cada uno de los cinco también tiene una hija y cada uno ha nombrado su yate con el nombre de la hija de uno de los otros. El yate de Sir Barnacle es el Gabrielle, Mr. Moore posee el Lorna; Mr. Hall el Rosalind. El Melissa, propiedad de Colonel Downing, lleva el nombre de la hija de Sir Barnacle. El padre de Gabrielle posee el yate que lleva el nombre de la hija de Dr. Parker. ¿Quién es el padre de Lorna?
+
+Intenta escribir el programa de modo que se ejecute eficientemente (ver [[#exercise-4.40][Exercise 4.40]]). También determina cuántas soluciones hay si no se nos dice que el apellido de Mary Ann es Moore.
+
+**** Exercise 4.44
+:properties:
+:custom_id: exercise-4.44
+:end:
+
+El [[#exercise-2.42][Exercise 2.42]] describió el "acertijo de las ocho reinas" de colocar reinas en un tablero de ajedrez de modo que ninguna ataque a otra. Escribe un programa no determinista para resolver este acertijo.
+
+*Análisis de lenguaje natural*
+
+Los programas diseñados para aceptar lenguaje natural como entrada usualmente comienzan intentando <<i280>> analizar la entrada, es decir, hacer coincidir la entrada con alguna estructura gramatical. Por ejemplo, podríamos intentar reconocer oraciones simples que consisten en un artículo seguido de un sustantivo seguido de un verbo, como "The cat eats." Para lograr tal análisis, debemos ser capaces de identificar las partes del discurso de palabras individuales. Podríamos comenzar con algunas listas que clasifican varias palabras:[fn:254]
+
+#+begin_src scheme
+(define nouns '(noun student professor cat class))
+
+(define verbs '(verb studies lectures eats sleeps))
+
+(define articles '(article the a))
+#+end_src
+
+También necesitamos una <<i169>> gramática, es decir, un conjunto de reglas que describen cómo los elementos gramaticales se componen de elementos más simples. Una gramática muy simple podría estipular que una oración siempre consiste en dos partes--una frase nominal seguida de un verbo--y que una frase nominal consiste en un artículo seguido de un sustantivo. Con esta gramática, la oración "The cat eats" se analiza de la siguiente manera:
+
+#+begin_src scheme
+(sentence (noun-phrase (article the) (noun cat))
+          (verb eats))
+#+end_src
+
+Podemos generar tal análisis con un programa simple que tiene procedimientos separados para cada una de las reglas gramaticales. Para analizar una oración, identificamos sus dos partes constituyentes y devolvemos una lista de estos dos elementos, etiquetada con el símbolo ~sentence~:
+
+#+begin_src scheme
+(define (parse-sentence)
+  (list 'sentence
+        (parse-noun-phrase)
+        (parse-word verbs)))
+#+end_src
+
+Una frase nominal, de manera similar, se analiza encontrando un artículo seguido de un sustantivo:
+
+#+begin_src scheme
+(define (parse-noun-phrase)
+  (list 'noun-phrase
+        (parse-word articles)
+        (parse-word nouns)))
+#+end_src
+
+En el nivel más bajo, el análisis se reduce a verificar repetidamente que la siguiente palabra no analizada sea un miembro de la lista de palabras para la parte del discurso requerida. Para implementar esto, mantenemos una variable global ~*unparsed*~, que es la entrada que aún no ha sido analizada. Cada vez que verificamos una palabra, requerimos que ~*unparsed*~ no esté vacío y que deba comenzar con una palabra de la lista designada. Si es así, eliminamos esa palabra de ~*unparsed*~ y devolvemos la palabra junto con su parte del discurso (que se encuentra al principio de la lista):[fn:255]
+
+#+begin_src scheme
+(define (parse-word word-list)
+  (require (not (null? *unparsed*)))
+  (require (memq (car *unparsed*) (cdr word-list)))
+  (let ((found-word (car *unparsed*)))
+    (set! *unparsed* (cdr *unparsed*))
+    (list (car word-list) found-word)))
+#+end_src
+
+Para comenzar el análisis, todo lo que necesitamos hacer es establecer ~*unparsed*~ como la entrada completa, intentar analizar una oración y verificar que no quede nada:
+
+#+begin_src scheme
+(define *unparsed* '())
+
+(define (parse input)
+  (set! *unparsed* input)
+  (let ((sent (parse-sentence)))
+    (require (null? *unparsed*))
+    sent))
+#+end_src
+
+Ahora podemos probar el analizador y verificar que funciona para nuestra oración de prueba simple:
+
+#+begin_src scheme
+;;; Amb-Eval input:
+(parse '(the cat eats))
+;;; Starting a new problem
+;;; Amb-Eval value:
+(sentence (noun-phrase (article the) (noun cat)) (verb eats))
+#+end_src
+
+El evaluador ~amb~ es útil aquí porque es conveniente expresar las restricciones de análisis con la ayuda de ~require~. La búsqueda automática y el retroceso realmente valen la pena, sin embargo, cuando consideramos gramáticas más complejas donde hay opciones sobre cómo pueden descomponerse las unidades.
+
+Agreguemos a nuestra gramática una lista de preposiciones:
+
+#+begin_src scheme
+(define prepositions '(prep for to in by with))
+#+end_src
+
+y definamos una frase preposicional (por ejemplo, "for the cat") como una preposición seguida de una frase nominal:
+
+#+begin_src scheme
+(define (parse-prepositional-phrase)
+  (list 'prep-phrase
+        (parse-word prepositions)
+        (parse-noun-phrase)))
+#+end_src
+
+Ahora podemos definir una oración como una frase nominal seguida de una frase verbal, donde una frase verbal puede ser un verbo o una frase verbal extendida por una frase preposicional:[fn:256]
+
+#+begin_src scheme
+(define (parse-sentence)
+  (list 'sentence
+        (parse-noun-phrase)
+        (parse-verb-phrase)))
+
+(define (parse-verb-phrase)
+  (define (maybe-extend verb-phrase)
+    (amb verb-phrase
+         (maybe-extend (list 'verb-phrase
+                             verb-phrase
+                             (parse-prepositional-phrase)))))
+  (maybe-extend (parse-word verbs)))
+#+end_src
+
+Mientras estamos en ello, también podemos elaborar la definición de frases nominales para permitir cosas como "a cat in the class." Lo que solíamos llamar una frase nominal, ahora lo llamaremos una frase nominal simple, y una frase nominal ahora será una frase nominal simple o una frase nominal extendida por una frase preposicional:
+
+#+begin_src scheme
+(define (parse-simple-noun-phrase)
+  (list 'simple-noun-phrase
+        (parse-word articles)
+        (parse-word nouns)))
+
+(define (parse-noun-phrase)
+  (define (maybe-extend noun-phrase)
+    (amb noun-phrase
+         (maybe-extend (list 'noun-phrase
+                             noun-phrase
+                             (parse-prepositional-phrase)))))
+  (maybe-extend (parse-simple-noun-phrase)))
+#+end_src
+
+Nuestra nueva gramática nos permite analizar oraciones más complejas. Por ejemplo
+
+#+begin_src scheme
+(parse '(the student with the cat sleeps in the class))
+#+end_src
+
+produce
+
+#+begin_src scheme
+(sentence
+ (noun-phrase
+  (simple-noun-phrase (article the) (noun student))
+  (prep-phrase (prep with)
+               (simple-noun-phrase
+                (article the) (noun cat))))
+ (verb-phrase
+  (verb sleeps)
+  (prep-phrase (prep in)
+               (simple-noun-phrase
+                (article the) (noun class)))))
+#+end_src
+
+Observa que una entrada dada puede tener más de un análisis legal. En la oración "The professor lectures to the student with the cat," puede ser que el profesor esté dando una conferencia con el gato, o que el estudiante tenga el gato. Nuestro programa no determinista encuentra ambas posibilidades:
+
+#+begin_src scheme
+(parse '(the professor lectures to the student with the cat))
+#+end_src
+
+produce
+
+#+begin_src scheme
+(sentence
+ (simple-noun-phrase (article the) (noun professor))
+ (verb-phrase
+  (verb-phrase
+   (verb lectures)
+   (prep-phrase (prep to)
+                (simple-noun-phrase
+                 (article the) (noun student))))
+  (prep-phrase (prep with)
+               (simple-noun-phrase
+                (article the) (noun cat)))))
+#+end_src
+
+Pedir al evaluador que intente de nuevo produce
+
+#+begin_src scheme
+(sentence
+ (simple-noun-phrase (article the) (noun professor))
+ (verb-phrase
+  (verb lectures)
+  (prep-phrase (prep to)
+               (noun-phrase
+                (simple-noun-phrase
+                 (article the) (noun student))
+                (prep-phrase (prep with)
+                             (simple-noun-phrase
+                              (article the) (noun cat)))))))
+#+end_src
+
+**** Exercise 4.45
+:properties:
+:custom_id: exercise-4.45
+:end:
+
+Con la gramática dada anteriormente, la siguiente oración puede analizarse de cinco maneras diferentes: "The professor lectures to the student in the class with the cat." Da los cinco análisis y explica las diferencias en matices de significado entre ellos.
+
+**** Exercise 4.46
+:properties:
+:custom_id: exercise-4.46
+:end:
+
+Los evaluadores en las secciones [[#section-4.1][4.1]] y [[#section-4.2][4.2]] no determinan en qué orden se evalúan los operandos. Veremos que el evaluador ~amb~ los evalúa de izquierda a derecha. Explica por qué nuestro programa de análisis no funcionaría si los operandos se evaluaran en algún otro orden.
+
+**** Exercise 4.47
+:properties:
+:custom_id: exercise-4.47
+:end:
+
+Louis Reasoner sugiere que, dado que una frase verbal es un verbo o una frase verbal seguida de una frase preposicional, sería mucho más directo definir el procedimiento ~parse-verb-phrase~ de la siguiente manera (y de manera similar para frases nominales):
+
+#+begin_src scheme
+(define (parse-verb-phrase)
+  (amb (parse-word verbs)
+       (list 'verb-phrase
+             (parse-verb-phrase)
+             (parse-prepositional-phrase))))
+#+end_src
+
+¿Funciona esto? ¿Cambia el comportamiento del programa si intercambiamos el orden de las expresiones en el ~amb~?
+
+**** Exercise 4.48
+:properties:
+:custom_id: exercise-4.48
+:end:
+
+Extiende la gramática dada anteriormente para manejar oraciones más complejas. Por ejemplo, podrías extender las frases nominales y las frases verbales para incluir adjetivos y adverbios, o podrías manejar oraciones compuestas.[fn:257]
+
+**** Exercise 4.49
+:properties:
+:custom_id: exercise-4.49
+:end:
+
+Alyssa P. Hacker está más interesada en generar oraciones interesantes que en analizarlas. Ella razona que simplemente cambiando el procedimiento ~parse-word~ de modo que ignore la "oración de entrada" y en su lugar siempre tenga éxito y genere una palabra apropiada, podemos usar los programas que habíamos construido para analizar para hacer generación en su lugar. Implementa la idea de Alyssa, y muestra las primeras media docena de oraciones generadas aproximadamente.[fn:258]

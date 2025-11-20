@@ -1,0 +1,937 @@
+** 4.3 Variaciones sobre Scheme -- Computación No Determinista
+:properties:
+:custom_id: section-4.3
+:end:
+
+En esta sección, extendemos el evaluador de Scheme para soportar un paradigma de programación llamado <<i261>> computación no determinista construyendo en el evaluador una facilidad para soportar búsqueda automática. Este es un cambio mucho más profundo al lenguaje que la introducción de la evaluación perezosa en la sección [[#section-4.2][4.2]].
+
+La computación no determinista, al igual que el procesamiento de flujos, es útil para aplicaciones de "generar y probar". Considera la tarea de comenzar con dos listas de enteros positivos y encontrar un par de enteros--uno de la primera lista y uno de la segunda lista--cuya suma sea prima. Vimos cómo manejar esto con operaciones de secuencia finita en la sección [[#section-2.2.3][2.2.3]] y con flujos infinitos en la sección [[#section-3.5.3][3.5.3]]. Nuestro enfoque fue generar la secuencia de todos los pares posibles y filtrar estos para seleccionar los pares cuya suma es prima. Si realmente generamos la secuencia completa de pares primero como en el [[#section-2][Capítulo 2]], o intercalamos la generación y el filtrado como en el [[#section-3][Capítulo 3]], es inmaterial para la imagen esencial de cómo está organizada la computación.
+
+El enfoque no determinista evoca una imagen diferente. Imagina simplemente que elegimos (de alguna manera) un número de la primera lista y un número de la segunda lista y requerimos (usando algún mecanismo) que su suma sea prima. Esto se expresa mediante el siguiente procedimiento:
+
+#+begin_src scheme
+(define (prime-sum-pair list1 list2)
+  (let ((a (an-element-of list1))
+        (b (an-element-of list2)))
+    (require (prime? (+ a b)))
+    (list a b)))
+#+end_src
+
+Puede parecer como si este procedimiento simplemente replanteara el problema, en lugar de especificar una forma de resolverlo. Sin embargo, este es un programa no determinista legítimo.[fn:246]
+
+La idea clave aquí es que las expresiones en un lenguaje no determinista pueden tener más de un valor posible. Por ejemplo, ~an-element-of~ podría devolver cualquier elemento de la lista dada. Nuestro evaluador de programa no determinista funcionará eligiendo automáticamente un valor posible y manteniendo un registro de la elección. Si no se cumple un requisito posterior, el evaluador probará una elección diferente, y seguirá probando nuevas elecciones hasta que la evaluación tenga éxito, o hasta que nos quedemos sin opciones. Así como el evaluador perezoso liberó al programador de los detalles de cómo los valores se retrasan y se fuerzan, el evaluador de programa no determinista liberará al programador de los detalles de cómo se hacen las elecciones.
+
+Es instructivo contrastar las diferentes imágenes del tiempo evocadas por la evaluación no determinista y el procesamiento de flujos. El procesamiento de flujos usa evaluación perezosa para desacoplar el tiempo cuando se ensambla el flujo de respuestas posibles del tiempo cuando se producen los elementos del flujo reales. El evaluador soporta la ilusión de que todas las respuestas posibles están dispuestas ante nosotros en una secuencia atemporal. Con la evaluación no determinista, una expresión representa la exploración de un conjunto de mundos posibles, cada uno determinado por un conjunto de elecciones. Algunos de los mundos posibles llevan a callejones sin salida, mientras que otros tienen valores útiles. El evaluador de programa no determinista soporta la ilusión de que el tiempo se ramifica, y que nuestros programas tienen diferentes historias de ejecución posibles. Cuando llegamos a un callejón sin salida, podemos volver a visitar un punto de elección anterior y proceder a lo largo de una rama diferente.
+
+El evaluador de programa no determinista implementado a continuación se llama el evaluador ~amb~ porque está basado en una nueva forma especial llamada ~amb~. Podemos escribir la definición anterior de ~prime-sum-pair~ en el bucle de controlador del evaluador ~amb~ (junto con definiciones de ~prime?~, ~an-element-of~ y ~require~) y ejecutar el procedimiento de la siguiente manera:
+
+#+begin_src scheme
+;;; Entrada Amb-Eval:
+(prime-sum-pair '(1 3 5 8) '(20 35 110))
+;;; Iniciando un nuevo problema
+;;; Valor Amb-Eval:
+(3 20)
+#+end_src
+
+El valor devuelto se obtuvo después de que el evaluador eligiera repetidamente elementos de cada una de las listas, hasta que se hizo una elección exitosa.
+
+La sección [[#section-4.3.1][4.3.1]] introduce ~amb~ y explica cómo soporta el no determinismo a través del mecanismo de búsqueda automática del evaluador. La sección [[#section-4.3.2][4.3.2]] presenta ejemplos de programas no deterministas, y la sección [[#section-4.3.3][4.3.3]] da los detalles de cómo implementar el evaluador ~amb~ modificando el evaluador ordinario de Scheme.
+
+*** 4.3.1 Amb y Búsqueda
+:properties:
+:custom_id: section-4.3.1
+:end:
+
+Para extender Scheme para soportar no determinismo, introducimos una nueva forma especial llamada ~amb~.[fn:247] La expresión
+
+#+begin_src scheme
+(amb <E_1> <E_2> ... <E_N>)
+#+end_src
+
+devuelve el valor de una de las n expresiones <E_I> "ambiguamente". Por ejemplo, la expresión
+
+#+begin_src scheme
+(list (amb 1 2 3) (amb 'a 'b))
+#+end_src
+
+puede tener seis valores posibles:
+
+#+begin_example
+(1 a)
+(1 b)
+(2 a)
+(2 b)
+(3 a)
+(3 b)
+#+end_example
+
+~amb~ con una sola elección produce un valor ordinario (único).
+
+~amb~ sin elecciones--la expresión ~(amb)~--es una expresión sin valores aceptables. Operacionalmente, podemos pensar en ~(amb)~ como una expresión que cuando se evalúa causa que la computación "falle": La computación se aborta y no se produce ningún valor. Usando esta idea, podemos expresar el requisito de que una expresión de predicado particular ~p~ debe ser verdadera de la siguiente manera:
+
+#+begin_src scheme
+(define (require p)
+  (if (not p) (amb)))
+#+end_src
+
+Con ~amb~ y ~require~, podemos implementar el procedimiento ~an-element-of~ usado anteriormente:
+
+#+begin_src scheme
+(define (an-element-of items)
+  (require (not (null? items)))
+  (amb (car items) (an-element-of (cdr items))))
+#+end_src
+
+~an-element-of~ falla si la lista está vacía. De lo contrario, devuelve ambiguamente el primer elemento de la lista o un elemento elegido del resto de la lista.
+
+También podemos expresar rangos infinitos de elecciones. El siguiente procedimiento potencialmente devuelve cualquier entero mayor o igual a algún n dado:
+
+#+begin_src scheme
+(define (an-integer-starting-from n)
+  (amb n (an-integer-starting-from (+ n 1))))
+#+end_src
+
+Esto es como el procedimiento de flujo ~integers-starting-from~ descrito en la sección [[#section-3.5.2][3.5.2]], pero con una diferencia importante: El procedimiento de flujo devuelve un objeto que representa la secuencia de todos los enteros comenzando con n, mientras que el procedimiento ~amb~ devuelve un único entero.[fn:248]
+
+Abstractamente, podemos imaginar que evaluar una expresión ~amb~ causa que el tiempo se divida en ramas, donde la computación continúa en cada rama con uno de los valores posibles de la expresión. Decimos que ~amb~ representa un <<i259>> punto de elección no determinista. Si tuviéramos una máquina con un número suficiente de procesadores que pudieran ser asignados dinámicamente, podríamos implementar la búsqueda de una manera directa. La ejecución procedería como en una máquina secuencial, hasta que se encuentre una expresión ~amb~. En este punto, se asignarían más procesadores y se inicializarían para continuar todas las ejecuciones paralelas implicadas por la elección. Cada procesador procedería secuencialmente como si fuera la única elección, hasta que termine al encontrar un fallo, o se subdivida más, o termine.[fn:249]
+
+Por otro lado, si tenemos una máquina que solo puede ejecutar un proceso (o unos pocos procesos concurrentes), debemos considerar las alternativas secuencialmente. Uno podría imaginar modificar un evaluador para elegir al azar una rama a seguir cada vez que encuentre un punto de elección. La elección aleatoria, sin embargo, puede llevar fácilmente a valores fallidos. Podríamos intentar ejecutar el evaluador una y otra vez, haciendo elecciones aleatorias y esperando encontrar un valor que no falle, pero es mejor <<i384>> buscar sistemáticamente todos los caminos de ejecución posibles. El evaluador ~amb~ que desarrollaremos y con el que trabajaremos en esta sección implementa una búsqueda sistemática de la siguiente manera: Cuando el evaluador encuentra una aplicación de ~amb~, inicialmente selecciona la primera alternativa. Esta selección puede en sí misma llevar a una elección adicional. El evaluador siempre elegirá inicialmente la primera alternativa en cada punto de elección. Si una elección resulta en un fallo, entonces el evaluador automágicamente[fn:250] <<i31>> retrocede al punto de elección más reciente e intenta la siguiente alternativa. Si se queda sin alternativas en cualquier punto de elección, el evaluador retrocederá al punto de elección anterior y continuará desde allí. Este proceso lleva a una estrategia de búsqueda conocida como <<i110>> búsqueda en profundidad o <<i57>> retroceso cronológico.[fn:251]
+
+*Bucle de controlador*
+
+El bucle de controlador para el evaluador ~amb~ tiene algunas propiedades inusuales. Lee una expresión e imprime el valor de la primera ejecución sin fallo, como en el ejemplo de ~prime-sum-pair~ mostrado anteriormente. Si queremos ver el valor de la siguiente ejecución exitosa, podemos pedirle al intérprete que retroceda e intente generar una segunda ejecución sin fallo. Esto se señala escribiendo el símbolo ~try-again~. Si se da cualquier expresión excepto ~try-again~, el intérprete comenzará un nuevo problema, descartando las alternativas no exploradas en el problema anterior. Aquí hay una interacción de muestra:
+
+#+begin_src scheme
+;;; Entrada Amb-Eval:
+(prime-sum-pair '(1 3 5 8) '(20 35 110))
+;;; Iniciando un nuevo problema
+;;; Valor Amb-Eval:
+(3 20)
+
+;;; Entrada Amb-Eval:
+try-again
+;;; Valor Amb-Eval:
+(3 110)
+
+;;; Entrada Amb-Eval:
+try-again
+;;; Valor Amb-Eval:
+(8 35)
+
+;;; Entrada Amb-Eval:
+try-again
+;;; No hay más valores de
+(prime-sum-pair (quote (1 3 5 8)) (quote (20 35 110)))
+
+;;; Entrada Amb-Eval:
+(prime-sum-pair '(19 27 30) '(11 36 58))
+;;; Iniciando un nuevo problema
+;;; Valor Amb-Eval:
+(30 11)
+#+end_src
+
+**** Exercise 4.35
+:properties:
+:custom_id: exercise-4.35
+:end:
+
+Escribe un procedimiento ~an-integer-between~ que devuelve un entero entre dos límites dados. Esto puede usarse para implementar un procedimiento que encuentre triples pitagóricas, es decir, triples de enteros (i,j,k) entre los límites dados tal que i <= j y i^2 + j^2 = k^2, de la siguiente manera:
+
+#+begin_src scheme
+(define (a-pythagorean-triple-between low high)
+  (let ((i (an-integer-between low high)))
+    (let ((j (an-integer-between i high)))
+      (let ((k (an-integer-between j high)))
+        (require (= (+ (* i i) (* j j)) (* k k)))
+        (list i j k)))))
+#+end_src
+
+**** Exercise 4.36
+:properties:
+:custom_id: exercise-4.36
+:end:
+
+El [[#exercise-3.69][Exercise 3.69]] discutió cómo generar el flujo de /todas/ las triples pitagóricas, sin límite superior en el tamaño de los enteros a buscar. Explica por qué simplemente reemplazar ~an-integer-between~ por ~an-integer-starting-from~ en el procedimiento del [[#exercise-4.35][Exercise 4.35]] no es una forma adecuada de generar triples pitagóricas arbitrarias. Escribe un procedimiento que realmente logre esto. (Es decir, escribe un procedimiento para el cual escribir repetidamente ~try-again~ eventualmente generaría en principio todas las triples pitagóricas.)
+
+**** Exercise 4.37
+:properties:
+:custom_id: exercise-4.37
+:end:
+
+Ben Bitdiddle afirma que el siguiente método para generar triples pitagóricas es más eficiente que el del [[#exercise-4.35][Exercise 4.35]]. ¿Tiene razón? (Pista: Considera el número de posibilidades que deben explorarse.)
+
+#+begin_src scheme
+(define (a-pythagorean-triple-between low high)
+  (let ((i (an-integer-between low high))
+        (hsq (* high high)))
+    (let ((j (an-integer-between i high)))
+      (let ((ksq (+ (* i i) (* j j))))
+        (require (>= hsq ksq))
+        (let ((k (sqrt ksq)))
+          (require (integer? k))
+          (list i j k))))))
+#+end_src
+*** 4.3.2 Ejemplos de Programas No Deterministas
+:properties:
+:custom_id: section-4.3.2
+:end:
+
+La sección [[#section-4.3.3][4.3.3]] describe la implementación del evaluador ~amb~. Primero, sin embargo, damos algunos ejemplos de cómo puede usarse. La ventaja de la programación no determinista es que podemos suprimir los detalles de cómo se lleva a cabo la búsqueda, expresando así nuestros programas a un nivel más alto de abstracción.
+
+*Acertijos Lógicos*
+
+El siguiente acertijo (tomado de Dinesman 1968) es típico de una gran clase de acertijos lógicos simples:
+
+#+begin_quote
+Baker, Cooper, Fletcher, Miller y Smith viven en diferentes pisos de un edificio de apartamentos que contiene solo cinco pisos. Baker no vive en el piso superior. Cooper no vive en el piso inferior. Fletcher no vive ni en el piso superior ni en el inferior. Miller vive en un piso más alto que Cooper. Smith no vive en un piso adyacente al de Fletcher. Fletcher no vive en un piso adyacente al de Cooper. ¿Dónde vive cada uno?
+#+end_quote
+
+Podemos determinar quién vive en cada piso de una manera directa enumerando todas las posibilidades e imponiendo las restricciones dadas:[fn:252]
+
+#+begin_src scheme
+(define (multiple-dwelling)
+  (let ((baker (amb 1 2 3 4 5))
+        (cooper (amb 1 2 3 4 5))
+        (fletcher (amb 1 2 3 4 5))
+        (miller (amb 1 2 3 4 5))
+        (smith (amb 1 2 3 4 5)))
+    (require
+     (distinct? (list baker cooper fletcher miller smith)))
+    (require (not (= baker 5)))
+    (require (not (= cooper 1)))
+    (require (not (= fletcher 5)))
+    (require (not (= fletcher 1)))
+    (require (> miller cooper))
+    (require (not (= (abs (- smith fletcher)) 1)))
+    (require (not (= (abs (- fletcher cooper)) 1)))
+    (list (list 'baker baker)
+          (list 'cooper cooper)
+          (list 'fletcher fletcher)
+          (list 'miller miller)
+          (list 'smith smith))))
+#+end_src
+
+Evaluar la expresión ~(multiple-dwelling)~ produce el resultado
+
+#+begin_src scheme
+((baker 3) (cooper 2) (fletcher 4) (miller 5) (smith 1))
+#+end_src
+
+Aunque este procedimiento simple funciona, es muy lento. El [[#exercise-4.39][Exercise 4.39]] y el [[#exercise-4.40][Exercise 4.40]] discuten algunas mejoras posibles.
+
+**** Exercise 4.38
+:properties:
+:custom_id: exercise-4.38
+:end:
+
+Modifica el procedimiento multiple-dwelling para omitir el requisito de que Smith y Fletcher no vivan en pisos adyacentes. ¿Cuántas soluciones hay para este acertijo modificado?
+
+**** Exercise 4.39
+:properties:
+:custom_id: exercise-4.39
+:end:
+
+¿Afecta el orden de las restricciones en el procedimiento multiple-dwelling a la respuesta? ¿Afecta al tiempo para encontrar una respuesta? Si crees que importa, demuestra un programa más rápido obtenido del dado reordenando las restricciones. Si crees que no importa, argumenta tu caso.
+
+**** Exercise 4.40
+:properties:
+:custom_id: exercise-4.40
+:end:
+
+En el problema de multiple dwelling, ¿cuántos conjuntos de asignaciones hay de personas a pisos, tanto antes como después del requisito de que las asignaciones de piso sean distintas? Es muy ineficiente generar todas las asignaciones posibles de personas a pisos y luego dejar al retroceso eliminarlas. Por ejemplo, la mayoría de las restricciones dependen de solo una o dos de las variables persona-piso, y por lo tanto pueden imponerse antes de que se hayan seleccionado pisos para todas las personas. Escribe y demuestra un procedimiento no determinista mucho más eficiente que resuelva este problema basándose en generar solo aquellas posibilidades que no están ya descartadas por restricciones previas. (Pista: Esto requerirá un anidamiento de expresiones ~let~.)
+
+**** Exercise 4.41
+:properties:
+:custom_id: exercise-4.41
+:end:
+
+Escribe un programa ordinario de Scheme para resolver el acertijo de multiple dwelling.
+
+**** Exercise 4.42
+:properties:
+:custom_id: exercise-4.42
+:end:
+
+Resuelve el siguiente acertijo de "Mentirosos" (de Phillips 1934):
+
+Cinco colegialas se presentaron a un examen. Sus padres--así pensaban--mostraron un grado indebido de interés en el resultado. Por lo tanto, acordaron que, al escribir a casa sobre el examen, cada chica haría una declaración verdadera y una falsa. Las siguientes son los pasajes relevantes de sus cartas:
+
+- Betty: "Kitty quedó segunda en el examen. Yo solo quedé tercera."
+- Ethel: "Te alegrará saber que quedé primera. Joan quedó segunda."
+- Joan: "Quedé tercera, y la pobre Ethel quedó última."
+- Kitty: "Quedé segunda. Mary solo quedó cuarta."
+- Mary: "Quedé cuarta. El primer lugar lo ocupó Betty."
+
+¿Cuál fue de hecho el orden en que quedaron las cinco chicas?
+
+**** Exercise 4.43
+:properties:
+:custom_id: exercise-4.43
+:end:
+
+Usa el evaluador ~amb~ para resolver el siguiente acertijo:[fn:253]
+
+El padre de Mary Ann Moore tiene un yate y también cada uno de sus cuatro amigos: Colonel Downing, Mr. Hall, Sir Barnacle Hood y Dr. Parker. Cada uno de los cinco también tiene una hija y cada uno ha nombrado su yate con el nombre de la hija de uno de los otros. El yate de Sir Barnacle es el Gabrielle, Mr. Moore posee el Lorna; Mr. Hall el Rosalind. El Melissa, propiedad de Colonel Downing, lleva el nombre de la hija de Sir Barnacle. El padre de Gabrielle posee el yate que lleva el nombre de la hija de Dr. Parker. ¿Quién es el padre de Lorna?
+
+Intenta escribir el programa de modo que se ejecute eficientemente (ver [[#exercise-4.40][Exercise 4.40]]). También determina cuántas soluciones hay si no se nos dice que el apellido de Mary Ann es Moore.
+
+**** Exercise 4.44
+:properties:
+:custom_id: exercise-4.44
+:end:
+
+El [[#exercise-2.42][Exercise 2.42]] describió el "acertijo de las ocho reinas" de colocar reinas en un tablero de ajedrez de modo que ninguna ataque a otra. Escribe un programa no determinista para resolver este acertijo.
+
+*Análisis de lenguaje natural*
+
+Los programas diseñados para aceptar lenguaje natural como entrada usualmente comienzan intentando <<i280>> analizar la entrada, es decir, hacer coincidir la entrada con alguna estructura gramatical. Por ejemplo, podríamos intentar reconocer oraciones simples que consisten en un artículo seguido de un sustantivo seguido de un verbo, como "The cat eats." Para lograr tal análisis, debemos ser capaces de identificar las partes del discurso de palabras individuales. Podríamos comenzar con algunas listas que clasifican varias palabras:[fn:254]
+
+#+begin_src scheme
+(define nouns '(noun student professor cat class))
+
+(define verbs '(verb studies lectures eats sleeps))
+
+(define articles '(article the a))
+#+end_src
+
+También necesitamos una <<i169>> gramática, es decir, un conjunto de reglas que describen cómo los elementos gramaticales se componen de elementos más simples. Una gramática muy simple podría estipular que una oración siempre consiste en dos partes--una frase nominal seguida de un verbo--y que una frase nominal consiste en un artículo seguido de un sustantivo. Con esta gramática, la oración "The cat eats" se analiza de la siguiente manera:
+
+#+begin_src scheme
+(sentence (noun-phrase (article the) (noun cat))
+          (verb eats))
+#+end_src
+
+Podemos generar tal análisis con un programa simple que tiene procedimientos separados para cada una de las reglas gramaticales. Para analizar una oración, identificamos sus dos partes constituyentes y devolvemos una lista de estos dos elementos, etiquetada con el símbolo ~sentence~:
+
+#+begin_src scheme
+(define (parse-sentence)
+  (list 'sentence
+        (parse-noun-phrase)
+        (parse-word verbs)))
+#+end_src
+
+Una frase nominal, de manera similar, se analiza encontrando un artículo seguido de un sustantivo:
+
+#+begin_src scheme
+(define (parse-noun-phrase)
+  (list 'noun-phrase
+        (parse-word articles)
+        (parse-word nouns)))
+#+end_src
+
+En el nivel más bajo, el análisis se reduce a verificar repetidamente que la siguiente palabra no analizada sea un miembro de la lista de palabras para la parte del discurso requerida. Para implementar esto, mantenemos una variable global ~*unparsed*~, que es la entrada que aún no ha sido analizada. Cada vez que verificamos una palabra, requerimos que ~*unparsed*~ no esté vacío y que deba comenzar con una palabra de la lista designada. Si es así, eliminamos esa palabra de ~*unparsed*~ y devolvemos la palabra junto con su parte del discurso (que se encuentra al principio de la lista):[fn:255]
+
+#+begin_src scheme
+(define (parse-word word-list)
+  (require (not (null? *unparsed*)))
+  (require (memq (car *unparsed*) (cdr word-list)))
+  (let ((found-word (car *unparsed*)))
+    (set! *unparsed* (cdr *unparsed*))
+    (list (car word-list) found-word)))
+#+end_src
+
+Para comenzar el análisis, todo lo que necesitamos hacer es establecer ~*unparsed*~ como la entrada completa, intentar analizar una oración y verificar que no quede nada:
+
+#+begin_src scheme
+(define *unparsed* '())
+
+(define (parse input)
+  (set! *unparsed* input)
+  (let ((sent (parse-sentence)))
+    (require (null? *unparsed*))
+    sent))
+#+end_src
+
+Ahora podemos probar el analizador y verificar que funciona para nuestra oración de prueba simple:
+
+#+begin_src scheme
+;;; Entrada Amb-Eval:
+(parse '(the cat eats))
+;;; Iniciando un nuevo problema
+;;; Valor Amb-Eval:
+(sentence (noun-phrase (article the) (noun cat)) (verb eats))
+#+end_src
+
+El evaluador ~amb~ es útil aquí porque es conveniente expresar las restricciones de análisis con la ayuda de ~require~. La búsqueda automática y el retroceso realmente valen la pena, sin embargo, cuando consideramos gramáticas más complejas donde hay opciones sobre cómo pueden descomponerse las unidades.
+
+Agreguemos a nuestra gramática una lista de preposiciones:
+
+#+begin_src scheme
+(define prepositions '(prep for to in by with))
+#+end_src
+
+y definamos una frase preposicional (por ejemplo, "for the cat") como una preposición seguida de una frase nominal:
+
+#+begin_src scheme
+(define (parse-prepositional-phrase)
+  (list 'prep-phrase
+        (parse-word prepositions)
+        (parse-noun-phrase)))
+#+end_src
+
+Ahora podemos definir una oración como una frase nominal seguida de una frase verbal, donde una frase verbal puede ser un verbo o una frase verbal extendida por una frase preposicional:[fn:256]
+
+#+begin_src scheme
+(define (parse-sentence)
+  (list 'sentence
+        (parse-noun-phrase)
+        (parse-verb-phrase)))
+
+(define (parse-verb-phrase)
+  (define (maybe-extend verb-phrase)
+    (amb verb-phrase
+         (maybe-extend (list 'verb-phrase
+                             verb-phrase
+                             (parse-prepositional-phrase)))))
+  (maybe-extend (parse-word verbs)))
+#+end_src
+
+Mientras estamos en ello, también podemos elaborar la definición de frases nominales para permitir cosas como "a cat in the class." Lo que solíamos llamar una frase nominal, ahora lo llamaremos una frase nominal simple, y una frase nominal ahora será una frase nominal simple o una frase nominal extendida por una frase preposicional:
+
+#+begin_src scheme
+(define (parse-simple-noun-phrase)
+  (list 'simple-noun-phrase
+        (parse-word articles)
+        (parse-word nouns)))
+
+(define (parse-noun-phrase)
+  (define (maybe-extend noun-phrase)
+    (amb noun-phrase
+         (maybe-extend (list 'noun-phrase
+                             noun-phrase
+                             (parse-prepositional-phrase)))))
+  (maybe-extend (parse-simple-noun-phrase)))
+#+end_src
+
+Nuestra nueva gramática nos permite analizar oraciones más complejas. Por ejemplo
+
+#+begin_src scheme
+(parse '(the student with the cat sleeps in the class))
+#+end_src
+
+produce
+
+#+begin_src scheme
+(sentence
+ (noun-phrase
+  (simple-noun-phrase (article the) (noun student))
+  (prep-phrase (prep with)
+               (simple-noun-phrase
+                (article the) (noun cat))))
+ (verb-phrase
+  (verb sleeps)
+  (prep-phrase (prep in)
+               (simple-noun-phrase
+                (article the) (noun class)))))
+#+end_src
+
+Observa que una entrada dada puede tener más de un análisis legal. En la oración "The professor lectures to the student with the cat," puede ser que el profesor esté dando una conferencia con el gato, o que el estudiante tenga el gato. Nuestro programa no determinista encuentra ambas posibilidades:
+
+#+begin_src scheme
+(parse '(the professor lectures to the student with the cat))
+#+end_src
+
+produce
+
+#+begin_src scheme
+(sentence
+ (simple-noun-phrase (article the) (noun professor))
+ (verb-phrase
+  (verb-phrase
+   (verb lectures)
+   (prep-phrase (prep to)
+                (simple-noun-phrase
+                 (article the) (noun student))))
+  (prep-phrase (prep with)
+               (simple-noun-phrase
+                (article the) (noun cat)))))
+#+end_src
+
+Pedir al evaluador que intente de nuevo produce
+
+#+begin_src scheme
+(sentence
+ (simple-noun-phrase (article the) (noun professor))
+ (verb-phrase
+  (verb lectures)
+  (prep-phrase (prep to)
+               (noun-phrase
+                (simple-noun-phrase
+                 (article the) (noun student))
+                (prep-phrase (prep with)
+                             (simple-noun-phrase
+                              (article the) (noun cat)))))))
+#+end_src
+
+**** Exercise 4.45
+:properties:
+:custom_id: exercise-4.45
+:end:
+
+Con la gramática dada anteriormente, la siguiente oración puede analizarse de cinco maneras diferentes: "The professor lectures to the student in the class with the cat." Da los cinco análisis y explica las diferencias en matices de significado entre ellos.
+
+**** Exercise 4.46
+:properties:
+:custom_id: exercise-4.46
+:end:
+
+Los evaluadores en las secciones [[#section-4.1][4.1]] y [[#section-4.2][4.2]] no determinan en qué orden se evalúan los operandos. Veremos que el evaluador ~amb~ los evalúa de izquierda a derecha. Explica por qué nuestro programa de análisis no funcionaría si los operandos se evaluaran en algún otro orden.
+
+**** Exercise 4.47
+:properties:
+:custom_id: exercise-4.47
+:end:
+
+Louis Reasoner sugiere que, dado que una frase verbal es un verbo o una frase verbal seguida de una frase preposicional, sería mucho más directo definir el procedimiento ~parse-verb-phrase~ de la siguiente manera (y de manera similar para frases nominales):
+
+#+begin_src scheme
+(define (parse-verb-phrase)
+  (amb (parse-word verbs)
+       (list 'verb-phrase
+             (parse-verb-phrase)
+             (parse-prepositional-phrase))))
+#+end_src
+
+¿Funciona esto? ¿Cambia el comportamiento del programa si intercambiamos el orden de las expresiones en el ~amb~?
+
+**** Exercise 4.48
+:properties:
+:custom_id: exercise-4.48
+:end:
+
+Extiende la gramática dada anteriormente para manejar oraciones más complejas. Por ejemplo, podrías extender las frases nominales y las frases verbales para incluir adjetivos y adverbios, o podrías manejar oraciones compuestas.[fn:257]
+
+**** Exercise 4.49
+:properties:
+:custom_id: exercise-4.49
+:end:
+
+Alyssa P. Hacker está más interesada en generar oraciones interesantes que en analizarlas. Ella razona que simplemente cambiando el procedimiento ~parse-word~ de modo que ignore la "oración de entrada" y en su lugar siempre tenga éxito y genere una palabra apropiada, podemos usar los programas que habíamos construido para analizar para hacer generación en su lugar. Implementa la idea de Alyssa, y muestra las primeras media docena de oraciones generadas aproximadamente.[fn:258]
+*** 4.3.3 Implementando el Evaluador ~amb~
+:properties:
+:custom_id: section-4.3.3
+:end:
+
+La evaluación de una expresión ordinaria de Scheme puede devolver un valor, puede nunca terminar, o puede señalar un error. En Scheme no determinista, la evaluación de una expresión puede además resultar en el descubrimiento de un callejón sin salida, en cuyo caso la evaluación debe retroceder a un punto de elección anterior. La interpretación de Scheme no determinista se complica por este caso adicional.
+
+Construiremos el evaluador ~amb~ para Scheme no determinista modificando el evaluador analizador de la sección [[#section-4.1.7][4.1.7]].[fn:259] Como en el evaluador analizador, la evaluación de una expresión se logra llamando a un procedimiento de ejecución producido por el análisis de esa expresión. La diferencia entre la interpretación de Scheme ordinario y la interpretación de Scheme no determinista estará completamente en los procedimientos de ejecución.
+
+*Procedimientos de ejecución y continuaciones*
+
+Recuerda que los procedimientos de ejecución para el evaluador ordinario toman un argumento: el entorno de ejecución. En contraste, los procedimientos de ejecución en el evaluador ~amb~ toman tres argumentos: el entorno, y dos procedimientos llamados <<i84>> procedimientos de continuación. La evaluación de una expresión terminará llamando a una de estas dos continuaciones: Si la evaluación resulta en un valor, se llama a la <<i377>> continuación de éxito con ese valor; si la evaluación resulta en el descubrimiento de un callejón sin salida, se llama a la <<i135>> continuación de fallo. Construir y llamar a continuaciones apropiadas es el mecanismo mediante el cual el evaluador no determinista implementa el retroceso.
+
+Es el trabajo de la continuación de éxito recibir un valor y proceder con la computación. Junto con ese valor, se pasa a la continuación de éxito otra continuación de fallo, que debe ser llamada posteriormente si el uso de ese valor lleva a un callejón sin salida.
+
+Es el trabajo de la continuación de fallo intentar otra rama del proceso no determinista. La esencia del lenguaje no determinista está en el hecho de que las expresiones pueden representar elecciones entre alternativas. La evaluación de tal expresión debe proceder con una de las elecciones alternativas indicadas, aunque no se sepa de antemano qué elecciones llevarán a resultados aceptables. Para lidiar con esto, el evaluador elige una de las alternativas y pasa este valor a la continuación de éxito. Junto con este valor, el evaluador construye y pasa una continuación de fallo que puede ser llamada más tarde para elegir una alternativa diferente.
+
+Se desencadena un fallo durante la evaluación (es decir, se llama a una continuación de fallo) cuando un programa de usuario rechaza explícitamente la línea de ataque actual (por ejemplo, una llamada a ~require~ puede resultar en la ejecución de ~(amb)~, una expresión que siempre falla--ver sección [[#section-4.3.1][4.3.1]]). La continuación de fallo a mano en ese punto causará que el punto de elección más reciente elija otra alternativa. Si no hay más alternativas a considerar en ese punto de elección, se desencadena un fallo en un punto de elección anterior, y así sucesivamente. Las continuaciones de fallo también son invocadas por el bucle de controlador en respuesta a una solicitud de ~try-again~, para encontrar otro valor de la expresión.
+
+Además, si ocurre una operación de efecto secundario (como una asignación a una variable) en una rama del proceso resultante de una elección, puede ser necesario, cuando el proceso encuentra un callejón sin salida, deshacer el efecto secundario antes de hacer una nueva elección. Esto se logra haciendo que la operación de efecto secundario produzca una continuación de fallo que deshace el efecto secundario y propaga el fallo.
+
+En resumen, las continuaciones de fallo son construidas por
+
+- expresiones ~amb~--para proporcionar un mecanismo para hacer elecciones alternativas si la elección actual hecha por la expresión ~amb~ lleva a un callejón sin salida;
+
+- el controlador de nivel superior--para proporcionar un mecanismo para reportar fallo cuando se agotan las elecciones;
+
+- asignaciones--para interceptar fallos y deshacer asignaciones durante el retroceso.
+
+Los fallos se inician solo cuando se encuentra un callejón sin salida. Esto ocurre
+
+- si el programa de usuario ejecuta ~(amb)~;
+- si el usuario escribe ~try-again~ en el controlador de nivel superior.
+
+Las continuaciones de fallo también se llaman durante el procesamiento de un fallo:
+
+- Cuando la continuación de fallo creada por una asignación termina de deshacer un efecto secundario, llama a la continuación de fallo que interceptó, para propagar el fallo de vuelta al punto de elección que llevó a esta asignación o al nivel superior.
+
+- Cuando la continuación de fallo para un ~amb~ se queda sin opciones, llama a la continuación de fallo que originalmente se dio al ~amb~, para propagar el fallo de vuelta al punto de elección anterior o al nivel superior.
+
+*Estructura del evaluador*
+
+Los procedimientos de sintaxis y representación de datos para el evaluador ~amb~, y también el procedimiento básico ~analyze~, son idénticos a aquellos en el evaluador de la sección [[#section-4.1.7][4.1.7]], excepto por el hecho de que necesitamos procedimientos de sintaxis adicionales para reconocer la forma especial ~amb~:[fn:260]
+
+#+begin_src scheme
+(define (amb? exp) (tagged-list? exp 'amb))
+
+(define (amb-choices exp) (cdr exp))
+#+end_src
+
+También debemos agregar al despacho en ~analyze~ una cláusula que reconocerá esta forma especial y generará un procedimiento de ejecución apropiado:
+
+#+begin_src scheme
+((amb? exp) (analyze-amb exp))
+#+end_src
+
+El procedimiento de nivel superior ~ambeval~ (similar a la versión de ~eval~ dada en la sección [[#section-4.1.7][4.1.7]]) analiza la expresión dada y aplica el procedimiento de ejecución resultante al entorno dado, junto con dos continuaciones dadas:
+
+#+begin_src scheme
+(define (ambeval exp env succeed fail)
+  ((analyze exp) env succeed fail))
+#+end_src
+
+Una continuación de éxito es un procedimiento de dos argumentos: el valor recién obtenido y otra continuación de fallo a usar si ese valor lleva a un fallo posterior. Una continuación de fallo es un procedimiento sin argumentos. Así que la forma general de un procedimiento de ejecución es
+
+#+begin_src scheme
+(lambda (env succeed fail)
+  ;; ~succeed~ es '(lambda (value fail) ...)'
+  ;; ~fail~ es '(lambda () ...)'
+  ...)
+#+end_src
+
+Por ejemplo, ejecutar
+
+#+begin_src scheme
+(ambeval <EXP>
+         the-global-environment
+         (lambda (value fail) value)
+         (lambda () 'failed))
+#+end_src
+
+intentará evaluar la expresión dada y devolverá el valor de la expresión (si la evaluación tiene éxito) o el símbolo ~failed~ (si la evaluación falla). La llamada a ~ambeval~ en el bucle de controlador mostrado a continuación usa procedimientos de continuación mucho más complicados, que continúan el bucle y soportan la solicitud de ~try-again~.
+
+La mayor parte de la complejidad del evaluador ~amb~ resulta de la mecánica de pasar las continuaciones mientras los procedimientos de ejecución se llaman entre sí. Al revisar el siguiente código, debes comparar cada uno de los procedimientos de ejecución con el procedimiento correspondiente para el evaluador ordinario dado en la sección [[#section-4.1.7][4.1.7]].
+
+*Expresiones simples*
+
+Los procedimientos de ejecución para los tipos de expresiones más simples son esencialmente los mismos que aquellos para el evaluador ordinario, excepto por la necesidad de gestionar las continuaciones. Los procedimientos de ejecución simplemente tienen éxito con el valor de la expresión, pasando la continuación de fallo que se les pasó.
+
+#+begin_src scheme
+(define (analyze-self-evaluating exp)
+  (lambda (env succeed fail)
+    (succeed exp fail)))
+
+(define (analyze-quoted exp)
+  (let ((qval (text-of-quotation exp)))
+    (lambda (env succeed fail)
+      (succeed qval fail))))
+
+(define (analyze-variable exp)
+  (lambda (env succeed fail)
+    (succeed (lookup-variable-value exp env)
+             fail)))
+
+(define (analyze-lambda exp)
+  (let ((vars (lambda-parameters exp))
+        (bproc (analyze-sequence (lambda-body exp))))
+    (lambda (env succeed fail)
+      (succeed (make-procedure vars bproc env)
+               fail))))
+#+end_src
+
+Observa que buscar una variable siempre "tiene éxito". Si ~lookup-variable-value~ no logra encontrar la variable, señala un error, como es usual. Tal "fallo" indica un error de programa--una referencia a una variable no vinculada; no es una indicación de que debamos intentar otra elección no determinista en lugar de la que se está intentando actualmente.
+
+*Condicionales y secuencias*
+
+Los condicionales también se manejan de manera similar al evaluador ordinario. El procedimiento de ejecución generado por ~analyze-if~ invoca el procedimiento de ejecución del predicado ~pproc~ con una continuación de éxito que verifica si el valor del predicado es verdadero y continúa ejecutando el consecuente o la alternativa. Si la ejecución de ~pproc~ falla, se llama a la continuación de fallo original para la expresión ~if~.
+
+#+begin_src scheme
+(define (analyze-if exp)
+  (let ((pproc (analyze (if-predicate exp)))
+        (cproc (analyze (if-consequent exp)))
+        (aproc (analyze (if-alternative exp))))
+    (lambda (env succeed fail)
+      (pproc env
+             ;; continuación de éxito para evaluar el predicado
+             ;; para obtener ~pred-value~
+             (lambda (pred-value fail2)
+               (if (true? pred-value)
+                   (cproc env succeed fail2)
+                   (aproc env succeed fail2)))
+             ;; continuación de fallo para evaluar el predicado
+             fail))))
+#+end_src
+
+Las secuencias también se manejan de la misma manera que en el evaluador anterior, excepto por las maquinaciones en el subprocedimiento ~sequentially~ que se requieren para pasar las continuaciones. Es decir, para ejecutar secuencialmente ~a~ y luego ~b~, llamamos a ~a~ con una continuación de éxito que llama a ~b~.
+
+#+begin_src scheme
+(define (analyze-sequence exps)
+  (define (sequentially a b)
+    (lambda (env succeed fail)
+      (a env
+         ;; continuación de éxito para llamar a ~a~
+         (lambda (a-value fail2)
+           (b env succeed fail2))
+         ;; continuación de fallo para llamar a ~a~
+         fail)))
+  (define (loop first-proc rest-procs)
+    (if (null? rest-procs)
+        first-proc
+        (loop (sequentially first-proc (car rest-procs))
+              (cdr rest-procs))))
+  (let ((procs (map analyze exps)))
+    (if (null? procs)
+        (error "Empty sequence - ANALYZE"))
+    (loop (car procs) (cdr procs))))
+#+end_src
+
+*Definiciones y asignaciones*
+
+Las definiciones son otro caso donde debemos tomarnos algunas molestias para gestionar las continuaciones, porque es necesario evaluar la expresión del valor de definición antes de definir realmente la nueva variable. Para lograr esto, se llama al procedimiento de ejecución del valor de definición ~vproc~ con el entorno, una continuación de éxito y la continuación de fallo. Si la ejecución de ~vproc~ tiene éxito, obteniendo un valor ~val~ para la variable definida, la variable se define y se propaga el éxito:
+
+#+begin_src scheme
+(define (analyze-definition exp)
+  (let ((var (definition-variable exp))
+        (vproc (analyze (definition-value exp))))
+    (lambda (env succeed fail)
+      (vproc env
+             (lambda (val fail2)
+               (define-variable! var val env)
+               (succeed 'ok fail2))
+             fail))))
+#+end_src
+
+Las asignaciones son más interesantes. Este es el primer lugar donde realmente usamos las continuaciones, en lugar de solo pasarlas. El procedimiento de ejecución para asignaciones comienza como el de las definiciones. Primero intenta obtener el nuevo valor a asignar a la variable. Si esta evaluación de ~vproc~ falla, la asignación falla.
+
+Si ~vproc~ tiene éxito, sin embargo, y procedemos a hacer la asignación, debemos considerar la posibilidad de que esta rama de la computación pueda fallar más tarde, lo que nos requerirá retroceder fuera de la asignación. Por lo tanto, debemos arreglar para deshacer la asignación como parte del proceso de retroceso.[fn:261]
+
+Esto se logra dando a ~vproc~ una continuación de éxito (marcada con el comentario "*1*" a continuación) que guarda el valor antiguo de la variable antes de asignar el nuevo valor a la variable y proceder desde la asignación. La continuación de fallo que se pasa junto con el valor de la asignación (marcada con el comentario "*2*" a continuación) restaura el valor antiguo de la variable antes de continuar el fallo. Es decir, una asignación exitosa proporciona una continuación de fallo que interceptará un fallo posterior; cualquier fallo que de otro modo hubiera llamado a ~fail2~ llama a este procedimiento en su lugar, para deshacer la asignación antes de llamar realmente a ~fail2~.
+
+#+begin_src scheme
+(define (analyze-assignment exp)
+  (let ((var (assignment-variable exp))
+        (vproc (analyze (assignment-value exp))))
+    (lambda (env succeed fail)
+      (vproc env
+             (lambda (val fail2)        ; *1*
+               (let ((old-value
+                      (lookup-variable-value var env)))
+                 (set-variable-value! var val env)
+                 (succeed 'ok
+                          (lambda ()    ; *2*
+                            (set-variable-value! var
+                                                 old-value
+                                                 env)
+                            (fail2)))))
+             fail))))
+#+end_src
+
+*Aplicaciones de procedimiento*
+
+El procedimiento de ejecución para aplicaciones no contiene nuevas ideas excepto por la complejidad técnica de gestionar las continuaciones. Esta complejidad surge en ~analyze-application~, debido a la necesidad de hacer un seguimiento de las continuaciones de éxito y fallo mientras evaluamos los operandos. Usamos un procedimiento ~get-args~ para evaluar la lista de operandos, en lugar de un simple ~map~ como en el evaluador ordinario.
+
+#+begin_src scheme
+(define (analyze-application exp)
+  (let ((fproc (analyze (operator exp)))
+        (aprocs (map analyze (operands exp))))
+    (lambda (env succeed fail)
+      (fproc env
+             (lambda (proc fail2)
+               (get-args aprocs
+                         env
+                         (lambda (args fail3)
+                           (execute-application
+                            proc args succeed fail3))
+                         fail2))
+             fail))))
+#+end_src
+
+En ~get-args~, observa cómo bajar con 'cdr' por la lista de procedimientos de ejecución ~aproc~ y construir con 'cons' la lista resultante de ~args~ se logra llamando a cada ~aproc~ en la lista con una continuación de éxito que llama recursivamente a ~get-args~. Cada una de estas llamadas recursivas a ~get-args~ tiene una continuación de éxito cuyo valor es el ~cons~ del argumento recién obtenido sobre la lista de argumentos acumulados:
+
+#+begin_src scheme
+(define (get-args aprocs env succeed fail)
+  (if (null? aprocs)
+      (succeed '() fail)
+      ((car aprocs) env
+       ;; continuación de éxito para este ~aproc~
+       (lambda (arg fail2)
+         (get-args (cdr aprocs)
+                   env
+                   ;; continuación de éxito para llamada recursiva
+                   ;; a ~get-args~
+                   (lambda (args fail3)
+                     (succeed (cons arg args)
+                              fail3))
+                   fail2))
+       fail)))
+#+end_src
+
+La aplicación de procedimiento real, que es realizada por ~execute-application~, se logra de la misma manera que para el evaluador ordinario, excepto por la necesidad de gestionar las continuaciones.
+
+#+begin_src scheme
+(define (execute-application proc args succeed fail)
+  (cond ((primitive-procedure? proc)
+         (succeed (apply-primitive-procedure proc args)
+                  fail))
+        ((compound-procedure? proc)
+         ((procedure-body proc)
+          (extend-environment (procedure-parameters proc)
+                              args
+                              (procedure-environment proc))
+          succeed
+          fail))
+        (else
+         (error
+          "Unknown procedure type - EXECUTE-APPLICATION"
+          proc))))
+#+end_src
+
+*Evaluando expresiones ~amb~*
+
+La forma especial ~amb~ es el elemento clave en el lenguaje no determinista. Aquí vemos la esencia del proceso de interpretación y la razón para hacer un seguimiento de las continuaciones. El procedimiento de ejecución para ~amb~ define un bucle ~try-next~ que recorre los procedimientos de ejecución para todos los valores posibles de la expresión ~amb~. Cada procedimiento de ejecución se llama con una continuación de fallo que intentará el siguiente. Cuando no hay más alternativas que intentar, toda la expresión ~amb~ falla.
+
+#+begin_src scheme
+(define (analyze-amb exp)
+  (let ((cprocs (map analyze (amb-choices exp))))
+    (lambda (env succeed fail)
+      (define (try-next choices)
+        (if (null? choices)
+            (fail)
+            ((car choices) env
+             succeed
+             (lambda ()
+               (try-next (cdr choices))))))
+      (try-next cprocs))))
+#+end_src
+
+*Bucle de controlador*
+
+El bucle de controlador para el evaluador ~amb~ es complejo, debido al mecanismo que permite al usuario intentar de nuevo al evaluar una expresión. El controlador usa un procedimiento llamado ~internal-loop~, que toma como argumento un procedimiento ~try-again~. La intención es que llamar a ~try-again~ deba continuar con la siguiente alternativa no probada en la evaluación no determinista. ~internal-loop~ llama a ~try-again~ en respuesta al usuario escribiendo ~try-again~ en el bucle de controlador, o inicia una nueva evaluación llamando a ~ambeval~.
+
+La continuación de fallo para esta llamada a ~ambeval~ informa al usuario que no hay más valores y vuelve a invocar el bucle de controlador.
+
+La continuación de éxito para la llamada a ~ambeval~ es más sutil. Imprimimos el valor obtenido y luego invocamos el bucle interno de nuevo con un procedimiento ~try-again~ que podrá intentar la siguiente alternativa. Este procedimiento ~next-alternative~ es el segundo argumento que se pasó a la continuación de éxito. Ordinariamente, pensamos en este segundo argumento como una continuación de fallo a usar si la rama de evaluación actual falla más tarde. En este caso, sin embargo, hemos completado una evaluación exitosa, así que podemos invocar la rama alternativa de "fallo" para buscar evaluaciones exitosas adicionales.
+
+#+begin_src scheme
+(define input-prompt ";;; Entrada Amb-Eval:")
+(define output-prompt ";;; Valor Amb-Eval:")
+
+(define (driver-loop)
+  (define (internal-loop try-again)
+    (prompt-for-input input-prompt)
+    (let ((input (read)))
+      (if (eq? input 'try-again)
+          (try-again)
+          (begin
+            (newline)
+            (display ";;; Iniciando un nuevo problema ")
+            (ambeval input
+                     the-global-environment
+                     ;; éxito de ~ambeval~
+                     (lambda (val next-alternative)
+                       (announce-output output-prompt)
+                       (user-print val)
+                       (internal-loop next-alternative))
+                     ;; fallo de ~ambeval~
+                     (lambda ()
+                       (announce-output
+                        ";;; No hay más valores de")
+                       (user-print input)
+                       (driver-loop)))))))
+  (internal-loop
+   (lambda ()
+     (newline)
+     (display ";;; No hay ningún problema actual")
+     (driver-loop))))
+#+end_src
+
+La llamada inicial a ~internal-loop~ usa un procedimiento ~try-again~ que se queja de que no hay ningún problema actual y reinicia el bucle de controlador. Este es el comportamiento que ocurrirá si el usuario escribe ~try-again~ cuando no hay ninguna evaluación en progreso.
+
+**** Exercise 4.50
+:properties:
+:custom_id: exercise-4.50
+:end:
+
+Implementa una nueva forma especial ~ramb~ que sea como ~amb~ excepto que busca alternativas en un orden aleatorio, en lugar de de izquierda a derecha. Muestra cómo esto puede ayudar con el problema de Alyssa en el [[#exercise-4.49][Exercise 4.49]].
+
+**** Exercise 4.51
+:properties:
+:custom_id: exercise-4.51
+:end:
+
+Implementa un nuevo tipo de asignación llamada ~permanent-set!~ que no se deshace al fallar. Por ejemplo, podemos elegir dos elementos distintos de una lista y contar el número de intentos requeridos para hacer una elección exitosa de la siguiente manera:
+
+#+begin_src scheme
+(define count 0)
+
+(let ((x (an-element-of '(a b c)))
+      (y (an-element-of '(a b c))))
+  (permanent-set! count (+ count 1))
+  (require (not (eq? x y)))
+  (list x y count))
+;;; Iniciando un nuevo problema
+;;; Valor Amb-Eval:
+(a b 2)
+
+;;; Entrada Amb-Eval:
+try-again
+;;; Valor Amb-Eval:
+(a c 3)
+#+end_src
+
+¿Qué valores se habrían mostrado si hubiéramos usado ~set!~ aquí en lugar de ~permanent-set!~?
+
+**** Exercise 4.52
+:properties:
+:custom_id: exercise-4.52
+:end:
+
+Implementa una nueva construcción llamada ~if-fail~ que permita al usuario capturar el fallo de una expresión. ~if-fail~ toma dos expresiones. Evalúa la primera expresión como es usual y devuelve como es usual si la evaluación tiene éxito. Si la evaluación falla, sin embargo, se devuelve el valor de la segunda expresión, como en el siguiente ejemplo:
+
+#+begin_src scheme
+;;; Entrada Amb-Eval:
+(if-fail (let ((x (an-element-of '(1 3 5))))
+           (require (even? x))
+           x)
+         'all-odd)
+;;; Iniciando un nuevo problema
+;;; Valor Amb-Eval:
+all-odd
+
+;;; Entrada Amb-Eval:
+(if-fail (let ((x (an-element-of '(1 3 5 8))))
+           (require (even? x))
+           x)
+         'all-odd)
+;;; Iniciando un nuevo problema
+;;; Valor Amb-Eval:
+8
+#+end_src
+
+**** Exercise 4.53
+:properties:
+:custom_id: exercise-4.53
+:end:
+
+Con ~permanent-set!~ como se describe en el [[#exercise-4.51][Exercise 4.51]] e ~if-fail~ como en el [[#exercise-4.52][Exercise 4.52]], ¿cuál será el resultado de evaluar
+
+#+begin_src scheme
+(let ((pairs '()))
+  (if-fail (let ((p (prime-sum-pair '(1 3 5 8) '(20 35 110))))
+             (permanent-set! pairs (cons p pairs))
+             (amb))
+           pairs))
+#+end_src
+
+**** Exercise 4.54
+:properties:
+:custom_id: exercise-4.54
+:end:
+
+Si no nos hubiéramos dado cuenta de que ~require~ podría implementarse como un procedimiento ordinario que usa ~amb~, para ser definido por el usuario como parte de un programa no determinista, habríamos tenido que implementarlo como una forma especial. Esto requeriría procedimientos de sintaxis
+
+#+begin_src scheme
+(define (require? exp) (tagged-list? exp 'require))
+
+(define (require-predicate exp) (cadr exp))
+#+end_src
+
+y una nueva cláusula en el despacho en ~analyze~
+
+#+begin_src scheme
+((require? exp) (analyze-require exp))
+#+end_src
+
+así como el procedimiento ~analyze-require~ que maneja expresiones ~require~. Completa la siguiente definición de ~analyze-require~.
+
+#+begin_src scheme
+(define (analyze-require exp)
+  (let ((pproc (analyze (require-predicate exp))))
+    (lambda (env succeed fail)
+      (pproc env
+             (lambda (pred-value fail2)
+               (if <??>
+                   <??>
+                   (succeed 'ok fail2)))
+             fail))))
+#+end_src

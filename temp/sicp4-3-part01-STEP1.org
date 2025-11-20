@@ -1,0 +1,173 @@
+** 4.3 Variaciones sobre Scheme -- Computación No Determinista
+:properties:
+:custom_id: section-4.3
+:end:
+
+En esta sección, extendemos el evaluador de Scheme para soportar un paradigma de programación llamado <<i261>> computación no determinista construyendo en el evaluador una facilidad para soportar búsqueda automática. Este es un cambio mucho más profundo al lenguaje que la introducción de la evaluación perezosa en la sección [[#section-4.2][4.2]].
+
+La computación no determinista, al igual que el procesamiento de flujos, es útil para aplicaciones de "generar y probar". Considera la tarea de comenzar con dos listas de enteros positivos y encontrar un par de enteros--uno de la primera lista y uno de la segunda lista--cuya suma sea prima. Vimos cómo manejar esto con operaciones de secuencia finita en la sección [[#section-2.2.3][2.2.3]] y con flujos infinitos en la sección [[#section-3.5.3][3.5.3]]. Nuestro enfoque fue generar la secuencia de todos los pares posibles y filtrar estos para seleccionar los pares cuya suma es prima. Si realmente generamos la secuencia completa de pares primero como en el [[#section-2][Capítulo 2]], o intercalamos la generación y el filtrado como en el [[#section-3][Capítulo 3]], es inmaterial para la imagen esencial de cómo está organizada la computación.
+
+El enfoque no determinista evoca una imagen diferente. Imagina simplemente que elegimos (de alguna manera) un número de la primera lista y un número de la segunda lista y requerimos (usando algún mecanismo) que su suma sea prima. Esto se expresa mediante el siguiente procedimiento:
+
+#+begin_src scheme
+(define (prime-sum-pair list1 list2)
+  (let ((a (an-element-of list1))
+        (b (an-element-of list2)))
+    (require (prime? (+ a b)))
+    (list a b)))
+#+end_src
+
+Puede parecer como si este procedimiento simplemente replanteara el problema, en lugar de especificar una forma de resolverlo. Sin embargo, este es un programa no determinista legítimo.[fn:246]
+
+La idea clave aquí es que las expresiones en un lenguaje no determinista pueden tener más de un valor posible. Por ejemplo, ~an-element-of~ podría devolver cualquier elemento de la lista dada. Nuestro evaluador de programa no determinista funcionará eligiendo automáticamente un valor posible y manteniendo un registro de la elección. Si no se cumple un requisito posterior, el evaluador probará una elección diferente, y seguirá probando nuevas elecciones hasta que la evaluación tenga éxito, o hasta que nos quedemos sin opciones. Así como el evaluador perezoso liberó al programador de los detalles de cómo los valores se retrasan y se fuerzan, el evaluador de programa no determinista liberará al programador de los detalles de cómo se hacen las elecciones.
+
+Es instructivo contrastar las diferentes imágenes del tiempo evocadas por la evaluación no determinista y el procesamiento de flujos. El procesamiento de flujos usa evaluación perezosa para desacoplar el tiempo cuando se ensambla el flujo de respuestas posibles del tiempo cuando se producen los elementos del flujo reales. El evaluador soporta la ilusión de que todas las respuestas posibles están dispuestas ante nosotros en una secuencia atemporal. Con la evaluación no determinista, una expresión representa la exploración de un conjunto de mundos posibles, cada uno determinado por un conjunto de elecciones. Algunos de los mundos posibles llevan a callejones sin salida, mientras que otros tienen valores útiles. El evaluador de programa no determinista soporta la ilusión de que el tiempo se ramifica, y que nuestros programas tienen diferentes historias de ejecución posibles. Cuando llegamos a un callejón sin salida, podemos volver a visitar un punto de elección anterior y proceder a lo largo de una rama diferente.
+
+El evaluador de programa no determinista implementado a continuación se llama el evaluador ~amb~ porque está basado en una nueva forma especial llamada ~amb~. Podemos escribir la definición anterior de ~prime-sum-pair~ en el bucle de controlador del evaluador ~amb~ (junto con definiciones de ~prime?~, ~an-element-of~ y ~require~) y ejecutar el procedimiento de la siguiente manera:
+
+#+begin_src scheme
+;;; Amb-Eval input:
+(prime-sum-pair '(1 3 5 8) '(20 35 110))
+;;; Starting a new problem
+;;; Amb-Eval value:
+(3 20)
+#+end_src
+
+El valor devuelto se obtuvo después de que el evaluador eligiera repetidamente elementos de cada una de las listas, hasta que se hizo una elección exitosa.
+
+La sección [[#section-4.3.1][4.3.1]] introduce ~amb~ y explica cómo soporta el no determinismo a través del mecanismo de búsqueda automática del evaluador. La sección [[#section-4.3.2][4.3.2]] presenta ejemplos de programas no deterministas, y la sección [[#section-4.3.3][4.3.3]] da los detalles de cómo implementar el evaluador ~amb~ modificando el evaluador ordinario de Scheme.
+
+*** 4.3.1 Amb y Búsqueda
+:properties:
+:custom_id: section-4.3.1
+:end:
+
+Para extender Scheme para soportar no determinismo, introducimos una nueva forma especial llamada ~amb~.[fn:247] La expresión
+
+#+begin_src scheme
+(amb <E_1> <E_2> ... <E_N>)
+#+end_src
+
+devuelve el valor de una de las n expresiones <E_I> "ambiguamente". Por ejemplo, la expresión
+
+#+begin_src scheme
+(list (amb 1 2 3) (amb 'a 'b))
+#+end_src
+
+puede tener seis valores posibles:
+
+#+begin_example
+(1 a)
+(1 b)
+(2 a)
+(2 b)
+(3 a)
+(3 b)
+#+end_example
+
+~amb~ con una sola elección produce un valor ordinario (único).
+
+~amb~ sin elecciones--la expresión ~(amb)~--es una expresión sin valores aceptables. Operacionalmente, podemos pensar en ~(amb)~ como una expresión que cuando se evalúa causa que la computación "falle": La computación se aborta y no se produce ningún valor. Usando esta idea, podemos expresar el requisito de que una expresión de predicado particular ~p~ debe ser verdadera de la siguiente manera:
+
+#+begin_src scheme
+(define (require p)
+  (if (not p) (amb)))
+#+end_src
+
+Con ~amb~ y ~require~, podemos implementar el procedimiento ~an-element-of~ usado anteriormente:
+
+#+begin_src scheme
+(define (an-element-of items)
+  (require (not (null? items)))
+  (amb (car items) (an-element-of (cdr items))))
+#+end_src
+
+~an-element-of~ falla si la lista está vacía. De lo contrario, devuelve ambiguamente el primer elemento de la lista o un elemento elegido del resto de la lista.
+
+También podemos expresar rangos infinitos de elecciones. El siguiente procedimiento potencialmente devuelve cualquier entero mayor o igual a algún n dado:
+
+#+begin_src scheme
+(define (an-integer-starting-from n)
+  (amb n (an-integer-starting-from (+ n 1))))
+#+end_src
+
+Esto es como el procedimiento de flujo ~integers-starting-from~ descrito en la sección [[#section-3.5.2][3.5.2]], pero con una diferencia importante: El procedimiento de flujo devuelve un objeto que representa la secuencia de todos los enteros comenzando con n, mientras que el procedimiento ~amb~ devuelve un único entero.[fn:248]
+
+Abstractamente, podemos imaginar que evaluar una expresión ~amb~ causa que el tiempo se divida en ramas, donde la computación continúa en cada rama con uno de los valores posibles de la expresión. Decimos que ~amb~ representa un <<i259>> punto de elección no determinista. Si tuviéramos una máquina con un número suficiente de procesadores que pudieran ser asignados dinámicamente, podríamos implementar la búsqueda de una manera directa. La ejecución procedería como en una máquina secuencial, hasta que se encuentre una expresión ~amb~. En este punto, se asignarían más procesadores y se inicializarían para continuar todas las ejecuciones paralelas implicadas por la elección. Cada procesador procedería secuencialmente como si fuera la única elección, hasta que termine al encontrar un fallo, o se subdivida más, o termine.[fn:249]
+
+Por otro lado, si tenemos una máquina que solo puede ejecutar un proceso (o unos pocos procesos concurrentes), debemos considerar las alternativas secuencialmente. Uno podría imaginar modificar un evaluador para elegir al azar una rama a seguir cada vez que encuentre un punto de elección. La elección aleatoria, sin embargo, puede llevar fácilmente a valores fallidos. Podríamos intentar ejecutar el evaluador una y otra vez, haciendo elecciones aleatorias y esperando encontrar un valor que no falle, pero es mejor <<i384>> buscar sistemáticamente todos los caminos de ejecución posibles. El evaluador ~amb~ que desarrollaremos y con el que trabajaremos en esta sección implementa una búsqueda sistemática de la siguiente manera: Cuando el evaluador encuentra una aplicación de ~amb~, inicialmente selecciona la primera alternativa. Esta selección puede en sí misma llevar a una elección adicional. El evaluador siempre elegirá inicialmente la primera alternativa en cada punto de elección. Si una elección resulta en un fallo, entonces el evaluador automágicamente[fn:250] <<i31>> retrocede al punto de elección más reciente e intenta la siguiente alternativa. Si se queda sin alternativas en cualquier punto de elección, el evaluador retrocederá al punto de elección anterior y continuará desde allí. Este proceso lleva a una estrategia de búsqueda conocida como <<i110>> búsqueda en profundidad o <<i57>> retroceso cronológico.[fn:251]
+
+*Bucle de controlador*
+
+El bucle de controlador para el evaluador ~amb~ tiene algunas propiedades inusuales. Lee una expresión e imprime el valor de la primera ejecución sin fallo, como en el ejemplo de ~prime-sum-pair~ mostrado anteriormente. Si queremos ver el valor de la siguiente ejecución exitosa, podemos pedirle al intérprete que retroceda e intente generar una segunda ejecución sin fallo. Esto se señala escribiendo el símbolo ~try-again~. Si se da cualquier expresión excepto ~try-again~, el intérprete comenzará un nuevo problema, descartando las alternativas no exploradas en el problema anterior. Aquí hay una interacción de muestra:
+
+#+begin_src scheme
+;;; Amb-Eval input:
+(prime-sum-pair '(1 3 5 8) '(20 35 110))
+;;; Starting a new problem
+;;; Amb-Eval value:
+(3 20)
+
+;;; Amb-Eval input:
+try-again
+;;; Amb-Eval value:
+(3 110)
+
+;;; Amb-Eval input:
+try-again
+;;; Amb-Eval value:
+(8 35)
+
+;;; Amb-Eval input:
+try-again
+;;; There are no more values of
+(prime-sum-pair (quote (1 3 5 8)) (quote (20 35 110)))
+
+;;; Amb-Eval input:
+(prime-sum-pair '(19 27 30) '(11 36 58))
+;;; Starting a new problem
+;;; Amb-Eval value:
+(30 11)
+#+end_src
+
+**** Exercise 4.35
+:properties:
+:custom_id: exercise-4.35
+:end:
+
+Escribe un procedimiento ~an-integer-between~ que devuelve un entero entre dos límites dados. Esto puede usarse para implementar un procedimiento que encuentre triples pitagóricas, es decir, triples de enteros (i,j,k) entre los límites dados tal que i <= j y i^2 + j^2 = k^2, de la siguiente manera:
+
+#+begin_src scheme
+(define (a-pythagorean-triple-between low high)
+  (let ((i (an-integer-between low high)))
+    (let ((j (an-integer-between i high)))
+      (let ((k (an-integer-between j high)))
+        (require (= (+ (* i i) (* j j)) (* k k)))
+        (list i j k)))))
+#+end_src
+
+**** Exercise 4.36
+:properties:
+:custom_id: exercise-4.36
+:end:
+
+El [[#exercise-3.69][Exercise 3.69]] discutió cómo generar el flujo de /todas/ las triples pitagóricas, sin límite superior en el tamaño de los enteros a buscar. Explica por qué simplemente reemplazar ~an-integer-between~ por ~an-integer-starting-from~ en el procedimiento del [[#exercise-4.35][Exercise 4.35]] no es una forma adecuada de generar triples pitagóricas arbitrarias. Escribe un procedimiento que realmente logre esto. (Es decir, escribe un procedimiento para el cual escribir repetidamente ~try-again~ eventualmente generaría en principio todas las triples pitagóricas.)
+
+**** Exercise 4.37
+:properties:
+:custom_id: exercise-4.37
+:end:
+
+Ben Bitdiddle afirma que el siguiente método para generar triples pitagóricas es más eficiente que el del [[#exercise-4.35][Exercise 4.35]]. ¿Tiene razón? (Pista: Considera el número de posibilidades que deben explorarse.)
+
+#+begin_src scheme
+(define (a-pythagorean-triple-between low high)
+  (let ((i (an-integer-between low high))
+        (hsq (* high high)))
+    (let ((j (an-integer-between i high)))
+      (let ((ksq (+ (* i i) (* j j))))
+        (require (>= hsq ksq))
+        (let ((k (sqrt ksq)))
+          (require (integer? k))
+          (list i j k))))))
+#+end_src
