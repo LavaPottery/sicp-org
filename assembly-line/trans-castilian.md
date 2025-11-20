@@ -1,15 +1,19 @@
-# Trans-Castilian Assembly Line 
+# Trans-Castilian Assembly Line
 
 ## DIRECT COMMANDS
 
 ### Phase 1: The Split
-1. **Identify** the target file in `org-castilian/` (e.g., `sicp1-1.org`).
-2. **Define** the `BASENAME` (the filename without the `.org` extension, e.g., `sicp1-1`).
-3. **Execute**:
+1. **Setup**: Ensure working directories exist:
+   ```bash
+   mkdir -p temp trash
+   ```
+2. **Identify** the target file in `org-castilian/` (e.g., `sicp1-1.org`).
+3. **Define** the `BASENAME` (the filename without the `.org` extension, e.g., `sicp1-1`).
+4. **Execute**:
    ```bash
    python3 scripts/smart_split.py "org-castilian/[basename].org"
    ```
-4. **Safekeeping**: Move the original file from `org-castilian/` to `trash/`:
+5. **Safekeeping**: Move the original file from `org-castilian/` to `trash/`:
    ```bash
    mv "org-castilian/[basename].org" "trash/[basename].org"
    ```
