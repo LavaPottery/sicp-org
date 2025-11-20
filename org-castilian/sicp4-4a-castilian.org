@@ -1,0 +1,837 @@
+** 4.4 Programación Lógica
+:properties:
+:custom_id: section-4.4
+:end:
+
+En el [[#section-1][Capítulo 1]] enfatizamos que la informática trata con conocimiento imperativo (cómo hacer), mientras que las matemáticas tratan con conocimiento declarativo (qué es). De hecho, los lenguajes de programación requieren que el programador exprese el conocimiento en una forma que indique los métodos paso a paso para resolver problemas particulares. Por otro lado, los lenguajes de alto nivel proporcionan, como parte de la implementación del lenguaje, una cantidad sustancial de conocimiento metodológico que libera al usuario de preocuparse por numerosos detalles sobre cómo progresará un cálculo especificado.
+
+La mayoría de los lenguajes de programación, incluyendo Lisp, están organizados en torno al cálculo de valores de funciones matemáticas. Los lenguajes orientados a expresiones (como Lisp, Fortran y Algol) capitalizan el "juego de palabras" de que una expresión que describe el valor de una función también puede interpretarse como un medio para calcular ese valor. Debido a esto, la mayoría de los lenguajes de programación están fuertemente sesgados hacia cálculos unidireccionales (cálculos con entradas y salidas bien definidas). Sin embargo, existen lenguajes de programación radicalmente diferentes que relajan este sesgo. Vimos un ejemplo de esto en la sección [[#section-3.3.5][3.3.5]], donde los objetos de cálculo eran restricciones aritméticas. En un sistema de restricciones, la dirección y el orden del cálculo no están tan bien especificados; al llevar a cabo un cálculo, el sistema debe por lo tanto proporcionar conocimiento "cómo hacer" más detallado de lo que sería el caso con un cálculo aritmético ordinario. Esto no significa, sin embargo, que el usuario quede completamente liberado de la responsabilidad de proporcionar conocimiento imperativo. Hay muchas redes de restricciones que implementan el mismo conjunto de restricciones, y el usuario debe elegir del conjunto de redes matemáticamente equivalentes una red adecuada para especificar un cálculo particular.
+
+El evaluador de programas no deterministas de la sección [[#section-4.3][4.3]] también se aleja de la visión de que la programación consiste en construir algoritmos para calcular funciones unidireccionales. En un lenguaje no determinista, las expresiones pueden tener más de un valor, y, como resultado, el cálculo está tratando con relaciones en lugar de con funciones de valor único. La programación lógica extiende esta idea combinando una visión relacional de la programación con un tipo poderoso de emparejamiento de patrones simbólicos llamado <<i410>> unificación.[fn:262]
+
+Este enfoque, cuando funciona, puede ser una forma muy poderosa de escribir programas. Parte del poder proviene del hecho de que un único hecho "qué es" puede usarse para resolver varios problemas diferentes que tendrían diferentes componentes "cómo hacer". Como ejemplo, considera la operación ~append~, que toma dos listas como argumentos y combina sus elementos para formar una sola lista. En un lenguaje procedimental como Lisp, podríamos definir ~append~ en términos del constructor básico de listas ~cons~, como hicimos en la sección [[#section-2.2.1][2.2.1]]:
+
+#+begin_src scheme
+(define (append x y)
+  (if (null? x)
+      y
+      (cons (car x) (append (cdr x) y))))
+#+end_src
+
+Este procedimiento puede considerarse como una traducción a Lisp de las siguientes dos reglas, la primera de las cuales cubre el caso donde la primera lista está vacía y la segunda maneja el caso de una lista no vacía, que es un ~cons~ de dos partes:
+
+- Para cualquier lista ~y~, la lista vacía y ~y~ se ~append~ para formar ~y~.
+
+- Para cualquier ~u~, ~v~, ~y~, y ~z~, ~(cons u v)~ y ~y~ se ~append~ para formar ~(cons u z)~ si ~v~ y ~y~ se ~append~ para formar ~z~.[fn:263]
+
+Usando el procedimiento ~append~, podemos responder preguntas como
+
+#+begin_example
+Encuentra el ~append~ de ~(a b)~ y ~(c d)~.
+#+end_example
+
+Pero las mismas dos reglas también son suficientes para responder los siguientes tipos de preguntas, que el procedimiento no puede responder:
+
+#+begin_example
+Encuentra una lista ~y~ que se ~append~ con ~(a b)~ para producir ~(a
+b c d)~.
+
+Encuentra todas las ~x~ y ~y~ que se ~append~ para formar ~(a b c d)~.
+#+end_example
+
+En un lenguaje de programación lógica, el programador escribe un "procedimiento" ~append~ declarando las dos reglas sobre ~append~ dadas anteriormente. El conocimiento "cómo hacer" es proporcionado automáticamente por el intérprete para permitir que este único par de reglas se use para responder los tres tipos de preguntas sobre ~append~.[fn:264]
+
+Los lenguajes de programación lógica contemporáneos (incluyendo el que implementamos aquí) tienen deficiencias sustanciales, en el sentido de que sus métodos generales "cómo hacer" pueden conducirlos a bucles infinitos espurios u otro comportamiento indeseable. La programación lógica es un campo activo de investigación en informática.[fn:265]
+
+Anteriormente en este capítulo exploramos la tecnología de implementar intérpretes y describimos los elementos que son esenciales para un intérprete de un lenguaje similar a Lisp (de hecho, para un intérprete de cualquier lenguaje convencional). Ahora aplicaremos estas ideas para discutir un intérprete para un lenguaje de programación lógica. Llamamos a este lenguaje el <<i313>> lenguaje de consultas, porque es muy útil para recuperar información de bases de datos formulando <<i312>> consultas, o preguntas, expresadas en el lenguaje. Aunque el lenguaje de consultas es muy diferente de Lisp, encontraremos conveniente describir el lenguaje en términos del mismo marco general que hemos estado usando todo el tiempo: como una colección de elementos primitivos, junto con medios de combinación que nos permiten combinar elementos simples para crear elementos más complejos y medios de abstracción que nos permiten considerar elementos complejos como unidades conceptuales únicas. Un intérprete para un lenguaje de programación lógica es considerablemente más complejo que un intérprete para un lenguaje como Lisp. Sin embargo, veremos que nuestro intérprete del lenguaje de consultas contiene muchos de los mismos elementos encontrados en el intérprete de la sección [[#section-4.1][4.1]]. En particular, habrá una parte "eval" que clasifica las expresiones según su tipo y una parte "apply" que implementa el mecanismo de abstracción del lenguaje (procedimientos en el caso de Lisp, y <<i339>> reglas en el caso de la programación lógica). Además, un papel central lo desempeña en la implementación una estructura de datos de marco, que determina la correspondencia entre símbolos y sus valores asociados. Un aspecto adicional interesante de nuestra implementación del lenguaje de consultas es que hacemos un uso sustancial de flujos, que fueron introducidos en el [[#section-3][Capítulo 3]].
+
+*** 4.4.1 Recuperación Deductiva de Información
+:properties:
+:custom_id: section-4.4.1
+:end:
+
+La programación lógica sobresale en proporcionar interfaces a bases de datos para la recuperación de información. El lenguaje de consultas que implementaremos en este capítulo está diseñado para usarse de esta manera.
+
+Para ilustrar lo que hace el sistema de consultas, mostraremos cómo puede usarse para gestionar la base de datos de registros de personal de Microshaft, una próspera empresa de alta tecnología en el área de Boston. El lenguaje proporciona acceso dirigido por patrones a la información del personal y también puede aprovechar reglas generales para hacer deducciones lógicas.
+
+*Una base de datos de muestra*
+
+La base de datos de personal de Microshaft contiene <<i23>> aserciones sobre el personal de la empresa. Aquí está la información sobre Ben Bitdiddle, el mago informático residente:
+
+#+begin_src scheme
+(address (Bitdiddle Ben) (Slumerville (Ridge Road) 10))
+(job (Bitdiddle Ben) (computer wizard))
+(salary (Bitdiddle Ben) 60000)
+#+end_src
+
+Cada aserción es una lista (en este caso una tripla) cuyos elementos pueden ser en sí mismos listas.
+
+Como mago residente, Ben está a cargo de la división de computación de la empresa, y supervisa dos programadores y un técnico. Aquí está la información sobre ellos:
+
+#+begin_src scheme
+(address (Hacker Alyssa P) (Cambridge (Mass Ave) 78))
+(job (Hacker Alyssa P) (computer programmer))
+(salary (Hacker Alyssa P) 40000)
+(supervisor (Hacker Alyssa P) (Bitdiddle Ben))
+
+(address (Fect Cy D) (Cambridge (Ames Street) 3))
+(job (Fect Cy D) (computer programmer))
+(salary (Fect Cy D) 35000)
+(supervisor (Fect Cy D) (Bitdiddle Ben))
+
+(address (Tweakit Lem E) (Boston (Bay State Road) 22))
+(job (Tweakit Lem E) (computer technician))
+(salary (Tweakit Lem E) 25000)
+(supervisor (Tweakit Lem E) (Bitdiddle Ben))
+#+end_src
+
+También hay un aprendiz de programador, que es supervisado por Alyssa:
+
+#+begin_src scheme
+(address (Reasoner Louis) (Slumerville (Pine Tree Road) 80))
+(job (Reasoner Louis) (computer programmer trainee))
+(salary (Reasoner Louis) 30000)
+(supervisor (Reasoner Louis) (Hacker Alyssa P))
+#+end_src
+
+Todas estas personas están en la división de computación, como se indica por la palabra ~computer~ como el primer elemento en sus descripciones de trabajo.
+
+Ben es un empleado de alto nivel. Su supervisor es el pez gordo de la empresa:
+
+#+begin_src scheme
+(supervisor (Bitdiddle Ben) (Warbucks Oliver))
+
+(address (Warbucks Oliver) (Swellesley (Top Heap Road)))
+(job (Warbucks Oliver) (administration big wheel))
+(salary (Warbucks Oliver) 150000)
+#+end_src
+
+Además de la división de computación supervisada por Ben, la empresa tiene una división de contabilidad, que consiste en un contador jefe y su asistente:
+
+#+begin_src scheme
+(address (Scrooge Eben) (Weston (Shady Lane) 10))
+(job (Scrooge Eben) (accounting chief accountant))
+(salary (Scrooge Eben) 75000)
+(supervisor (Scrooge Eben) (Warbucks Oliver))
+
+(address (Cratchet Robert) (Allston (N Harvard Street) 16))
+(job (Cratchet Robert) (accounting scrivener))
+(salary (Cratchet Robert) 18000)
+(supervisor (Cratchet Robert) (Scrooge Eben))
+#+end_src
+
+También hay una secretaria para el pez gordo:
+
+#+begin_src scheme
+(address (Aull DeWitt) (Slumerville (Onion Square) 5))
+(job (Aull DeWitt) (administration secretary))
+(salary (Aull DeWitt) 25000)
+(supervisor (Aull DeWitt) (Warbucks Oliver))
+#+end_src
+
+La base de datos también contiene aserciones sobre qué tipos de trabajos pueden ser realizados por personas que ocupan otros tipos de trabajos. Por ejemplo, un mago informático puede hacer los trabajos tanto de programador informático como de técnico informático:
+
+#+begin_src scheme
+(can-do-job (computer wizard) (computer programmer))
+(can-do-job (computer wizard) (computer technician))
+#+end_src
+
+Un programador informático podría cubrir a un aprendiz:
+
+#+begin_src scheme
+(can-do-job (computer programmer)
+            (computer programmer trainee))
+#+end_src
+
+Además, como es bien sabido,
+
+#+begin_src scheme
+(can-do-job (administration secretary)
+            (administration big wheel))
+#+end_src
+
+*Consultas simples*
+
+El lenguaje de consultas permite a los usuarios recuperar información de la base de datos planteando consultas en respuesta al mensaje del sistema. Por ejemplo, para encontrar todos los programadores informáticos se puede decir
+
+#+begin_src scheme
+;;; Entrada de consulta:
+(job ?x (computer programmer))
+#+end_src
+
+El sistema responderá con los siguientes elementos:
+
+#+begin_src scheme
+;;; Resultados de consulta:
+(job (Hacker Alyssa P) (computer programmer))
+(job (Fect Cy D) (computer programmer))
+#+end_src
+
+La consulta de entrada especifica que estamos buscando entradas en la base de datos que coincidan con un cierto <<i282>> patrón. En este ejemplo, el patrón especifica entradas que consisten en tres elementos, de los cuales el primero es el símbolo literal ~job~, el segundo puede ser cualquier cosa, y el tercero es la lista literal ~(computer programmer)~. El "cualquier cosa" que puede ser el segundo elemento en la lista coincidente se especifica mediante una <<i285>> variable de patrón, ~?x~. La forma general de una variable de patrón es un símbolo, tomado como el nombre de la variable, precedido por un signo de interrogación. Veremos más adelante por qué es útil especificar nombres para las variables de patrón en lugar de simplemente poner ~?~ en los patrones para representar "cualquier cosa". El sistema responde a una consulta simple mostrando todas las entradas en la base de datos que coinciden con el patrón especificado.
+
+Un patrón puede tener más de una variable. Por ejemplo, la consulta
+
+#+begin_src scheme
+(address ?x ?y)
+#+end_src
+
+listará todas las direcciones de los empleados.
+
+Un patrón puede no tener variables, en cuyo caso la consulta simplemente determina si ese patrón es una entrada en la base de datos. Si es así, habrá una coincidencia; si no, no habrá coincidencias.
+
+La misma variable de patrón puede aparecer más de una vez en una consulta, especificando que el mismo "cualquier cosa" debe aparecer en cada posición. Por esto es que las variables tienen nombres. Por ejemplo,
+
+#+begin_src scheme
+(supervisor ?x ?x)
+#+end_src
+
+encuentra todas las personas que se supervisan a sí mismas (aunque no hay tales aserciones en nuestra base de datos de muestra).
+
+La consulta
+
+#+begin_src scheme
+(job ?x (computer ?type))
+#+end_src
+
+coincide con todas las entradas de trabajo cuyo tercer elemento es una lista de dos elementos cuyo primer elemento es ~computer~:
+
+#+begin_src scheme
+(job (Bitdiddle Ben) (computer wizard))
+(job (Hacker Alyssa P) (computer programmer))
+(job (Fect Cy D) (computer programmer))
+(job (Tweakit Lem E) (computer technician))
+#+end_src
+
+Este mismo patrón /no/ coincide con
+
+#+begin_src scheme
+(job (Reasoner Louis) (computer programmer trainee))
+#+end_src
+
+porque el tercer elemento en la entrada es una lista de tres elementos, y el tercer elemento del patrón especifica que debe haber dos elementos. Si quisiéramos cambiar el patrón para que el tercer elemento pudiera ser cualquier lista que comience con ~computer~, podríamos especificar[fn:266]
+
+#+begin_src scheme
+(job ?x (computer . ?type))
+#+end_src
+
+Por ejemplo,
+
+#+begin_src scheme
+(computer . ?type)
+#+end_src
+
+coincide con los datos
+
+#+begin_src scheme
+(computer programmer trainee)
+#+end_src
+
+con ~?type~ como la lista ~(programmer trainee)~. También coincide con los datos
+
+#+begin_src scheme
+(computer programmer)
+#+end_src
+
+con ~?type~ como la lista ~(programmer)~, y coincide con los datos
+
+#+begin_src scheme
+(computer)
+#+end_src
+
+con ~?type~ como la lista vacía ~()~.
+
+Podemos describir el procesamiento del lenguaje de consultas de consultas simples de la siguiente manera:
+
+- El sistema encuentra todas las asignaciones a variables en el patrón de consulta que <<i341>> satisfacen el patrón--es decir, todos los conjuntos de valores para las variables tales que si las variables del patrón son <<i183>> instanciadas con (reemplazadas por) los valores, el resultado está en la base de datos.
+
+- El sistema responde a la consulta listando todas las instanciaciones del patrón de consulta con las asignaciones de variables que lo satisfacen.
+
+Nota que si el patrón no tiene variables, la consulta se reduce a una determinación de si ese patrón está en la base de datos. Si es así, la asignación vacía, que no asigna valores a variables, satisface ese patrón para esa base de datos.
+
+**** Ejercicio 4.55
+:properties:
+:custom_id: exercise-4.55
+:end:
+
+Da consultas simples que recuperen la siguiente información de la base de datos:
+
+1. todas las personas supervisadas por Ben Bitdiddle;
+2. los nombres y trabajos de todas las personas en la división de contabilidad;
+3. los nombres y direcciones de todas las personas que viven en Slumerville.
+
+*Consultas compuestas*
+
+Las consultas simples forman las operaciones primitivas del lenguaje de consultas. Para formar operaciones compuestas, el lenguaje de consultas proporciona medios de combinación. Una cosa que hace del lenguaje de consultas un lenguaje de programación lógica es que los medios de combinación reflejan los medios de combinación usados en la formación de expresiones lógicas: ~and~, ~or~, y ~not~. (Aquí ~and~, ~or~, y ~not~ no son las primitivas de Lisp, sino operaciones incorporadas en el lenguaje de consultas.)
+
+Podemos usar ~and~ de la siguiente manera para encontrar las direcciones de todos los programadores informáticos:
+
+#+begin_src scheme
+(and (job ?person (computer programmer))
+     (address ?person ?where))
+#+end_src
+
+La salida resultante es
+
+#+begin_src scheme
+(and (job (Hacker Alyssa P) (computer programmer))
+     (address (Hacker Alyssa P) (Cambridge (Mass Ave) 78)))
+
+(and (job (Fect Cy D) (computer programmer))
+     (address (Fect Cy D) (Cambridge (Ames Street) 3)))
+#+end_src
+
+En general,
+
+#+begin_src scheme
+(and <QUERY_1> <QUERY_2> ... <QUERY_N>)
+#+end_src
+
+es satisfecha por todos los conjuntos de valores para las variables de patrón que simultáneamente satisfacen <QUERY_1> ... <QUERY_N>.
+
+Al igual que con las consultas simples, el sistema procesa una consulta compuesta encontrando todas las asignaciones a las variables de patrón que satisfacen la consulta, luego mostrando instanciaciones de la consulta con esos valores.
+
+Otro medio de construir consultas compuestas es a través de ~or~. Por ejemplo,
+
+#+begin_src scheme
+(or (supervisor ?x (Bitdiddle Ben))
+    (supervisor ?x (Hacker Alyssa P)))
+#+end_src
+
+encontrará todos los empleados supervisados por Ben Bitdiddle o Alyssa P. Hacker:
+
+#+begin_src scheme
+(or (supervisor (Hacker Alyssa P) (Bitdiddle Ben))
+    (supervisor (Hacker Alyssa P) (Hacker Alyssa P)))
+
+(or (supervisor (Fect Cy D) (Bitdiddle Ben))
+    (supervisor (Fect Cy D) (Hacker Alyssa P)))
+
+(or (supervisor (Tweakit Lem E) (Bitdiddle Ben))
+    (supervisor (Tweakit Lem E) (Hacker Alyssa P)))
+
+(or (supervisor (Reasoner Louis) (Bitdiddle Ben))
+    (supervisor (Reasoner Louis) (Hacker Alyssa P)))
+#+end_src
+
+En general,
+
+#+begin_src scheme
+(or <QUERY_1> <QUERY_2> ... <QUERY_N>)
+#+end_src
+
+es satisfecha por todos los conjuntos de valores para las variables de patrón que satisfacen al menos una de <QUERY_1> ... <QUERY_N>.
+
+Las consultas compuestas también pueden formarse con ~not~. Por ejemplo,
+
+#+begin_src scheme
+(and (supervisor ?x (Bitdiddle Ben))
+     (not (job ?x (computer programmer))))
+#+end_src
+
+encuentra todas las personas supervisadas por Ben Bitdiddle que no son programadores informáticos. En general,
+
+#+begin_src scheme
+(not <QUERY_1>)
+#+end_src
+
+es satisfecha por todas las asignaciones a las variables de patrón que no satisfacen <QUERY_1>.[fn:267]
+
+La forma de combinación final se llama ~lisp-value~. Cuando ~lisp-value~ es el primer elemento de un patrón, especifica que el siguiente elemento es un predicado de Lisp que debe aplicarse al resto de los elementos (instanciados) como argumentos. En general,
+
+#+begin_src scheme
+(lisp-value <PREDICATE> <ARG_1> ... <ARG_N>)
+#+end_src
+
+será satisfecha por asignaciones a las variables de patrón para las cuales el <PREDICATE> aplicado a los <ARG_1> ... <ARG_N> instanciados es verdadero. Por ejemplo, para encontrar todas las personas cuyo salario es mayor que $30,000 podríamos escribir[fn:268]
+
+#+begin_src scheme
+(and (salary ?person ?amount)
+     (lisp-value > ?amount 30000))
+#+end_src
+
+**** Ejercicio 4.56
+:properties:
+:custom_id: exercise-4.56
+:end:
+
+Formula consultas compuestas que recuperen la siguiente información:
+
+a. los nombres de todas las personas que son supervisadas por Ben Bitdiddle, junto con sus direcciones;
+
+b. todas las personas cuyo salario es menor que el de Ben Bitdiddle, junto con su salario y el salario de Ben Bitdiddle;
+
+c. todas las personas que son supervisadas por alguien que no está en la división de computación, junto con el nombre del supervisor y el trabajo.
+
+*Reglas*
+
+Además de consultas primitivas y consultas compuestas, el lenguaje de consultas proporciona medios para abstraer consultas. Estos son dados por <<i340>> reglas. La regla
+
+#+begin_src scheme
+(rule (lives-near ?person-1 ?person-2)
+      (and (address ?person-1 (?town . ?rest-1))
+           (address ?person-2 (?town . ?rest-2))
+           (not (same ?person-1 ?person-2))))
+#+end_src
+
+especifica que dos personas viven cerca una de la otra si viven en el mismo pueblo. La cláusula ~not~ final evita que la regla diga que todas las personas viven cerca de sí mismas. La relación ~same~ se define mediante una regla muy simple:[fn:269]
+
+#+begin_src scheme
+(rule (same ?x ?x))
+#+end_src
+
+La siguiente regla declara que una persona es un "pez gordo" en una organización si supervisa a alguien que es a su vez supervisor:
+
+#+begin_src scheme
+(rule (wheel ?person)
+      (and (supervisor ?middle-manager ?person)
+           (supervisor ?x ?middle-manager)))
+#+end_src
+
+La forma general de una regla es
+
+#+begin_src scheme
+(rule <CONCLUSION> <BODY>)
+#+end_src
+
+donde <CONCLUSION> es un patrón y <BODY> es cualquier consulta.[fn:270] Podemos pensar en una regla como representando un conjunto grande (incluso infinito) de aserciones, a saber, todas las instanciaciones de la conclusión de la regla con asignaciones de variables que satisfacen el cuerpo de la regla. Cuando describimos consultas simples (patrones), dijimos que una asignación a variables satisface un patrón si el patrón instanciado está en la base de datos. Pero el patrón no necesita estar explícitamente en la base de datos como una aserción. Puede ser una aserción implícita implicada por una regla. Por ejemplo, la consulta
+
+#+begin_src scheme
+(lives-near ?x (Bitdiddle Ben))
+#+end_src
+
+resulta en
+
+#+begin_src scheme
+(lives-near (Reasoner Louis) (Bitdiddle Ben))
+(lives-near (Aull DeWitt) (Bitdiddle Ben))
+#+end_src
+
+Para encontrar todos los programadores informáticos que viven cerca de Ben Bitdiddle, podemos preguntar
+
+#+begin_src scheme
+(and (job ?x (computer programmer))
+     (lives-near ?x (Bitdiddle Ben)))
+#+end_src
+
+Al igual que en el caso de los procedimientos compuestos, las reglas pueden usarse como partes de otras reglas (como vimos con la regla ~lives-near~ anterior) o incluso definirse recursivamente. Por ejemplo, la regla
+
+#+begin_src scheme
+(rule (outranked-by ?staff-person ?boss)
+      (or (supervisor ?staff-person ?boss)
+          (and (supervisor ?staff-person ?middle-manager)
+               (outranked-by ?middle-manager ?boss))))
+#+end_src
+
+dice que una persona del personal es superada en rango por un jefe en la organización si el jefe es el supervisor de la persona o (recursivamente) si el supervisor de la persona es superado en rango por el jefe.
+
+**** Ejercicio 4.57
+:properties:
+:custom_id: exercise-4.57
+:end:
+
+Define una regla que diga que la persona 1 puede reemplazar a la persona 2 si o bien la persona 1 hace el mismo trabajo que la persona 2 o alguien que hace el trabajo de la persona 1 también puede hacer el trabajo de la persona 2, y si la persona 1 y la persona 2 no son la misma persona. Usando tu regla, da consultas que encuentren lo siguiente:
+
+a. todas las personas que pueden reemplazar a Cy D. Fect;
+
+b. todas las personas que pueden reemplazar a alguien a quien se le paga más de lo que a ellos se les paga, junto con los dos salarios.
+
+**** Ejercicio 4.58
+:properties:
+:custom_id: exercise-4.58
+:end:
+
+Define una regla que diga que una persona es un "pez gordo" en una división si la persona trabaja en la división pero no tiene un supervisor que trabaje en la división.
+
+**** Ejercicio 4.59
+:properties:
+:custom_id: exercise-4.59
+:end:
+
+Ben Bitdiddle ha faltado a una reunión de más. Temiendo que su hábito de olvidar reuniones pudiera costarle su trabajo, Ben decide hacer algo al respecto. Añade todas las reuniones semanales de la empresa a la base de datos de Microshaft afirmando lo siguiente:
+
+#+begin_src scheme
+(meeting accounting (Monday 9am))
+(meeting administration (Monday 10am))
+(meeting computer (Wednesday 3pm))
+(meeting administration (Friday 1pm))
+#+end_src
+
+Cada una de las aserciones anteriores es para una reunión de una división entera. Ben también añade una entrada para la reunión de toda la empresa que abarca todas las divisiones. Todos los empleados de la empresa asisten a esta reunión.
+
+#+begin_src scheme
+(meeting whole-company (Wednesday 4pm))
+#+end_src
+
+a. El viernes por la mañana, Ben quiere consultar la base de datos para todas las reuniones que ocurren ese día. ¿Qué consulta debería usar?
+
+b. Alyssa P. Hacker no está impresionada. Ella piensa que sería mucho más útil poder preguntar por sus reuniones especificando su nombre. Así que diseña una regla que dice que las reuniones de una persona incluyen todas las reuniones de ~whole-company~ más todas las reuniones de la división de esa persona. Completa el cuerpo de la regla de Alyssa.
+
+#+begin_src scheme
+(rule (meeting-time ?person ?day-and-time)
+      <RULE-BODY>)
+#+end_src
+
+c. Alyssa llega al trabajo el miércoles por la mañana y se pregunta a qué reuniones tiene que asistir ese día. Habiendo definido la regla anterior, ¿qué consulta debería hacer para averiguarlo?
+
+**** Ejercicio 4.60
+:properties:
+:custom_id: exercise-4.60
+:end:
+
+Al dar la consulta
+
+#+begin_src scheme
+(lives-near ?person (Hacker Alyssa P))
+#+end_src
+
+Alyssa P. Hacker puede encontrar personas que viven cerca de ella, con quienes puede compartir el viaje al trabajo. Por otro lado, cuando intenta encontrar todos los pares de personas que viven cerca una de la otra consultando
+
+#+begin_src scheme
+(lives-near ?person-1 ?person-2)
+#+end_src
+
+nota que cada par de personas que viven cerca una de la otra aparece dos veces; por ejemplo,
+
+#+begin_src scheme
+(lives-near (Hacker Alyssa P) (Fect Cy D))
+(lives-near (Fect Cy D) (Hacker Alyssa P))
+#+end_src
+
+¿Por qué sucede esto? ¿Hay una forma de encontrar una lista de personas que viven cerca una de la otra, en la que cada par aparezca solo una vez? Explica.
+
+*La lógica como programas*
+
+Podemos considerar una regla como un tipo de implicación lógica: /Si/ una asignación de valores a variables de patrón satisface el cuerpo, /entonces/ satisface la conclusión. En consecuencia, podemos considerar el lenguaje de consultas como que tiene la capacidad de realizar <<i221>> deducciones lógicas basadas en las reglas. Como ejemplo, considera la operación ~append~ descrita al comienzo de la sección [[#section-4.4][4.4]]. Como dijimos, ~append~ puede caracterizarse por las siguientes dos reglas:
+
+- Para cualquier lista ~y~, la lista vacía y ~y~ se ~append~ para formar ~y~.
+
+- Para cualquier ~u~, ~v~, ~y~, y ~z~, ~(cons u v)~ y ~y~ se ~append~ para formar ~(cons u z)~ si ~v~ y ~y~ se ~append~ para formar ~z~.
+
+Para expresar esto en nuestro lenguaje de consultas, definimos dos reglas para una relación
+
+#+begin_src scheme
+(append-to-form x y z)
+#+end_src
+
+que podemos interpretar como "~x~ y ~y~ se ~append~ para formar ~z~":
+
+#+begin_src scheme
+(rule (append-to-form () ?y ?y))
+
+(rule (append-to-form (?u . ?v) ?y (?u . ?z))
+      (append-to-form ?v ?y ?z))
+#+end_src
+
+La primera regla no tiene cuerpo, lo que significa que la conclusión se cumple para cualquier valor de ~?y~. Nota cómo la segunda regla hace uso de la notación de cola con punto para nombrar el ~car~ y el ~cdr~ de una lista.
+
+Dadas estas dos reglas, podemos formular consultas que calculen el ~append~ de dos listas:
+
+#+begin_src scheme
+;;; Entrada de consulta:
+(append-to-form (a b) (c d) ?z)
+;;; Resultados de consulta:
+(append-to-form (a b) (c d) (a b c d))
+#+end_src
+
+Lo que es más sorprendente, podemos usar las mismas reglas para hacer la pregunta "¿Qué lista, cuando se le hace 'append' a ~(a b)~, produce ~(a b c d)~?" Esto se hace de la siguiente manera:
+
+#+begin_src scheme
+;;; Entrada de consulta:
+(append-to-form (a b) ?y (a b c d))
+;;; Resultados de consulta:
+(append-to-form (a b) (c d) (a b c d))
+#+end_src
+
+También podemos preguntar por todos los pares de listas que se ~append~ para formar ~(a b c d)~:
+
+#+begin_src scheme
+;;; Entrada de consulta:
+(append-to-form ?x ?y (a b c d))
+;;; Resultados de consulta:
+(append-to-form () (a b c d) (a b c d))
+(append-to-form (a) (b c d) (a b c d))
+(append-to-form (a b) (c d) (a b c d))
+(append-to-form (a b c) (d) (a b c d))
+(append-to-form (a b c d) () (a b c d))
+#+end_src
+
+El sistema de consultas puede parecer exhibir bastante inteligencia al usar las reglas para deducir las respuestas a las consultas anteriores. En realidad, como veremos en la siguiente sección, el sistema está siguiendo un algoritmo bien determinado al desenredar las reglas. Desafortunadamente, aunque el sistema funciona impresionantemente en el caso de ~append~, los métodos generales pueden fallar en casos más complejos, como veremos en la sección [[#section-4.4.3][4.4.3]].
+
+**** Ejercicio 4.61
+:properties:
+:custom_id: exercise-4.61
+:end:
+
+Las siguientes reglas implementan una relación ~next-to~ que encuentra elementos adyacentes de una lista:
+
+#+begin_src scheme
+(rule (?x next-to ?y in (?x ?y . ?u)))
+
+(rule (?x next-to ?y in (?v . ?z))
+      (?x next-to ?y in ?z))
+#+end_src
+
+¿Cuál será la respuesta a las siguientes consultas?
+
+#+begin_src scheme
+(?x next-to ?y in (1 (2 3) 4))
+
+(?x next-to 1 in (2 1 3 1))
+#+end_src
+
+**** Ejercicio 4.62
+:properties:
+:custom_id: exercise-4.62
+:end:
+
+Define reglas para implementar la operación ~last-pair~ del [[#exercise-2.17][Ejercicio 2.17]], que devuelve una lista que contiene el último elemento de una lista no vacía. Verifica tus reglas en consultas como ~(last-pair (3) ?x)~, ~(last-pair (1 2 3) ?x)~, y ~(last-pair (2 ?x) (3))~. ¿Funcionan correctamente tus reglas en consultas como ~(last-pair ?x (3))~?
+
+**** Ejercicio 4.63
+:properties:
+:custom_id: exercise-4.63
+:end:
+
+La siguiente base de datos (véase Génesis 4) rastrea la genealogía de los descendientes de Ada hasta Adam, por vía de Cain:
+
+#+begin_src scheme
+(son Adam Cain)
+(son Cain Enoch)
+(son Enoch Irad)
+(son Irad Mehujael)
+(son Mehujael Methushael)
+(son Methushael Lamech)
+(wife Lamech Ada)
+(son Ada Jabal)
+(son Ada Jubal)
+#+end_src
+
+Formula reglas como "Si S es el hijo de f, y f es el hijo de G, entonces S es el nieto de G" y "Si W es la esposa de M, y S es el hijo de W, entonces S es el hijo de M" (lo cual supuestamente era más cierto en tiempos bíblicos que hoy) que permitirán al sistema de consultas encontrar el nieto de Cain; los hijos de Lamech; los nietos de Methushael. (Véase el [[#exercise-4.69][Ejercicio 4.69]] para algunas reglas para deducir relaciones más complicadas.)
+*** 4.4.2 Cómo Funciona el Sistema de Consultas
+:properties:
+:custom_id: section-4.4.2
+:end:
+
+En la sección [[#section-4.4.4][4.4.4]] presentaremos una implementación del intérprete de consultas como una colección de procedimientos. En esta sección damos una visión general que explica la estructura general del sistema independientemente de los detalles de implementación de bajo nivel. Después de describir la implementación del intérprete, estaremos en posición de entender algunas de sus limitaciones y algunas de las formas sutiles en que las operaciones lógicas del lenguaje de consultas difieren de las operaciones de la lógica matemática.
+
+Debería ser evidente que el evaluador de consultas debe realizar algún tipo de búsqueda para hacer coincidir consultas con hechos y reglas en la base de datos. Una forma de hacer esto sería implementar el sistema de consultas como un programa no determinista, usando el evaluador ~amb~ de la sección [[#section-4.3][4.3]] (véase el [[#exercise-4.78][Ejercicio 4.78]]). Otra posibilidad es gestionar la búsqueda con la ayuda de flujos. Nuestra implementación sigue este segundo enfoque.
+
+El sistema de consultas está organizado en torno a dos operaciones centrales llamadas <<i284>> emparejamiento de patrones y <<i411>> unificación. Primero describimos el emparejamiento de patrones y explicamos cómo esta operación, junto con la organización de la información en términos de flujos de marcos, nos permite implementar tanto consultas simples como compuestas. A continuación discutimos la unificación, una generalización del emparejamiento de patrones necesaria para implementar reglas. Finalmente, mostramos cómo el intérprete de consultas completo encaja mediante un procedimiento que clasifica las expresiones de manera análoga a la forma en que ~eval~ clasifica las expresiones para el intérprete descrito en la sección [[#section-4.1][4.1]].
+
+*Emparejamiento de patrones*
+
+Un <<i283>> emparejador de patrones es un programa que prueba si algún dato se ajusta a un patrón especificado. Por ejemplo, la lista de datos ~((a b) c (a b))~ coincide con el patrón ~(?x c ?x)~ con la variable de patrón ~?x~ vinculada a ~(a b)~. La misma lista de datos coincide con el patrón ~(?x ?y ?z)~ con ~?x~ y ~?z~ ambos vinculados a ~(a b)~ y ~?y~ vinculado a ~c~. También coincide con el patrón ~((?x ?y) c (?x ?y))~ con ~?x~ vinculado a ~a~ y ~?y~ vinculado a ~b~. Sin embargo, no coincide con el patrón ~(?x a ?y)~, ya que ese patrón especifica una lista cuyo segundo elemento es el símbolo ~a~.
+
+El emparejador de patrones usado por el sistema de consultas toma como entradas un patrón, un dato, y un <<i144>> marco que especifica vinculaciones para varias variables de patrón. Comprueba si el dato coincide con el patrón de una manera que sea consistente con las vinculaciones ya en el marco. Si es así, devuelve el marco dado aumentado por cualquier vinculación que pueda haber sido determinada por la coincidencia. De lo contrario, indica que la coincidencia ha fallado.
+
+Por ejemplo, usar el patrón ~(?x ?y ?x)~ para coincidir con ~(a b a)~ dado un marco vacío devolverá un marco que especifica que ~?x~ está vinculado a ~a~ y ~?y~ está vinculado a ~b~. Intentar la coincidencia con el mismo patrón, el mismo dato, y un marco que especifica que ~?y~ está vinculado a ~a~ fallará. Intentar la coincidencia con el mismo patrón, el mismo dato, y un marco en el que ~?y~ está vinculado a ~b~ y ~?x~ no está vinculado devolverá el marco dado aumentado por una vinculación de ~?x~ a ~a~.
+
+El emparejador de patrones es todo el mecanismo que se necesita para procesar consultas simples que no involucran reglas. Por ejemplo, para procesar la consulta
+
+#+begin_src scheme
+(job ?x (computer programmer))
+#+end_src
+
+escaneamos todas las aserciones en la base de datos y seleccionamos aquellas que coinciden con el patrón con respecto a un marco inicialmente vacío. Para cada coincidencia que encontramos, usamos el marco devuelto por la coincidencia para instanciar el patrón con un valor para ~?x~.
+
+*Flujos de marcos*
+
+La prueba de patrones contra marcos está organizada mediante el uso de flujos. Dado un solo marco, el proceso de coincidencia recorre las entradas de la base de datos una por una. Para cada entrada de la base de datos, el emparejador genera o bien un símbolo especial que indica que la coincidencia ha fallado o una extensión al marco. Los resultados para todas las entradas de la base de datos se recopilan en un flujo, que se pasa a través de un filtro para eliminar los fallos. El resultado es un flujo de todos los marcos que extienden el marco dado mediante una coincidencia con alguna aserción en la base de datos.[fn:271]
+
+En nuestro sistema, una consulta toma un flujo de entrada de marcos y realiza la operación de coincidencia anterior para cada marco en el flujo, como se indica en la [[figure-4.4][Figura 4.4]]. Es decir, para cada marco en el flujo de entrada, la consulta genera un nuevo flujo que consiste en todas las extensiones a ese marco mediante coincidencias con aserciones en la base de datos. Todos estos flujos se combinan entonces para formar un flujo enorme, que contiene todas las extensiones posibles de cada marco en el flujo de entrada. Este flujo es la salida de la consulta.
+
+<<figure-4.4>> Una consulta procesa un flujo de marcos.
+
+#+begin_example
+                                   output stream
+   input stream   +-------------+  of frames,
+   of frames      |    query    |  filtered and extended
+ ---------------->|             +------------------------->
+                  | (job ?x ?y) |
+                  +-------------+
+                         ^
+                         |
+                stream of assertions
+                   from data base
+#+end_example
+
+Para responder una consulta simple, usamos la consulta con un flujo de entrada que consiste en un solo marco vacío. El flujo de salida resultante contiene todas las extensiones al marco vacío (es decir, todas las respuestas a nuestra consulta). Este flujo de marcos se usa entonces para generar un flujo de copias del patrón de consulta original con las variables instanciadas por los valores en cada marco, y este es el flujo que finalmente se imprime.
+
+*Consultas compuestas*
+
+La verdadera elegancia de la implementación de flujo de marcos es evidente cuando tratamos con consultas compuestas. El procesamiento de consultas compuestas hace uso de la capacidad de nuestro emparejador para exigir que una coincidencia sea consistente con un marco especificado. Por ejemplo, para manejar el ~and~ de dos consultas, como
+
+#+begin_src scheme
+(and (can-do-job ?x (computer programmer trainee))
+     (job ?person ?x))
+#+end_src
+
+(informalmente, "Encuentra todas las personas que pueden hacer el trabajo de aprendiz de programador informático"), primero encontramos todas las entradas que coinciden con el patrón
+
+#+begin_src scheme
+(can-do-job ?x (computer programmer trainee))
+#+end_src
+
+Esto produce un flujo de marcos, cada uno de los cuales contiene una vinculación para ~?x~. Luego, para cada marco en el flujo, encontramos todas las entradas que coinciden con
+
+#+begin_src scheme
+(job ?person ?x)
+#+end_src
+
+de una manera que sea consistente con la vinculación dada para ~?x~. Cada coincidencia de este tipo producirá un marco que contiene vinculaciones para ~?x~ y ~?person~. El ~and~ de dos consultas puede verse como una combinación en serie de las dos consultas componentes, como se muestra en la [[figure-4.5][Figura 4.5]]. Los marcos que pasan a través del primer filtro de consulta son filtrados y extendidos aún más por la segunda consulta.
+
+<<figure-4.5>> La combinación ~and~ de dos consultas se produce operando en el flujo de marcos en serie.
+
+#+begin_example
+                 +----------------------+
+                 |       (and A B)      |
+   input stream  |                      |  output stream
+   of frames     |   +---+       +---+  |  of frames
+ ------------------->| A +------>| B +-------------------->
+                 |   +---+       +---+  |
+                 |     ^           ^    |
+                 |     |           |    |
+                 |     +-----*-----+    |
+                 +-----------|----------+
+                             |
+                         data base
+#+end_example
+
+La [[figure-4.6][Figura 4.6]] muestra el método análogo para calcular el ~or~ de dos consultas como una combinación paralela de las dos consultas componentes. El flujo de entrada de marcos se extiende por separado mediante cada consulta. Los dos flujos resultantes se fusionan entonces para producir el flujo de salida final.
+
+<<figure-4.6>> La combinación ~or~ de dos consultas se produce operando en el flujo de marcos en paralelo y fusionando los resultados.
+
+#+begin_example
+            +---------------------------+
+            |          (or A B)         |
+            |    +---+                  |
+ input      | +->| A |------------+     |  output
+ stream of  | |  +---+            V     |  stream of
+ frames     | |    ^          +-------+ |  frames
+ -------------*    |          | merge +--------------->
+            | |    |          +-------+ |
+            | |    |              ^     |
+            | |    |   +---+      |     |
+            | +------->| B +------+     |
+            |      |   +---+            |
+            |      |     ^              |
+            |      |     |              |
+            |      +--*--+              |
+            +---------|-----------------+
+                      |
+                  data base
+#+end_example
+
+Incluso a partir de esta descripción de alto nivel, es evidente que el procesamiento de consultas compuestas puede ser lento. Por ejemplo, dado que una consulta puede producir más de un marco de salida para cada marco de entrada, y cada consulta en un ~and~ obtiene sus marcos de entrada de la consulta anterior, una consulta ~and~ podría, en el peor de los casos, tener que realizar un número de coincidencias que es exponencial en el número de consultas (véase el [[#exercise-4.76][Ejercicio 4.76]]).[fn:272] Aunque los sistemas para manejar solo consultas simples son bastante prácticos, tratar con consultas complejas es extremadamente difícil.[fn:273]
+
+Desde el punto de vista del flujo de marcos, el ~not~ de alguna consulta actúa como un filtro que elimina todos los marcos para los cuales la consulta puede ser satisfecha. Por ejemplo, dado el patrón
+
+#+begin_src scheme
+(not (job ?x (computer programmer)))
+#+end_src
+
+intentamos, para cada marco en el flujo de entrada, producir marcos de extensión que satisfagan ~(job ?x (computer programmer))~. Eliminamos del flujo de entrada todos los marcos para los cuales tales extensiones existen. El resultado es un flujo que consiste solo en aquellos marcos en los que la vinculación para ~?x~ no satisface ~(job ?x (computer programmer))~. Por ejemplo, al procesar la consulta
+
+#+begin_src scheme
+(and (supervisor ?x ?y)
+     (not (job ?x (computer programmer))))
+#+end_src
+
+la primera cláusula generará marcos con vinculaciones para ~?x~ y ~?y~. La cláusula ~not~ entonces filtrará estos eliminando todos los marcos en los que la vinculación para ~?x~ satisface la restricción de que ~?x~ es un programador informático.[fn:274]
+
+La forma especial ~lisp-value~ se implementa como un filtro similar en flujos de marcos. Usamos cada marco en el flujo para instanciar cualquier variable en el patrón, luego aplicamos el predicado de Lisp. Eliminamos del flujo de entrada todos los marcos para los cuales el predicado falla.
+
+*Unificación*
+
+Para manejar reglas en el lenguaje de consultas, debemos ser capaces de encontrar las reglas cuyas conclusiones coinciden con un patrón de consulta dado. Las conclusiones de las reglas son como aserciones excepto que pueden contener variables, por lo que necesitaremos una generalización del emparejamiento de patrones--llamada <<i412>> unificación--en la que tanto el "patrón" como el "dato" pueden contener variables.
+
+Un unificador toma dos patrones, cada uno conteniendo constantes y variables, y determina si es posible asignar valores a las variables que harán que los dos patrones sean iguales. Si es así, devuelve un marco que contiene estas vinculaciones. Por ejemplo, unificar ~(?x a ?y)~ y ~(?y ?z a)~ especificará un marco en el que ~?x~, ~?y~, y ~?z~ deben estar todos vinculados a ~a~. Por otro lado, unificar ~(?x ?y a)~ y ~(?x b ?y)~ fallará, porque no hay valor para ~?y~ que pueda hacer que los dos patrones sean iguales. (Para que los segundos elementos de los patrones sean iguales, ~?y~ tendría que ser ~b~; sin embargo, para que los terceros elementos sean iguales, ~?y~ tendría que ser ~a~.) El unificador usado en el sistema de consultas, como el emparejador de patrones, toma un marco como entrada y realiza unificaciones que son consistentes con este marco.
+
+El algoritmo de unificación es la parte técnicamente más difícil del sistema de consultas. Con patrones complejos, realizar la unificación puede parecer requerir deducción. Para unificar ~(?x ?x)~ y ~((a ?y c) (a b ?z))~, por ejemplo, el algoritmo debe inferir que ~?x~ debería ser ~(a b c)~, ~?y~ debería ser ~b~, y ~?z~ debería ser ~c~. Podemos pensar en este proceso como resolver un conjunto de ecuaciones entre los componentes del patrón. En general, estas son ecuaciones simultáneas, que pueden requerir manipulación sustancial para resolver.[fn:275] Por ejemplo, unificar ~(?x ?x)~ y ~((a ?y c) (a b ?z))~ puede pensarse como especificar las ecuaciones simultáneas
+
+#+begin_src scheme
+?x  =  (a ?y c)
+?x  =  (a b ?z)
+#+end_src
+
+Estas ecuaciones implican que
+
+#+begin_src scheme
+(a ?y c)  =  (a b ?z)
+#+end_src
+
+lo cual a su vez implica que
+
+#+begin_src scheme
+a  =  a, ?y  =  b, c  =  ?z,
+#+end_src
+
+y por lo tanto que
+
+#+begin_src scheme
+?x  =  (a b c)
+#+end_src
+
+En un emparejamiento de patrones exitoso, todas las variables de patrón quedan vinculadas, y los valores a los que están vinculadas contienen solo constantes. Esto también es cierto para todos los ejemplos de unificación que hemos visto hasta ahora. En general, sin embargo, una unificación exitosa puede no determinar completamente los valores de las variables; algunas variables pueden permanecer sin vincular y otras pueden estar vinculadas a valores que contienen variables.
+
+Considera la unificación de ~(?x a)~ y ~((b ?y) ?z)~. Podemos deducir que ~?x = (b ?y)~ y ~a = ?z~, pero no podemos resolver más para ~?x~ o ~?y~. La unificación no falla, ya que ciertamente es posible hacer que los dos patrones sean iguales asignando valores a ~?x~ y ~?y~. Dado que esta coincidencia de ninguna manera restringe los valores que ~?y~ puede tomar, no se coloca ninguna vinculación para ~?y~ en el marco de resultado. Sin embargo, la coincidencia sí restringe el valor de ~?x~. Cualquiera que sea el valor de ~?y~, ~?x~ debe ser ~(b ?y)~. Por lo tanto, se coloca una vinculación de ~?x~ al patrón ~(b ?y)~ en el marco. Si un valor para ~?y~ se determina posteriormente y se añade al marco (mediante un emparejamiento de patrones o unificación que debe ser consistente con este marco), el ~?x~ previamente vinculado se referirá a este valor.[fn:276]
+
+*Aplicación de reglas*
+
+La unificación es la clave para el componente del sistema de consultas que hace inferencias a partir de reglas. Para ver cómo se logra esto, considera el procesamiento de una consulta que involucra aplicar una regla, como
+
+#+begin_src scheme
+(lives-near ?x (Hacker Alyssa P))
+#+end_src
+
+Para procesar esta consulta, primero usamos el procedimiento ordinario de emparejamiento de patrones descrito anteriormente para ver si hay alguna aserción en la base de datos que coincida con este patrón. (No habrá ninguna en este caso, ya que nuestra base de datos no incluye aserciones directas sobre quién vive cerca de quién.) El siguiente paso es intentar unificar el patrón de consulta con la conclusión de cada regla. Encontramos que el patrón se unifica con la conclusión de la regla
+
+#+begin_src scheme
+(rule (lives-near ?person-1 ?person-2)
+      (and (address ?person-1 (?town . ?rest-1))
+           (address ?person-2 (?town . ?rest-2))
+           (not (same ?person-1 ?person-2))))
+#+end_src
+
+resultando en un marco que especifica que ~?person-2~ está vinculado a ~(Hacker Alyssa P)~ y que ~?x~ debería estar vinculado a (tener el mismo valor que) ~?person-1~. Ahora, relativo a este marco, evaluamos la consulta compuesta dada por el cuerpo de la regla. Las coincidencias exitosas extenderán este marco proporcionando una vinculación para ~?person-1~, y en consecuencia un valor para ~?x~, que podemos usar para instanciar el patrón de consulta original.
+
+En general, el evaluador de consultas usa el siguiente método para aplicar una regla cuando intenta establecer un patrón de consulta en un marco que especifica vinculaciones para algunas de las variables del patrón:
+
+- Unificar la consulta con la conclusión de la regla para formar, si tiene éxito, una extensión del marco original.
+
+- Relativo al marco extendido, evaluar la consulta formada por el cuerpo de la regla.
+
+Nota cuán similar es esto al método para aplicar un procedimiento en el evaluador ~eval~/~apply~ para Lisp:
+
+- Vincular los parámetros del procedimiento a sus argumentos para formar un marco que extiende el entorno del procedimiento original.
+
+- Relativo al entorno extendido, evaluar la expresión formada por el cuerpo del procedimiento.
+
+La similitud entre los dos evaluadores no debería ser una sorpresa. Así como las definiciones de procedimientos son los medios de abstracción en Lisp, las definiciones de reglas son los medios de abstracción en el lenguaje de consultas. En cada caso, desenrollamos la abstracción creando vinculaciones apropiadas y evaluando el cuerpo de la regla o procedimiento relativo a estas.
+
+*Consultas simples*
+
+Vimos anteriormente en esta sección cómo evaluar consultas simples en ausencia de reglas. Ahora que hemos visto cómo aplicar reglas, podemos describir cómo evaluar consultas simples usando tanto reglas como aserciones.
+
+Dado el patrón de consulta y un flujo de marcos, producimos, para cada marco en el flujo de entrada, dos flujos:
+
+- un flujo de marcos extendidos obtenidos emparejando el patrón con todas las aserciones en la base de datos (usando el emparejador de patrones), y
+
+- un flujo de marcos extendidos obtenidos aplicando todas las reglas posibles (usando el unificador).[fn:277]
+
+Añadir estos dos flujos produce un flujo que consiste en todas las formas en que el patrón dado puede ser satisfecho de manera consistente con el marco original. Estos flujos (uno para cada marco en el flujo de entrada) ahora se combinan todos para formar un gran flujo, que por lo tanto consiste en todas las formas en que cualquiera de los marcos en el flujo de entrada original puede ser extendido para producir una coincidencia con el patrón dado.
+
+*El evaluador de consultas y el bucle del controlador*
+
+A pesar de la complejidad de las operaciones de emparejamiento subyacentes, el sistema está organizado de manera muy similar a un evaluador para cualquier lenguaje. El procedimiento que coordina las operaciones de emparejamiento se llama ~qeval~, y desempeña un papel análogo al del procedimiento ~eval~ para Lisp. ~qeval~ toma como entradas una consulta y un flujo de marcos. Su salida es un flujo de marcos, correspondientes a coincidencias exitosas con el patrón de consulta, que extienden algún marco en el flujo de entrada, como se indica en la [[figure-4.4][Figura 4.4]]. Como ~eval~, ~qeval~ clasifica los diferentes tipos de expresiones (consultas) y despacha a un procedimiento apropiado para cada uno. Hay un procedimiento para cada forma especial (~and~, ~or~, ~not~, y ~lisp-value~) y uno para consultas simples.
+
+El bucle del controlador, que es análogo al procedimiento ~driver-loop~ para los otros evaluadores en este capítulo, lee consultas desde el terminal. Para cada consulta, llama a ~qeval~ con la consulta y un flujo que consiste en un solo marco vacío. Esto producirá el flujo de todas las coincidencias posibles (todas las extensiones posibles al marco vacío). Para cada marco en el flujo resultante, instancia la consulta original usando los valores de las variables encontradas en el marco. Este flujo de consultas instanciadas se imprime entonces.[fn:278]
+
+El controlador también verifica el comando especial ~assert!~, que señala que la entrada no es una consulta sino más bien una aserción o regla que se debe añadir a la base de datos. Por ejemplo,
+
+#+begin_src scheme
+(assert! (job (Bitdiddle Ben) (computer wizard)))
+
+(assert! (rule (wheel ?person)
+               (and (supervisor ?middle-manager ?person)
+                    (supervisor ?x ?middle-manager))))
+#+end_src
